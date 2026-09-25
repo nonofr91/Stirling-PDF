@@ -14,6 +14,7 @@ export interface SetPageBoxesParameters extends BaseParameters {
   trimMarginMm?: number;
   bleedMm?: number;
   copyMissingFromMediaBox: boolean;
+  drawBoxes: boolean;
 }
 
 export const defaultParameters: SetPageBoxesParameters = {
@@ -25,6 +26,7 @@ export const defaultParameters: SetPageBoxesParameters = {
   trimMarginMm: undefined,
   bleedMm: undefined,
   copyMissingFromMediaBox: false,
+  drawBoxes: false,
 };
 
 export type SetPageBoxesParametersHook =
@@ -53,7 +55,12 @@ export function validateSetPageBoxesParameters(
 
   const hasExplicitBox = boxes.some((box) => box.trim() !== "");
   const hasMargin = (params.trimMarginMm ?? 0) > 0 || (params.bleedMm ?? 0) > 0;
-  if (!hasExplicitBox && !hasMargin && !params.copyMissingFromMediaBox) {
+  if (
+    !hasExplicitBox &&
+    !hasMargin &&
+    !params.copyMissingFromMediaBox &&
+    !params.drawBoxes
+  ) {
     return false;
   }
 

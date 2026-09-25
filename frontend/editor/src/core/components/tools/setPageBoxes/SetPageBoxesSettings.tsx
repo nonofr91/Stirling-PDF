@@ -123,6 +123,18 @@ const SetPageBoxesSettings = ({
         disabled={disabled}
       />
 
+      <Checkbox
+        label={t(
+          "setPageBoxes.drawBoxes",
+          "Draw the page boxes on the document (proof overlay)",
+        )}
+        checked={parameters.drawBoxes}
+        onChange={(e) =>
+          onParameterChange("drawBoxes", e.currentTarget.checked)
+        }
+        disabled={disabled}
+      />
+
       {snapshot && (
         <Stack gap={4}>
           <Text size="sm" fw={500}>

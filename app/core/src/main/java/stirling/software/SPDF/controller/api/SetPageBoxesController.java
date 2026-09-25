@@ -1,11 +1,16 @@
 package stirling.software.SPDF.controller.api;
 
+import java.awt.Color;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.springframework.core.io.Resource;
 import org.springframework.http.MediaType;
@@ -60,6 +65,9 @@ public class SetPageBoxesController {
         try (PDDocument document = pdfDocumentFactory.load(request)) {
             for (PDPage page : document.getPages()) {
                 applyBoxes(page, request);
+                if (request.isDrawBoxes()) {
+                    drawBoxOutlines(document, page);
+                }
             }
 
             return WebResponseUtils.pdfDocToWebResponse(
@@ -67,6 +75,57 @@ public class SetPageBoxesController {
                     GeneralUtils.generateFilename(
                             request.getFileInput().getOriginalFilename(), "_boxes.pdf"),
                     tempFileManager);
+        }
+    }
+
+    // (dict name, color) — presence must be tested on the dictionary because
+    // every PDPage box getter falls back to CropBox/MediaBox when absent.
+    private static final Object[][] BOX_STROKES = {
+        {COSName.MEDIA_BOX, new Color(0x64, 0x74, 0x8b)},
+        {COSName.BLEED_BOX, new Color(0xdc, 0x26, 0x26)},
+        {COSName.CROP_BOX, new Color(0x25, 0x63, 0xeb)},
+        {COSName.TRIM_BOX, new Color(0x16, 0xa3, 0x4a)},
+        {COSName.ART_BOX, new Color(0x7c, 0x3a, 0xed)},
+    };
+
+    private static PDRectangle boxValue(PDPage page, COSName name) {
+        if (COSName.MEDIA_BOX.equals(name)) return page.getMediaBox();
+        if (COSName.BLEED_BOX.equals(name)) return page.getBleedBox();
+        if (COSName.CROP_BOX.equals(name)) return page.getCropBox();
+        if (COSName.TRIM_BOX.equals(name)) return page.getTrimBox();
+        return page.getArtBox();
+    }
+
+    private static void drawBoxOutlines(PDDocument document, PDPage page) throws IOException {
+        COSDictionary dict = page.getCOSObject();
+        List<PDRectangle> rects = new ArrayList<>();
+        List<Color> colors = new ArrayList<>();
+        for (Object[] entry : BOX_STROKES) {
+            COSName name = (COSName) entry[0];
+            if (dict.getItem(name) != null) {
+                rects.add(boxValue(page, name));
+                colors.add((Color) entry[1]);
+            }
+        }
+        if (rects.isEmpty()) {
+            return;
+        }
+        // largest first so nested boxes stay visible on top
+        List<Integer> order = new ArrayList<>();
+        for (int i = 0; i < rects.size(); i++) order.add(i);
+        order.sort(
+                Comparator.comparingDouble(
+                        i -> -(rects.get(i).getWidth() * rects.get(i).getHeight())));
+        try (PDPageContentStream cs =
+                new PDPageContentStream(
+                        document, page, PDPageContentStream.AppendMode.APPEND, true, true)) {
+            cs.setLineWidth(0.5f);
+            for (int i : order) {
+                PDRectangle r = rects.get(i);
+                cs.setStrokingColor(colors.get(i));
+                cs.addRect(r.getLowerLeftX(), r.getLowerLeftY(), r.getWidth(), r.getHeight());
+                cs.stroke();
+            }
         }
     }
 
@@ -78,7 +137,8 @@ public class SetPageBoxesController {
                 || notBlank(request.getArtBox())
                 || request.getBleedMm() > 0
                 || request.getTrimMarginMm() > 0
-                || request.isCopyMissingFromMediaBox();
+                || request.isCopyMissingFromMediaBox()
+                || request.isDrawBoxes();
     }
 
     private static void applyBoxes(PDPage page, SetPageBoxesRequest request) {

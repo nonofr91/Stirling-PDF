@@ -9,7 +9,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.contentstream.operator.Operator;
 import org.apache.pdfbox.cos.COSName;
+import org.apache.pdfbox.pdfparser.PDFStreamParser;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
@@ -213,6 +215,47 @@ class SetPageBoxesControllerTest {
         assertThrows(IllegalArgumentException.class, () -> controller.setPageBoxes(request));
         request.setTrimBox("0,0,Infinity,600");
         assertThrows(IllegalArgumentException.class, () -> controller.setPageBoxes(request));
+    }
+
+    @Test
+    void testDrawBoxesAppendsBoxOutlinesToContent() throws Exception {
+        SetPageBoxesRequest request = request(createPdf(null));
+        request.setTrimBox("20,20,400,600");
+        request.setDrawBoxes(true);
+
+        ResponseEntity<Resource> response = controller.setPageBoxes(request);
+
+        assertEquals(200, response.getStatusCode().value());
+        try (PDDocument result = Loader.loadPDF(drainBody(response))) {
+            PDPage page = result.getPage(0);
+            PDFStreamParser parser = new PDFStreamParser(page);
+            long rectOps =
+                    parser.parse().stream()
+                            .filter(t -> t instanceof Operator op && "re".equals(op.getName()))
+                            .count();
+            // MediaBox and TrimBox entries exist after apply
+            assertEquals(2, rectOps);
+        }
+    }
+
+    @Test
+    void testDrawBoxesAloneIsValidWork() throws Exception {
+        SetPageBoxesRequest request = request(createPdf(new PDRectangle(20, 30, 400, 600)));
+        request.setDrawBoxes(true);
+
+        ResponseEntity<Resource> response = controller.setPageBoxes(request);
+
+        assertEquals(200, response.getStatusCode().value());
+        try (PDDocument result = Loader.loadPDF(drainBody(response))) {
+            PDPage page = result.getPage(0);
+            assertRectEquals(20, 30, 400, 600, page.getTrimBox());
+            PDFStreamParser parser = new PDFStreamParser(page);
+            long rectOps =
+                    parser.parse().stream()
+                            .filter(t -> t instanceof Operator op && "re".equals(op.getName()))
+                            .count();
+            assertEquals(2, rectOps);
+        }
     }
 
     private SetPageBoxesRequest requestUnchecked() {

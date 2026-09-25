@@ -59,6 +59,11 @@ describe("validateSetPageBoxesParameters", () => {
     ).toBe(true);
   });
 });
+test("accepts drawBoxes alone (draw existing boxes without changes)", () => {
+  expect(
+    validateSetPageBoxesParameters({ ...defaultParameters, drawBoxes: true }),
+  ).toBe(true);
+});
 
 describe("parseBoxString", () => {
   test("parses four finite numbers", () => {

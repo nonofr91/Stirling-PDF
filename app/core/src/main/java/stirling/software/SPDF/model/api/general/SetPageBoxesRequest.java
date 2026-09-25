@@ -59,4 +59,14 @@ public class SetPageBoxesRequest extends PDFFile {
             type = "boolean",
             defaultValue = "false")
     private boolean copyMissingFromMediaBox = false;
+
+    @Schema(
+            description =
+                    "Draw the resulting page boxes as thin colored strokes in the page content"
+                            + " (proof overlay: gray MediaBox, blue CropBox, green TrimBox,"
+                            + " red BleedBox, violet ArtBox). Only boxes present in the page"
+                            + " dictionary are drawn.",
+            type = "boolean",
+            defaultValue = "false")
+    private boolean drawBoxes = false;
 }
