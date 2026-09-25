@@ -24,10 +24,13 @@ type CropApiParams = ToolApiParams[typeof ENDPOINT];
 // field breaks the build here.
 export const cropToApiParams = (parameters: CropParameters): CropApiParams => {
   const apiParams: CropApiParams = {
-    autoCrop: parameters.autoCrop,
+    autoCrop: parameters.cropToBox ? false : parameters.autoCrop,
   };
 
-  if (!parameters.autoCrop) {
+  if (parameters.cropToBox) {
+    apiParams.cropToBox = true;
+    apiParams.pageBox = parameters.pageBox;
+  } else if (!parameters.autoCrop) {
     const cropArea = parameters.cropArea;
     apiParams.x = cropArea.x;
     apiParams.y = cropArea.y;
@@ -44,6 +47,8 @@ export const cropFromApiParams = (
   apiParams: CropApiParams,
 ): Partial<CropParameters> => ({
   autoCrop: apiParams.autoCrop ?? defaultParameters.autoCrop,
+  cropToBox: apiParams.cropToBox ?? defaultParameters.cropToBox,
+  pageBox: apiParams.pageBox ?? defaultParameters.pageBox,
   cropArea: {
     x: apiParams.x ?? DEFAULT_CROP_AREA.x,
     y: apiParams.y ?? DEFAULT_CROP_AREA.y,

@@ -9,6 +9,7 @@ import {
   Orientation,
   PageSize,
 } from "@app/hooks/tools/adjustPageScale/useAdjustPageScaleParameters";
+import PageBoxSelect from "@app/components/tools/shared/PageBoxSelect";
 import { Z_INDEX_AUTOMATE_DROPDOWN } from "@app/styles/zIndex";
 
 interface AdjustPageScaleSettingsProps {
@@ -106,6 +107,13 @@ const AdjustPageScaleSettings = ({
         onChange={(value) => onParameterChange("orientation", value)}
         options={orientationOptions}
         fullWidth
+      />
+
+      <PageBoxSelect
+        label={t("adjustPageScale.pageBox", "Scale relative to page box")}
+        value={parameters.pageBox}
+        onChange={(v) => onParameterChange("pageBox", v)}
+        disabled={disabled}
       />
     </Stack>
   );

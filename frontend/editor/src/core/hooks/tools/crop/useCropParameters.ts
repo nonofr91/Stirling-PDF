@@ -14,15 +14,21 @@ import {
   isRectangle,
 } from "@app/utils/cropCoordinates";
 import { DEFAULT_CROP_AREA } from "@app/constants/cropConstants";
+import { PageBox } from "@app/constants/pageBoxConstants";
 
 export interface CropParameters extends BaseParameters {
   cropArea: Rectangle;
   autoCrop: boolean;
+  /** Crop each page to the named page box instead of a drawn rectangle. */
+  cropToBox: boolean;
+  pageBox: PageBox;
 }
 
 export const defaultParameters: CropParameters = {
   cropArea: DEFAULT_CROP_AREA,
   autoCrop: false,
+  cropToBox: false,
+  pageBox: "MEDIA_BOX",
 };
 
 export type CropParametersHook = BaseParametersHook<CropParameters> & {
@@ -48,6 +54,8 @@ export type CropParametersHook = BaseParametersHook<CropParameters> & {
 /** Whether these parameters are complete enough to run. Shared by the tool's settings
  * hook and its operationConfig, so the editor and the pipeline builder agree. */
 export function validateCropParameters(params: CropParameters): boolean {
+  // Cropping to a named page box needs no drawn rectangle.
+  if (params.cropToBox) return true;
   const rect = params.cropArea;
   // Basic validation - coordinates and dimensions must be positive
   return rect.x >= 0 && rect.y >= 0 && rect.width > 0 && rect.height > 0;
@@ -137,7 +145,10 @@ export const useCropParameters = (): CropParametersHook => {
   // Enhanced validation that considers PDF bounds
   const validateParameters = useCallback(
     (pdfBounds?: PDFBounds): boolean => {
-      return baseHook.validateParameters() && isCropAreaValid(pdfBounds);
+      return (
+        baseHook.validateParameters() &&
+        (baseHook.parameters.cropToBox || isCropAreaValid(pdfBounds))
+      );
     },
     [baseHook, isCropAreaValid],
   );

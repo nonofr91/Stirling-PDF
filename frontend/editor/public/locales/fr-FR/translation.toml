@@ -513,6 +513,7 @@ failed = "Échec de l’ajustement des couleurs/du contraste"
 title = "PDF ajusté"
 
 [adjustPageScale]
+pageBox = "Mettre à l’échelle par rapport à la boîte de page"
 submit = "Ajuster l’échelle de page"
 tags = "redimensionner,modifier,dimension,adapter"
 title = "Ajuster l’échelle de page"
@@ -4129,6 +4130,7 @@ title = "Ce que cela fait"
 title = "À propos des portfolios PDF"
 
 [crop]
+cropToBox = "Recadrer sur une boîte de page nommée"
 autoCrop = "Recadrer automatiquement les marges blanches"
 noFileSelected = "Sélectionnez un fichier PDF pour commencer le recadrage"
 reset = "Réinitialiser au PDF complet"
@@ -5587,6 +5589,11 @@ desc = "Détecter et scinder des photos scannées en pages séparées"
 tags = "détecter,diviser,photos"
 title = "Séparer photos scannées"
 
+[home.setPageBoxes]
+desc = "Définit MediaBox, CropBox, TrimBox, BleedBox et ArtBox sur chaque page pour les flux prépresse"
+tags = "prépresse,boîtes de page,mediabox,cropbox,trimbox,bleedbox,artbox,fond perdu"
+title = "Définir les boîtes de page"
+
 [home.sharedSign]
 desc = "Demander des signatures à d'autres et suivre les sessions de signature"
 title = "Signature collaborative"
@@ -5617,6 +5624,11 @@ title = "Diviser le PDF par sections"
 [home.swagger]
 tags = "API,documentation,test"
 title = "Documentation de l’API"
+
+[home.textToOutlines]
+desc = "Convertit tout le texte en contours vectoriels pour une impression sans polices"
+tags = "texte en contours,contours,vectoriser texte,polices en courbes,prépresse"
+title = "Texte en contours"
 
 [home.timestampPdf]
 desc = "Ajoutez un horodatage RFC 3161 pour prouver la date d'existence de votre PDF"
@@ -6275,6 +6287,16 @@ title = "Fichiers de superposition"
 [overlay-pdfs.tooltip.position]
 text = "Le premier plan place la superposition au-dessus de la page. L’arrière‑plan la place derrière."
 title = "Position de superposition"
+
+[pageBox]
+label = "Boîte de page"
+
+[pageBox.options]
+MEDIA_BOX = "MediaBox"
+CROP_BOX = "CropBox"
+TRIM_BOX = "TrimBox"
+BLEED_BOX = "BleedBox"
+ART_BOX = "ArtBox"
 
 [pageEdit]
 deselectAll = "Ne rien sélectionner"
@@ -11260,6 +11282,28 @@ toolNotAvailableLocally = "Your Stirling-PDF server is offline and \"{{endpoint}
 [session]
 expired = "Votre session a expiré. Veuillez recharger la page et réessayer."
 
+[setPageBoxes]
+artBox = "ArtBox"
+bleedBox = "BleedBox"
+bleedMm = "Fond perdu (mm, extension autour de TrimBox)"
+boxFormatError = "Quatre nombres attendus : x,y,largeur,hauteur"
+copyMissingFromMediaBox = "Copier MediaBox dans les boîtes non définies"
+cropBox = "CropBox"
+help = "Définit les boîtes de page en points au format x,y,largeur,hauteur. Laissez un champ vide pour conserver la boîte existante."
+mediaBox = "MediaBox"
+submit = "Définir les boîtes de page"
+trimBox = "TrimBox"
+trimMarginMm = "Marge de rognage (mm, réduit MediaBox dans TrimBox)"
+
+[setPageBoxes.error]
+failed = "Une erreur est survenue lors de la définition des boîtes de page."
+
+[setPageBoxes.results]
+title = "Résultats"
+
+[setPageBoxes.steps]
+configure = "Paramètres des boîtes de page"
+
 [settings]
 backToSections = "Tous les paramètres"
 title = "Paramètres"
@@ -12327,6 +12371,20 @@ right = "Droite"
 [textInput]
 clear = "Effacer la saisie"
 
+[textToOutlines]
+help = "Convertit tout le texte du document en contours vectoriels. Irréversible : le texte ne pourra plus être sélectionné, recherché, copié ou modifié dans le résultat."
+submit = "Convertir le texte en contours"
+useCase = "Utile avant l’envoi en impression quand les polices ne peuvent pas être incorporées ou licenciées, au prix d’un fichier plus lourd et d’une perte d’accessibilité."
+
+[textToOutlines.error]
+failed = "Une erreur est survenue lors de la conversion du texte en contours."
+
+[textToOutlines.results]
+title = "Résultats"
+
+[textToOutlines.steps]
+about = "À propos de Texte en contours"
+
 [time.relative]
 daysAgo = "il y a {{count}} j"
 hoursAgo = "il y a {{count}} h"
@@ -12448,6 +12506,7 @@ documentReview = "Révision de document"
 documentSecurity = "Sécurité du document"
 extraction = "Extraction"
 general = "Général"
+prepress = "Prépresse"
 pageFormatting = "Mise en page"
 removal = "Suppression"
 signing = "Signature"

@@ -51,6 +51,8 @@ import { autoRotateOperationConfig } from "@app/hooks/tools/autoRotate/useAutoRo
 import { changeMetadataOperationConfig } from "@app/hooks/tools/changeMetadata/useChangeMetadataOperation";
 import { signOperationConfig } from "@app/hooks/tools/sign/useSignOperation";
 import { cropOperationConfig } from "@app/hooks/tools/crop/useCropOperation";
+import { setPageBoxesOperationConfig } from "@app/hooks/tools/setPageBoxes/useSetPageBoxesOperation";
+import { textToOutlinesOperationConfig } from "@app/hooks/tools/textToOutlines/useTextToOutlinesOperation";
 import { removeAnnotationsOperationConfig } from "@app/hooks/tools/removeAnnotations/useRemoveAnnotationsOperation";
 import { removeImageOperationConfig } from "@app/hooks/tools/removeImage/useRemoveImageOperation";
 import { pageLayoutOperationConfig } from "@app/hooks/tools/pageLayout/usePageLayoutOperation";
@@ -546,13 +548,51 @@ export function useTranslatedToolCatalog(): TranslatedToolCatalog {
           "Crop a PDF to reduce its size (maintains text!)",
         ),
         categoryId: ToolCategoryId.STANDARD_TOOLS,
-        subcategoryId: SubcategoryId.PAGE_FORMATTING,
+        subcategoryId: SubcategoryId.PREPRESS,
         maxFiles: -1,
         endpoints: ["crop"],
         operationConfig: asRegistryConfig(cropOperationConfig),
         automationSettings: lazySettings(
           () => import("@app/components/tools/crop/CropAutomationSettings"),
         ),
+      },
+      setPageBoxes: {
+        icon: <Icon name="square-dashed" size="1.5rem" />,
+        name: t("home.setPageBoxes.title", "Set Page Boxes"),
+        component: lazy(() => import("@app/tools/SetPageBoxes")),
+        description: t(
+          "home.setPageBoxes.desc",
+          "Define MediaBox, CropBox, TrimBox, BleedBox and ArtBox on every page for prepress workflows.",
+        ),
+        categoryId: ToolCategoryId.STANDARD_TOOLS,
+        subcategoryId: SubcategoryId.PREPRESS,
+        maxFiles: -1,
+        endpoints: ["set-page-boxes"],
+        operationConfig: asRegistryConfig(setPageBoxesOperationConfig),
+        automationSettings: lazySettings(
+          () =>
+            import("@app/components/tools/setPageBoxes/SetPageBoxesSettings"),
+        ),
+        synonyms: getSynonyms(t, "setPageBoxes"),
+      },
+      textToOutlines: {
+        icon: <Icon name="spline" size="1.5rem" />,
+        name: t("home.textToOutlines.title", "Text to Outlines"),
+        component: lazy(() => import("@app/tools/TextToOutlines")),
+        description: t(
+          "home.textToOutlines.desc",
+          "Convert all text to vector outlines so no fonts are needed for printing.",
+        ),
+        categoryId: ToolCategoryId.STANDARD_TOOLS,
+        subcategoryId: SubcategoryId.PREPRESS,
+        maxFiles: -1,
+        endpoints: ["text-to-outlines"],
+        operationConfig: asRegistryConfig(textToOutlinesOperationConfig),
+        automationSettings: lazySettings(
+          () =>
+            import("@app/components/tools/textToOutlines/TextToOutlinesSettings"),
+        ),
+        synonyms: getSynonyms(t, "textToOutlines"),
       },
       rotate: {
         icon: <Icon name="rotate-cw" size="1.5rem" />,
@@ -629,7 +669,7 @@ export function useTranslatedToolCatalog(): TranslatedToolCatalog {
           "Change the size/scale of a page and/or its contents.",
         ),
         categoryId: ToolCategoryId.STANDARD_TOOLS,
-        subcategoryId: SubcategoryId.PAGE_FORMATTING,
+        subcategoryId: SubcategoryId.PREPRESS,
         maxFiles: -1,
         endpoints: ["scale-pages"],
         operationConfig: asRegistryConfig(adjustPageScaleOperationConfig),

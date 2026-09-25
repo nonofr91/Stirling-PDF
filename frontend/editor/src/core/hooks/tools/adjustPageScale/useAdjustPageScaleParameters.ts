@@ -1,4 +1,5 @@
 import { BaseParameters } from "@app/types/parameters";
+import { PageBox } from "@app/constants/pageBoxConstants";
 import {
   useBaseParameters,
   BaseParametersHook,
@@ -23,12 +24,15 @@ export interface AdjustPageScaleParameters extends BaseParameters {
   scaleFactor: number;
   pageSize: PageSize;
   orientation: Orientation;
+  /** Page box used as each page's size before scaling. */
+  pageBox: PageBox;
 }
 
 export const defaultParameters: AdjustPageScaleParameters = {
   scaleFactor: 1.0,
   pageSize: PageSize.KEEP,
   orientation: "PORTRAIT",
+  pageBox: "MEDIA_BOX",
 };
 
 export type AdjustPageScaleParametersHook =

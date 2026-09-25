@@ -513,6 +513,7 @@ failed = "Failed to adjust colours/contrast"
 title = "Adjusted PDF"
 
 [adjustPageScale]
+pageBox = "Scale relative to page box"
 submit = "Adjust Page Scale"
 tags = "resize,modify,dimension,adapt"
 title = "Adjust Page Scale"
@@ -4129,6 +4130,7 @@ title = "What it does"
 title = "About PDF Portfolios"
 
 [crop]
+cropToBox = "Crop to a named page box"
 autoCrop = "Auto-crop whitespace"
 noFileSelected = "Add a PDF file to begin cropping"
 reset = "Reset to full PDF"
@@ -5587,6 +5589,11 @@ desc = "Detect and split scanned photos into separate pages"
 tags = "detect,split,photos,auto detect,detect photos,split photos,separate photos,split scanned images,multiple photos,auto split,photo detection,image detection,scan separation"
 title = "Detect & Split Scanned Photos"
 
+[home.setPageBoxes]
+desc = "Define MediaBox, CropBox, TrimBox, BleedBox and ArtBox on every page for prepress workflows"
+tags = "prepress,page boxes,mediabox,cropbox,trimbox,bleedbox,artbox,print production,bleed,trim marks"
+title = "Set Page Boxes"
+
 [home.sharedSign]
 desc = "Request signatures from others and track signing sessions"
 title = "Shared Signing"
@@ -5617,6 +5624,11 @@ title = "Split PDF by Sections"
 [home.swagger]
 tags = "API,documentation,test,swagger,API docs,REST API,endpoints,developer,API reference,API testing,OpenAPI,integration,developer docs"
 title = "API Documentation"
+
+[home.textToOutlines]
+desc = "Convert all text to vector outlines so no fonts are needed for printing"
+tags = "text to outlines,outlines,vectorize text,fonts to curves,prepress,print production,outline fonts"
+title = "Text to Outlines"
 
 [home.timestampPdf]
 desc = "Add an RFC 3161 document timestamp to prove when your PDF existed"
@@ -6275,6 +6287,16 @@ title = "Overlay Files"
 [overlay-pdfs.tooltip.position]
 text = "Foreground places the overlay on top of the page. Background places it behind."
 title = "Overlay Position"
+
+[pageBox]
+label = "Page box"
+
+[pageBox.options]
+MEDIA_BOX = "MediaBox"
+CROP_BOX = "CropBox"
+TRIM_BOX = "TrimBox"
+BLEED_BOX = "BleedBox"
+ART_BOX = "ArtBox"
 
 [pageEdit]
 deselectAll = "None"
@@ -11260,6 +11282,28 @@ toolNotAvailableLocally = "Your Stirling-PDF server is offline and \"{{endpoint}
 [session]
 expired = "Your session has expired. Please refresh the page and try again."
 
+[setPageBoxes]
+artBox = "ArtBox"
+bleedBox = "BleedBox"
+bleedMm = "Bleed (mm, expand around TrimBox)"
+boxFormatError = "Expected four numbers: x,y,width,height"
+copyMissingFromMediaBox = "Copy MediaBox into boxes left unset"
+cropBox = "CropBox"
+help = "Set page boxes in points as x,y,width,height. Leave a field empty to keep the existing box."
+mediaBox = "MediaBox"
+submit = "Set Page Boxes"
+trimBox = "TrimBox"
+trimMarginMm = "Trim margin (mm, shrink MediaBox into TrimBox)"
+
+[setPageBoxes.error]
+failed = "An error occurred while setting page boxes."
+
+[setPageBoxes.results]
+title = "Set Page Boxes Results"
+
+[setPageBoxes.steps]
+configure = "Page Box Settings"
+
 [settings]
 backToSections = "All settings"
 title = "Settings"
@@ -12327,6 +12371,20 @@ right = "Right"
 [textInput]
 clear = "Clear input"
 
+[textToOutlines]
+help = "Converts all text in the document into vector outlines. This is irreversible: text can no longer be selected, searched, copied or edited in the output."
+submit = "Convert Text to Outlines"
+useCase = "Useful before sending a document to print when fonts cannot be embedded or licensed, at the cost of larger files and no text accessibility."
+
+[textToOutlines.error]
+failed = "An error occurred while converting text to outlines."
+
+[textToOutlines.results]
+title = "Text to Outlines Results"
+
+[textToOutlines.steps]
+about = "About Text to Outlines"
+
 [time.relative]
 daysAgo = "{{count}}d ago"
 hoursAgo = "{{count}}h ago"
@@ -12448,6 +12506,7 @@ documentReview = "Document Review"
 documentSecurity = "Document Security"
 extraction = "Extraction"
 general = "General"
+prepress = "Prepress"
 pageFormatting = "Page Formatting"
 removal = "Removal"
 signing = "Signing"

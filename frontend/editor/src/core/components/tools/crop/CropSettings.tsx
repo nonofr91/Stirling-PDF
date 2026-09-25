@@ -10,6 +10,8 @@ import {
 } from "@app/hooks/tools/shared/useViewScopedFiles";
 import CropAreaSelector from "@app/components/tools/crop/CropAreaSelector";
 import CropCoordinateInputs from "@app/components/tools/crop/CropCoordinateInputs";
+import PageBoxSelect from "@app/components/tools/shared/PageBoxSelect";
+import { PageBox } from "@app/constants/pageBoxConstants";
 import { DEFAULT_CROP_AREA } from "@app/constants/cropConstants";
 import { PAGE_SIZES } from "@app/constants/pageSizeConstants";
 import {
@@ -161,14 +163,38 @@ const CropSettings = ({ parameters, disabled = false }: CropSettingsProps) => {
       <Checkbox
         label={t("crop.autoCrop", "Auto-crop whitespace")}
         checked={parameters.parameters.autoCrop}
-        onChange={(e) =>
-          parameters.updateParameter("autoCrop", e.currentTarget.checked)
-        }
+        onChange={(e) => {
+          parameters.updateParameter("autoCrop", e.currentTarget.checked);
+          if (e.currentTarget.checked) {
+            parameters.updateParameter("cropToBox", false);
+          }
+        }}
         disabled={disabled}
       />
 
-      {/* PDF Preview with Crop Selector - Only show when autoCrop is false */}
-      {!parameters.parameters.autoCrop && (
+      {/* Crop to Page Box Checkbox + box selection */}
+      <Checkbox
+        label={t("crop.cropToBox", "Crop to a named page box")}
+        checked={parameters.parameters.cropToBox}
+        onChange={(e) => {
+          parameters.updateParameter("cropToBox", e.currentTarget.checked);
+          if (e.currentTarget.checked) {
+            parameters.updateParameter("autoCrop", false);
+          }
+        }}
+        disabled={disabled}
+      />
+
+      {parameters.parameters.cropToBox && (
+        <PageBoxSelect
+          value={parameters.parameters.pageBox}
+          onChange={(v: PageBox) => parameters.updateParameter("pageBox", v)}
+          disabled={disabled}
+        />
+      )}
+
+      {/* PDF Preview with Crop Selector - Only show for manual rectangle mode */}
+      {!parameters.parameters.autoCrop && !parameters.parameters.cropToBox && (
         <Stack gap="xs">
           <Group justify="space-between" align="center">
             <Text size="sm" fw={500}>
@@ -220,8 +246,8 @@ const CropSettings = ({ parameters, disabled = false }: CropSettingsProps) => {
         </Stack>
       )}
 
-      {/* Manual Coordinate Input - Only show when autoCrop is false */}
-      {!parameters.parameters.autoCrop && (
+      {/* Manual Coordinate Input - Only show for manual rectangle mode */}
+      {!parameters.parameters.autoCrop && !parameters.parameters.cropToBox && (
         <CropCoordinateInputs
           cropArea={cropArea}
           onCoordinateChange={handleCoordinateChange}

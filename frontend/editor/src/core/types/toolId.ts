@@ -40,6 +40,8 @@ export const CORE_REGULAR_TOOL_IDS = [
   "scalePages",
   "adjustContrast",
   "crop",
+  "setPageBoxes",
+  "textToOutlines",
   "pdfToSinglePage",
   "repair",
   "compare",
