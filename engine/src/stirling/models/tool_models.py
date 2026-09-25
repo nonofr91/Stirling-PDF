@@ -1722,6 +1722,12 @@ class TextRange(ApiModel):
     )
 
 
+class TextToOutlinesParams(ApiModel):
+    """
+    Converts all text in the PDF to vector outlines using Ghostscript (-dNoOutputFonts), removing font dependencies for prepress workflows. Input:PDF Output:PDF Type:SISO
+    """
+
+
 class TimestampPdfParams(ApiModel):
     """
     Contacts a trusted Time Stamp Authority (TSA) server and embeds an RFC 3161 document timestamp into the PDF. Only a SHA-256 hash of the document is sent to the TSA - the PDF itself never leaves the server. Input:PDF Output:PDF Type:SISO
@@ -1945,6 +1951,7 @@ class Model(
         | RepairParams
         | ReplaceInvertPdfParams
         | ScannerEffectParams
+        | TextToOutlinesParams
         | UnlockPdfFormsParams
         | UpdateMetadataParams
         | AccessibilityReportParams
@@ -2025,6 +2032,7 @@ class Model(
         | RepairParams
         | ReplaceInvertPdfParams
         | ScannerEffectParams
+        | TextToOutlinesParams
         | UnlockPdfFormsParams
         | UpdateMetadataParams
         | AccessibilityReportParams
@@ -2106,6 +2114,7 @@ type ParamToolModel = (
     | RepairParams
     | ReplaceInvertPdfParams
     | ScannerEffectParams
+    | TextToOutlinesParams
     | UnlockPdfFormsParams
     | UpdateMetadataParams
     | AccessibilityReportParams
@@ -2188,6 +2197,7 @@ class ToolEndpoint(StrEnum):
     REPAIR = "/api/v1/misc/repair"
     REPLACE_INVERT_PDF = "/api/v1/misc/replace-invert-pdf"
     SCANNER_EFFECT = "/api/v1/misc/scanner-effect"
+    TEXT_TO_OUTLINES = "/api/v1/misc/text-to-outlines"
     UNLOCK_PDF_FORMS = "/api/v1/misc/unlock-pdf-forms"
     UPDATE_METADATA = "/api/v1/misc/update-metadata"
     ACCESSIBILITY_REPORT = "/api/v1/security/accessibility-report"
@@ -2268,6 +2278,7 @@ OPERATIONS: dict[ToolEndpoint, ParamToolModelType] = {
     ToolEndpoint.REPAIR: RepairParams,
     ToolEndpoint.REPLACE_INVERT_PDF: ReplaceInvertPdfParams,
     ToolEndpoint.SCANNER_EFFECT: ScannerEffectParams,
+    ToolEndpoint.TEXT_TO_OUTLINES: TextToOutlinesParams,
     ToolEndpoint.UNLOCK_PDF_FORMS: UnlockPdfFormsParams,
     ToolEndpoint.UPDATE_METADATA: UpdateMetadataParams,
     ToolEndpoint.ACCESSIBILITY_REPORT: AccessibilityReportParams,

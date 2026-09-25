@@ -820,6 +820,7 @@ export interface MetadataRequest {
 export type MiscDecompressPdfRequest = Record<string, never>;
 export type MiscRepairRequest = Record<string, never>;
 export type MiscShowJavascriptRequest = Record<string, never>;
+export type MiscTextToOutlinesRequest = Record<string, never>;
 export type MiscUnlockPdfFormsRequest = Record<string, never>;
 export interface OptimizePdfRequest {
   /**
@@ -1683,6 +1684,7 @@ export type ToolEndpoint =
   | "/api/v1/misc/replace-invert-pdf"
   | "/api/v1/misc/scanner-effect"
   | "/api/v1/misc/show-javascript"
+  | "/api/v1/misc/text-to-outlines"
   | "/api/v1/misc/unlock-pdf-forms"
   | "/api/v1/misc/update-metadata"
   | "/api/v1/security/accessibility-report"
@@ -1793,6 +1795,7 @@ export interface ToolApiParams {
   "/api/v1/misc/replace-invert-pdf": ReplaceAndInvertColorRequest;
   "/api/v1/misc/scanner-effect": ScannerEffectRequest;
   "/api/v1/misc/show-javascript": MiscShowJavascriptRequest;
+  "/api/v1/misc/text-to-outlines": MiscTextToOutlinesRequest;
   "/api/v1/misc/unlock-pdf-forms": MiscUnlockPdfFormsRequest;
   "/api/v1/misc/update-metadata": MetadataRequest;
   "/api/v1/security/accessibility-report": AccessibilityReportRequest;
@@ -1904,6 +1907,7 @@ export const TOOL_ENDPOINTS = [
   "/api/v1/misc/replace-invert-pdf",
   "/api/v1/misc/scanner-effect",
   "/api/v1/misc/show-javascript",
+  "/api/v1/misc/text-to-outlines",
   "/api/v1/misc/unlock-pdf-forms",
   "/api/v1/misc/update-metadata",
   "/api/v1/security/accessibility-report",
