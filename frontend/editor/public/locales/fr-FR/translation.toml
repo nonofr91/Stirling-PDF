@@ -6290,6 +6290,7 @@ title = "Position de superposition"
 
 [pageBox]
 label = "Boîte de page"
+diagram = "Diagramme des boîtes de page"
 
 [pageBox.options]
 MEDIA_BOX = "MediaBox"
@@ -11294,6 +11295,9 @@ mediaBox = "MediaBox"
 submit = "Définir les boîtes de page"
 trimBox = "TrimBox"
 trimMarginMm = "Marge de rognage (mm, réduit MediaBox dans TrimBox)"
+preview = "Boîtes de page résultantes"
+inheritedHint = "* boîte absente de la page — valeur héritée affichée"
+
 
 [setPageBoxes.error]
 failed = "Une erreur est survenue lors de la définition des boîtes de page."

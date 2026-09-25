@@ -11,7 +11,9 @@ import {
 import CropAreaSelector from "@app/components/tools/crop/CropAreaSelector";
 import CropCoordinateInputs from "@app/components/tools/crop/CropCoordinateInputs";
 import PageBoxSelect from "@app/components/tools/shared/PageBoxSelect";
-import { PageBox } from "@app/constants/pageBoxConstants";
+import PageBoxDiagram from "@app/components/tools/shared/PageBoxDiagram";
+import { PageBox, PAGE_BOXES } from "@app/constants/pageBoxConstants";
+import { readPageBoxSnapshot, PageBoxSnapshot } from "@app/utils/pageBoxReader";
 import { DEFAULT_CROP_AREA } from "@app/constants/cropConstants";
 import { PAGE_SIZES } from "@app/constants/pageSizeConstants";
 import {
@@ -37,6 +39,22 @@ const CropSettings = ({ parameters, disabled = false }: CropSettingsProps) => {
   const [selectedFile = null] = useViewScopedFiles();
 
   const [pdfBounds, setPdfBounds] = useState<PDFBounds | null>(null);
+  const [boxSnapshot, setBoxSnapshot] = useState<PageBoxSnapshot | null>(null);
+
+  // Named-box cropping shows the effective boxes of the selected page.
+  useEffect(() => {
+    let cancelled = false;
+    if (!selectedFile || !parameters.parameters.cropToBox) {
+      setBoxSnapshot(null);
+      return;
+    }
+    readPageBoxSnapshot(selectedFile).then((s) => {
+      if (!cancelled) setBoxSnapshot(s);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedFile, parameters.parameters.cropToBox]);
 
   useEffect(() => {
     const loadPDFDimensions = async () => {
@@ -190,6 +208,18 @@ const CropSettings = ({ parameters, disabled = false }: CropSettingsProps) => {
           value={parameters.parameters.pageBox}
           onChange={(v: PageBox) => parameters.updateParameter("pageBox", v)}
           disabled={disabled}
+        />
+      )}
+
+      {parameters.parameters.cropToBox && boxSnapshot && (
+        <PageBoxDiagram
+          mediaBox={boxSnapshot.boxes.MEDIA_BOX}
+          highlight={parameters.parameters.pageBox}
+          boxes={PAGE_BOXES.map((name) => ({
+            name,
+            rect: boxSnapshot.boxes[name],
+            inherited: !boxSnapshot.explicit.has(name),
+          }))}
         />
       )}
 

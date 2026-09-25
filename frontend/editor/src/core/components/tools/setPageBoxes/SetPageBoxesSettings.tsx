@@ -1,9 +1,18 @@
+import { useEffect, useState } from "react";
 import { Stack, TextInput, NumberInput, Checkbox, Text } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import {
   SetPageBoxesParameters,
   parseBoxString,
 } from "@app/hooks/tools/setPageBoxes/useSetPageBoxesParameters";
+import { useViewScopedFiles } from "@app/hooks/tools/shared/useViewScopedFiles";
+import PageBoxDiagram from "@app/components/tools/shared/PageBoxDiagram";
+import {
+  computeResultingBoxes,
+  readPageBoxSnapshot,
+  PageBoxSnapshot,
+} from "@app/utils/pageBoxReader";
+import { PAGE_BOXES } from "@app/constants/pageBoxConstants";
 
 interface SetPageBoxesSettingsProps {
   parameters: SetPageBoxesParameters;
@@ -28,6 +37,22 @@ const SetPageBoxesSettings = ({
   disabled = false,
 }: SetPageBoxesSettingsProps) => {
   const { t } = useTranslation();
+  const [selectedFile = null] = useViewScopedFiles();
+  const [snapshot, setSnapshot] = useState<PageBoxSnapshot | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!selectedFile) {
+      setSnapshot(null);
+      return;
+    }
+    readPageBoxSnapshot(selectedFile).then((s) => {
+      if (!cancelled) setSnapshot(s);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedFile]);
 
   const boxError = (value: string) =>
     value.trim() !== "" && parseBoxString(value) === null
@@ -97,6 +122,38 @@ const SetPageBoxesSettings = ({
         }
         disabled={disabled}
       />
+
+      {snapshot && (
+        <Stack gap={4}>
+          <Text size="sm" fw={500}>
+            {t("setPageBoxes.preview", "Resulting page boxes")}
+          </Text>
+          <PageBoxDiagram
+            mediaBox={
+              computeResultingBoxes(parameters, snapshot, parseBoxString)
+                .MEDIA_BOX.rect
+            }
+            boxes={(() => {
+              const result = computeResultingBoxes(
+                parameters,
+                snapshot,
+                parseBoxString,
+              );
+              return PAGE_BOXES.map((name) => ({
+                name,
+                rect: result[name].rect,
+                inherited: result[name].inherited,
+              }));
+            })()}
+          />
+          <Text size="xs" c="dimmed">
+            {t(
+              "setPageBoxes.inheritedHint",
+              "* box absent from the page — shown value is inherited",
+            )}
+          </Text>
+        </Stack>
+      )}
     </Stack>
   );
 };

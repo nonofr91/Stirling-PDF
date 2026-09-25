@@ -6290,6 +6290,7 @@ title = "Overlay Position"
 
 [pageBox]
 label = "Page box"
+diagram = "Page box diagram"
 
 [pageBox.options]
 MEDIA_BOX = "MediaBox"
@@ -11294,6 +11295,9 @@ mediaBox = "MediaBox"
 submit = "Set Page Boxes"
 trimBox = "TrimBox"
 trimMarginMm = "Trim margin (mm, shrink MediaBox into TrimBox)"
+preview = "Resulting page boxes"
+inheritedHint = "* box absent from the page — shown value is inherited"
+
 
 [setPageBoxes.error]
 failed = "An error occurred while setting page boxes."

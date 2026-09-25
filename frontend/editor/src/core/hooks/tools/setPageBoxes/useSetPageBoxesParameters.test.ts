@@ -66,3 +66,84 @@ describe("parseBoxString", () => {
     expect(parseBoxString("1,2")).toBeNull();
   });
 });
+
+import {
+  computeResultingBoxes,
+  PageBoxSnapshot,
+  BoxRect,
+} from "@app/utils/pageBoxReader";
+
+const rect = (x: number, y: number, w: number, h: number): BoxRect => ({
+  x,
+  y,
+  width: w,
+  height: h,
+});
+
+// 595×842 MediaBox, no other box defined on the page
+const bareSnapshot: PageBoxSnapshot = {
+  boxes: {
+    MEDIA_BOX: rect(0, 0, 595, 842),
+    CROP_BOX: rect(0, 0, 595, 842),
+    TRIM_BOX: rect(0, 0, 595, 842),
+    BLEED_BOX: rect(0, 0, 595, 842),
+    ART_BOX: rect(0, 0, 595, 842),
+  },
+  explicit: new Set(["MEDIA_BOX"]),
+};
+
+describe("computeResultingBoxes", () => {
+  test("trimMarginMm shrinks the MediaBox into a TrimBox", () => {
+    const r = computeResultingBoxes(
+      { ...defaultParameters, trimMarginMm: 10 },
+      bareSnapshot,
+      parseBoxString,
+    );
+    const mm10 = 10 * (72 / 25.4);
+    expect(r.TRIM_BOX.rect.x).toBeCloseTo(mm10);
+    expect(r.TRIM_BOX.rect.y).toBeCloseTo(mm10);
+    expect(r.TRIM_BOX.rect.width).toBeCloseTo(595 - 2 * mm10);
+    expect(r.TRIM_BOX.rect.height).toBeCloseTo(842 - 2 * mm10);
+    expect(r.TRIM_BOX.inherited).toBe(false);
+  });
+
+  test("bleedMm expands around the resolved TrimBox", () => {
+    const r = computeResultingBoxes(
+      { ...defaultParameters, trimMarginMm: 10, bleedMm: 5 },
+      bareSnapshot,
+      parseBoxString,
+    );
+    const mm10 = 10 * (72 / 25.4);
+    const mm5 = 5 * (72 / 25.4);
+    expect(r.BLEED_BOX.rect.x).toBeCloseTo(mm10 - mm5);
+    expect(r.BLEED_BOX.rect.width).toBeCloseTo(595 - 2 * mm10 + 2 * mm5);
+  });
+
+  test("copyMissingFromMediaBox fills only absent boxes", () => {
+    const withTrim: PageBoxSnapshot = {
+      boxes: {
+        ...bareSnapshot.boxes,
+        TRIM_BOX: rect(20, 30, 400, 600),
+      },
+      explicit: new Set(["MEDIA_BOX", "TRIM_BOX"]),
+    };
+    const r = computeResultingBoxes(
+      { ...defaultParameters, copyMissingFromMediaBox: true },
+      withTrim,
+      parseBoxString,
+    );
+    expect(r.TRIM_BOX.rect).toEqual(rect(20, 30, 400, 600));
+    expect(r.CROP_BOX.rect).toEqual(rect(0, 0, 595, 842));
+    expect(r.CROP_BOX.inherited).toBe(false);
+  });
+
+  test("marks boxes absent from the page as inherited", () => {
+    const r = computeResultingBoxes(
+      defaultParameters,
+      bareSnapshot,
+      parseBoxString,
+    );
+    expect(r.TRIM_BOX.inherited).toBe(true);
+    expect(r.MEDIA_BOX.inherited).toBe(false);
+  });
+});
