@@ -15,6 +15,7 @@ import org.apache.pdfbox.pdfparser.PDFStreamParser;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
+import org.apache.pdfbox.pdmodel.graphics.optionalcontent.PDOptionalContentProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -235,6 +236,9 @@ class SetPageBoxesControllerTest {
                             .count();
             // MediaBox and TrimBox entries exist after apply
             assertEquals(2, rectOps);
+            PDOptionalContentProperties ocProps = result.getDocumentCatalog().getOCProperties();
+            assertNotNull(ocProps);
+            assertTrue(ocProps.hasGroup("Page boxes"));
         }
     }
 

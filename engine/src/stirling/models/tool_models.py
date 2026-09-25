@@ -1588,7 +1588,7 @@ class SetPageBoxesParams(ApiModel):
     )
     draw_boxes: bool = Field(
         False,
-        description="Draw the resulting page boxes as thin colored strokes in the page content (proof overlay: gray MediaBox, blue CropBox, green TrimBox, red BleedBox, violet ArtBox). Only boxes present in the page dictionary are drawn.",
+        description='Draw the resulting page boxes as thin colored strokes on a togglable "Page boxes" PDF layer (proof overlay: gray MediaBox, blue CropBox, green TrimBox, red BleedBox, violet ArtBox). Only boxes present in the page dictionary are drawn.',
     )
     media_box: str | None = Field(
         None,

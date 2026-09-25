@@ -1441,7 +1441,7 @@ export interface SetPageBoxesRequest {
    */
   cropBox?: string;
   /**
-   * Draw the resulting page boxes as thin colored strokes in the page content (proof overlay: gray MediaBox, blue CropBox, green TrimBox, red BleedBox, violet ArtBox). Only boxes present in the page dictionary are drawn.
+   * Draw the resulting page boxes as thin colored strokes on a togglable "Page boxes" PDF layer (proof overlay: gray MediaBox, blue CropBox, green TrimBox, red BleedBox, violet ArtBox). Only boxes present in the page dictionary are drawn.
    */
   drawBoxes?: boolean;
   /**

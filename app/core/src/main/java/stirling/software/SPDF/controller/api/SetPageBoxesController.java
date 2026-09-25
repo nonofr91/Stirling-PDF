@@ -9,9 +9,12 @@ import java.util.List;
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDDocumentCatalog;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
+import org.apache.pdfbox.pdmodel.graphics.optionalcontent.PDOptionalContentGroup;
+import org.apache.pdfbox.pdmodel.graphics.optionalcontent.PDOptionalContentProperties;
 import org.springframework.core.io.Resource;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -66,7 +69,7 @@ public class SetPageBoxesController {
             for (PDPage page : document.getPages()) {
                 applyBoxes(page, request);
                 if (request.isDrawBoxes()) {
-                    drawBoxOutlines(document, page);
+                    drawBoxOutlines(document, page, ensureBoxesLayer(document));
                 }
             }
 
@@ -96,7 +99,25 @@ public class SetPageBoxesController {
         return page.getArtBox();
     }
 
-    private static void drawBoxOutlines(PDDocument document, PDPage page) throws IOException {
+    private static final String BOXES_LAYER_NAME = "Page boxes";
+
+    private static PDOptionalContentGroup ensureBoxesLayer(PDDocument document) {
+        PDDocumentCatalog catalog = document.getDocumentCatalog();
+        PDOptionalContentProperties ocProps = catalog.getOCProperties();
+        if (ocProps == null) {
+            ocProps = new PDOptionalContentProperties();
+            catalog.setOCProperties(ocProps);
+        }
+        PDOptionalContentGroup layer = ocProps.getGroup(BOXES_LAYER_NAME);
+        if (layer == null) {
+            layer = new PDOptionalContentGroup(BOXES_LAYER_NAME);
+            ocProps.addGroup(layer);
+        }
+        return layer;
+    }
+
+    private static void drawBoxOutlines(
+            PDDocument document, PDPage page, PDOptionalContentGroup layer) throws IOException {
         COSDictionary dict = page.getCOSObject();
         List<PDRectangle> rects = new ArrayList<>();
         List<Color> colors = new ArrayList<>();
@@ -120,12 +141,14 @@ public class SetPageBoxesController {
                 new PDPageContentStream(
                         document, page, PDPageContentStream.AppendMode.APPEND, true, true)) {
             cs.setLineWidth(0.5f);
+            cs.beginMarkedContent(COSName.OC, layer);
             for (int i : order) {
                 PDRectangle r = rects.get(i);
                 cs.setStrokingColor(colors.get(i));
                 cs.addRect(r.getLowerLeftX(), r.getLowerLeftY(), r.getWidth(), r.getHeight());
                 cs.stroke();
             }
+            cs.endMarkedContent();
         }
     }
 

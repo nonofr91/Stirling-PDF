@@ -126,7 +126,7 @@ const SetPageBoxesSettings = ({
       <Checkbox
         label={t(
           "setPageBoxes.drawBoxes",
-          "Draw the page boxes on the document (proof overlay)",
+          "Draw the page boxes on a document layer (proof overlay)",
         )}
         checked={parameters.drawBoxes}
         onChange={(e) =>
