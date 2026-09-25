@@ -5,7 +5,10 @@ import {
   SetPageBoxesParameters,
   parseBoxString,
 } from "@app/hooks/tools/setPageBoxes/useSetPageBoxesParameters";
-import { useViewScopedFiles } from "@app/hooks/tools/shared/useViewScopedFiles";
+import {
+  useViewScopedFiles,
+  useViewScopedFileStubs,
+} from "@app/hooks/tools/shared/useViewScopedFiles";
 import PageBoxDiagram from "@app/components/tools/shared/PageBoxDiagram";
 import {
   computeResultingBoxes,
@@ -38,6 +41,7 @@ const SetPageBoxesSettings = ({
 }: SetPageBoxesSettingsProps) => {
   const { t } = useTranslation();
   const [selectedFile = null] = useViewScopedFiles();
+  const [selectedStub = null] = useViewScopedFileStubs();
   const [snapshot, setSnapshot] = useState<PageBoxSnapshot | null>(null);
 
   useEffect(() => {
@@ -144,6 +148,14 @@ const SetPageBoxesSettings = ({
             mediaBox={
               computeResultingBoxes(parameters, snapshot, parseBoxString)
                 .MEDIA_BOX.rect
+            }
+            background={
+              selectedStub?.thumbnailUrl && snapshot.rotation % 360 === 0
+                ? {
+                    src: selectedStub.thumbnailUrl,
+                    rect: snapshot.boxes.CROP_BOX,
+                  }
+                : undefined
             }
             boxes={(() => {
               const result = computeResultingBoxes(

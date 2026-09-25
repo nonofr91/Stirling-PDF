@@ -12,6 +12,9 @@ export interface PageBoxSnapshot {
   boxes: Record<PageBox, BoxRect>;
   /** Boxes explicitly present in the page dictionary. */
   explicit: Set<PageBox>;
+  /** Page rotation in degrees — box rects are in unrotated space, so
+      thumbnail overlays are only aligned when this is 0. */
+  rotation: number;
 }
 
 const BOX_PDF_NAMES: Record<PageBox, string> = {
@@ -48,7 +51,7 @@ export async function readPageBoxSnapshot(
         explicit.add(box);
       }
     }
-    return { boxes, explicit };
+    return { boxes, explicit, rotation: page.getRotation().angle };
   } catch {
     return null;
   }

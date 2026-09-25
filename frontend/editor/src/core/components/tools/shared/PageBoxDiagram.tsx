@@ -17,6 +17,9 @@ interface PageBoxDiagramProps {
   boxes: DiagramBox[];
   highlight?: PageBox;
   height?: number;
+  /** Rendered page image drawn at the given PDF-space rect — pass the
+      effective CropBox rect, which is what viewers render. */
+  background?: { src: string; rect: BoxRect };
 }
 
 const BOX_COLORS: Record<PageBox, string> = {
@@ -32,6 +35,7 @@ const PageBoxDiagram = ({
   boxes,
   highlight,
   height = 180,
+  background,
 }: PageBoxDiagramProps) => {
   const { t } = useTranslation();
 
@@ -97,6 +101,13 @@ const PageBoxDiagram = ({
             fill="var(--mantine-color-white)"
             stroke="var(--mantine-color-gray-5)"
           />
+          {background && (
+            <image
+              href={background.src}
+              {...toSvg(background.rect)}
+              preserveAspectRatio="none"
+            />
+          )}
           {ordered.map(({ name, rect, inherited }) => {
             const isHighlight = name === highlight;
             return (

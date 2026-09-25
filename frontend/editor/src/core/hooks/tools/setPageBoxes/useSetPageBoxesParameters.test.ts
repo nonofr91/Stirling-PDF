@@ -95,6 +95,7 @@ const bareSnapshot: PageBoxSnapshot = {
     ART_BOX: rect(0, 0, 595, 842),
   },
   explicit: new Set(["MEDIA_BOX"]),
+  rotation: 0,
 };
 
 describe("computeResultingBoxes", () => {
@@ -131,6 +132,7 @@ describe("computeResultingBoxes", () => {
         TRIM_BOX: rect(20, 30, 400, 600),
       },
       explicit: new Set(["MEDIA_BOX", "TRIM_BOX"]),
+      rotation: 0,
     };
     const r = computeResultingBoxes(
       { ...defaultParameters, copyMissingFromMediaBox: true },

@@ -215,6 +215,14 @@ const CropSettings = ({ parameters, disabled = false }: CropSettingsProps) => {
         <PageBoxDiagram
           mediaBox={boxSnapshot.boxes.MEDIA_BOX}
           highlight={parameters.parameters.pageBox}
+          background={
+            selectedStub?.thumbnailUrl && boxSnapshot.rotation % 360 === 0
+              ? {
+                  src: selectedStub.thumbnailUrl,
+                  rect: boxSnapshot.boxes.CROP_BOX,
+                }
+              : undefined
+          }
           boxes={PAGE_BOXES.map((name) => ({
             name,
             rect: boxSnapshot.boxes[name],
