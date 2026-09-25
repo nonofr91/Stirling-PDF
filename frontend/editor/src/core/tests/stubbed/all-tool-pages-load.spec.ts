@@ -71,6 +71,8 @@ const TOOL_IDS = [
   "bookletImposition",
   "pdfTextEditor",
   "formFill",
+  "setPageBoxes",
+  "textToOutlines",
   // Super tools
   "multiTool",
   "read",
