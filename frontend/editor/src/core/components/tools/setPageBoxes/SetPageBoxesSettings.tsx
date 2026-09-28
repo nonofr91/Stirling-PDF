@@ -79,12 +79,27 @@ const SetPageBoxesSettings = ({
 
   useEffect(() => () => setOverlay(null), [setOverlay]);
 
+  // Each field's placeholder echoes the box the overlay currently draws, so an
+  // empty input visibly means "keep that rect".
+  const fmt = (r: { x: number; y: number; width: number; height: number }) =>
+    [r.x, r.y, r.width, r.height].map((n) => +n.toFixed(2)).join(",");
+  const boxPlaceholders = snapshot
+    ? {
+        mediaBox: fmt(snapshot.boxes.MEDIA_BOX),
+        cropBox: fmt(snapshot.boxes.CROP_BOX),
+        trimBox: fmt(snapshot.boxes.TRIM_BOX),
+        bleedBox: fmt(snapshot.boxes.BLEED_BOX),
+        artBox: fmt(snapshot.boxes.ART_BOX),
+      }
+    : undefined;
+
   return (
     <Stack gap="md">
       <SetPageBoxesFields
         parameters={parameters}
         onParameterChange={onParameterChange}
         disabled={disabled}
+        boxPlaceholders={boxPlaceholders}
       />
 
       {snapshot && (

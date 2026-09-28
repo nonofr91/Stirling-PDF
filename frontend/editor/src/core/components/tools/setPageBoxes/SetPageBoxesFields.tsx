@@ -12,6 +12,9 @@ export interface SetPageBoxesFieldsProps {
     value: SetPageBoxesParameters[K],
   ) => void;
   disabled?: boolean;
+  /** Current effective value per box, shown as the field's placeholder — the
+      string the user would type to reproduce the box the overlay draws. */
+  boxPlaceholders?: Partial<Record<(typeof BOX_FIELDS)[number], string>>;
 }
 
 const BOX_FIELDS = [
@@ -30,6 +33,7 @@ const SetPageBoxesFields = ({
   parameters,
   onParameterChange,
   disabled = false,
+  boxPlaceholders,
 }: SetPageBoxesFieldsProps) => {
   const { t } = useTranslation();
 
@@ -54,7 +58,7 @@ const SetPageBoxesFields = ({
         <TextInput
           key={field}
           label={t(`setPageBoxes.${field}`, field)}
-          placeholder="0,0,595,842"
+          placeholder={boxPlaceholders?.[field] ?? "0,0,595,842"}
           value={parameters[field]}
           onChange={(e) => onParameterChange(field, e.currentTarget.value)}
           error={boxError(parameters[field])}
