@@ -10,6 +10,11 @@ export interface PageOverlayRect {
   dashed?: boolean;
   /** Thicker stroke — the rect the user is currently steering. */
   emphasized?: boolean;
+  /** Pixels to pull each side inward — decorative nudge so boxes sharing the
+      same geometry render as nested frames instead of one invisible edge. */
+  insetPx?: number;
+  /** Short text shown inside the rect's top-left corner (e.g. "TRIM"). */
+  label?: string;
 }
 
 export interface PageOverlayState {

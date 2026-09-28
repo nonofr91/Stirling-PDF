@@ -57,14 +57,25 @@ export const PageOverlayLayer = memo(function PageOverlayLayer({
   const rects = useMemo<PageOverlayRect[]>(() => {
     const out: PageOverlayRect[] = [];
     if (pageBoxesVisible && snapshot) {
+      const coincidentRank = new Map<string, number>();
       for (const name of PAGE_BOXES) {
+        const f = pdfRectToPageFractions(
+          snapshot.boxes[name],
+          snapshot.boxes.CROP_BOX,
+        );
+        // On a plain PDF every box falls back to the MediaBox, so all five
+        // borders hug the page edge and the toggle looks dead.
+        const sig = [f.x, f.y, f.width, f.height]
+          .map((n) => n.toFixed(4))
+          .join(",");
+        const rank = coincidentRank.get(sig) ?? 0;
+        coincidentRank.set(sig, rank + 1);
         out.push({
-          ...pdfRectToPageFractions(
-            snapshot.boxes[name],
-            snapshot.boxes.CROP_BOX,
-          ),
+          ...f,
           color: PAGE_BOX_COLORS[name],
           dashed: !snapshot.explicit.has(name),
+          insetPx: rank * 4,
+          label: name.replace("_BOX", ""),
         });
       }
     }
@@ -87,23 +98,46 @@ export const PageOverlayLayer = memo(function PageOverlayLayer({
         zIndex: Z_INDEX_SIGNATURE_OVERLAY,
       }}
     >
-      {rects.map((rect, i) => (
-        <div
-          key={i}
-          style={{
-            position: "absolute",
-            left: rect.x * pageWidth,
-            top: rect.y * pageHeight,
-            width: rect.width * pageWidth,
-            height: rect.height * pageHeight,
-            border: `${rect.emphasized ? 2.5 : 1.5}px ${rect.dashed ? "dashed" : "solid"} ${rect.color}`,
-            boxSizing: "border-box",
-            backgroundColor: rect.emphasized
-              ? "rgba(59, 130, 246, 0.08)"
-              : "transparent",
-          }}
-        />
-      ))}
+      {rects.map((rect, i) => {
+        const inset = rect.insetPx ?? 0;
+        return (
+          <div
+            key={i}
+            style={{
+              position: "absolute",
+              left: rect.x * pageWidth + inset,
+              top: rect.y * pageHeight + inset,
+              width: Math.max(1, rect.width * pageWidth - 2 * inset),
+              height: Math.max(1, rect.height * pageHeight - 2 * inset),
+              border: `${rect.emphasized ? 2.5 : 1.5}px ${rect.dashed ? "dashed" : "solid"} ${rect.color}`,
+              boxSizing: "border-box",
+              backgroundColor: rect.emphasized
+                ? "rgba(59, 130, 246, 0.08)"
+                : "transparent",
+            }}
+          >
+            {rect.label && (
+              <span
+                style={{
+                  position: "absolute",
+                  top: 1,
+                  left: 3,
+                  fontSize: 10,
+                  fontWeight: 600,
+                  lineHeight: 1.2,
+                  color: rect.color,
+                  background: "var(--c-surface)",
+                  padding: "0 2px",
+                  borderRadius: 2,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {rect.label}
+              </span>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 });
