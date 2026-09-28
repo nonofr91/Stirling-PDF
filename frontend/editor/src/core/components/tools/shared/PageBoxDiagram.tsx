@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { Stack, Text, Group, Box } from "@mantine/core";
 import { useTranslation } from "react-i18next";
-import { PageBox } from "@app/constants/pageBoxConstants";
+import { PageBox, PAGE_BOX_COLORS } from "@app/constants/pageBoxConstants";
 import { BoxRect } from "@app/utils/pageBoxReader";
 
 export interface DiagramBox {
@@ -21,14 +21,6 @@ interface PageBoxDiagramProps {
       effective CropBox rect, which is what viewers render. */
   background?: { src: string; rect: BoxRect };
 }
-
-const BOX_COLORS: Record<PageBox, string> = {
-  MEDIA_BOX: "var(--mantine-color-gray-6)",
-  CROP_BOX: "var(--mantine-color-blue-6)",
-  TRIM_BOX: "var(--mantine-color-green-6)",
-  BLEED_BOX: "var(--mantine-color-red-6)",
-  ART_BOX: "var(--mantine-color-violet-6)",
-};
 
 const PageBoxDiagram = ({
   mediaBox,
@@ -115,7 +107,7 @@ const PageBoxDiagram = ({
                 key={name}
                 {...toSvg(rect)}
                 fill="none"
-                stroke={BOX_COLORS[name]}
+                stroke={PAGE_BOX_COLORS[name]}
                 strokeWidth={isHighlight ? 2.5 : 1.2}
                 strokeDasharray={
                   name === "MEDIA_BOX" ? undefined : inherited ? "3 3" : "5 2"
@@ -134,7 +126,7 @@ const PageBoxDiagram = ({
             fw={name === highlight ? 600 : 400}
             title={formatRect(rect)}
           >
-            <span style={{ color: BOX_COLORS[name] }}>■</span>{" "}
+            <span style={{ color: PAGE_BOX_COLORS[name] }}>■</span>{" "}
             {name.replace("_BOX", "")}
             {inherited ? "*" : ""}
           </Text>

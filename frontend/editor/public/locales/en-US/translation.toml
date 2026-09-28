@@ -513,6 +513,7 @@ failed = "Failed to adjust colors/contrast"
 title = "Adjusted PDF"
 
 [adjustPageScale]
+pageBox = "Scale relative to page box"
 submit = "Adjust Page Scale"
 tags = "resize,modify,dimension,adapt"
 title = "Adjust Page Scale"
@@ -4130,6 +4131,7 @@ title = "About PDF Portfolios"
 
 [crop]
 autoCrop = "Auto-crop whitespace"
+cropToBox = "Crop to a named page box"
 noFileSelected = "Add a PDF file to begin cropping"
 reset = "Reset to full PDF"
 submit = "Apply Crop"
@@ -5582,6 +5584,10 @@ desc = "Detect and split scanned photos into separate pages"
 tags = "detect,split,photos,auto detect,detect photos,split photos,separate photos,split scanned images,multiple photos,auto split,photo detection,image detection,scan separation"
 title = "Detect & Split Scanned Photos"
 
+[home.setPageBoxes]
+desc = "Define MediaBox, CropBox, TrimBox, BleedBox and ArtBox on every page for prepress workflows."
+title = "Set Page Boxes"
+
 [home.sharedSign]
 desc = "Request signatures from others and track signing sessions"
 title = "Shared Signing"
@@ -5617,6 +5623,10 @@ title = "API Documentation"
 desc = "Add an RFC 3161 document timestamp to prove when your PDF existed"
 tags = "timestamp,RFC 3161,TSA,time stamp authority,document timestamp,proof of existence,timestamp token,trusted timestamp,sign timestamp,notarize"
 title = "Timestamp PDF"
+
+[home.textToOutlines]
+desc = "Convert all text to vector outlines so no fonts are needed for printing."
+title = "Text to Outlines"
 
 [home.unlockPDFForms]
 desc = "Remove read-only property of form fields in a PDF document."
@@ -6407,6 +6417,10 @@ title = "Pages per Sheet (Default Mode)"
 [pageLayout.tooltip.rowsCols]
 text = "Set exact grid dimensions. Total pages per sheet = rows × columns."
 title = "Rows & Columns (Custom Mode)"
+
+[pageBox]
+diagram = "Page box diagram"
+label = "Page box"
 
 [pageRemover]
 title = "Page Remover"
@@ -11242,6 +11256,30 @@ toolNotAvailableLocally = "Your Stirling-PDF server is offline and \"{{endpoint}
 [session]
 expired = "Your session has expired. Please refresh the page and try again."
 
+[setPageBoxes]
+artBox = "ArtBox"
+bleedBox = "BleedBox"
+bleedMm = "Bleed (mm, expand around TrimBox)"
+boxFormatError = "Expected four numbers: x,y,width,height"
+copyMissingFromMediaBox = "Copy MediaBox into boxes left unset"
+cropBox = "CropBox"
+help = "Set page boxes in points as x,y,width,height. Leave a field empty to keep the existing box."
+inheritedHint = "* box absent from the page — shown value is inherited"
+mediaBox = "MediaBox"
+preview = "Resulting page boxes"
+submit = "Set Page Boxes"
+trimBox = "TrimBox"
+trimMarginMm = "Trim margin (mm, shrink MediaBox into TrimBox)"
+
+[setPageBoxes.error]
+failed = "An error occurred while setting page boxes."
+
+[setPageBoxes.results]
+title = "Set Page Boxes Results"
+
+[setPageBoxes.steps]
+configure = "Page Box Settings"
+
 [settings]
 backToSections = "All settings"
 title = "Settings"
@@ -12306,6 +12344,20 @@ right = "Right"
 
 [textInput]
 clear = "Clear input"
+
+[textToOutlines]
+help = "Converts all text in the document into vector outlines. This is irreversible: text can no longer be selected, searched, copied or edited in the output."
+submit = "Convert Text to Outlines"
+useCase = "Useful before sending a document to print when fonts cannot be embedded or licensed, at the cost of larger files and no text accessibility."
+
+[textToOutlines.error]
+failed = "An error occurred while converting text to outlines."
+
+[textToOutlines.results]
+title = "Text to Outlines Results"
+
+[textToOutlines.steps]
+about = "About Text to Outlines"
 
 [time.relative]
 daysAgo = "{{count}}d ago"

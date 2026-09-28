@@ -83,6 +83,7 @@ import type {
   SignatureOverlayAPI,
 } from "@app/components/viewer/viewerTypes";
 import { SignaturePreviewLayer } from "@app/components/viewer/SignaturePreviewLayer";
+import { PageOverlayLayer } from "@app/components/viewer/PageOverlayLayer";
 import { ExportAPIBridge } from "@app/components/viewer/ExportAPIBridge";
 import { BookmarkAPIBridge } from "@app/components/viewer/BookmarkAPIBridge";
 import { AttachmentAPIBridge } from "@app/components/viewer/AttachmentAPIBridge";
@@ -1486,6 +1487,14 @@ export function LocalEmbedPDF({
                                     onSelect={setSelectedSignatureId}
                                   />
                                 )}
+
+                                {/* Active tool's live geometry preview (crop, page boxes) */}
+                                <PageOverlayLayer
+                                  pageIndex={pageIndex}
+                                  pageWidth={width}
+                                  pageHeight={height}
+                                  documentKey={fileId ?? null}
+                                />
                               </ViewerPageContainer>
                             </ViewerPagePointerProvider>
                           </Rotate>

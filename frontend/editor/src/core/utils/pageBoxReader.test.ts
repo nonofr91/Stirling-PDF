@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { PDFDocument } from "@cantoo/pdf-lib";
-import { readPageBoxSnapshot } from "@app/utils/pageBoxReader";
+import {
+  readPageBoxSnapshot,
+  pdfRectToPageFractions,
+} from "@app/utils/pageBoxReader";
 
 const makePdfFile = async (
   boxes: Partial<
@@ -51,5 +54,45 @@ describe("readPageBoxSnapshot", () => {
     const garbage = new TextEncoder().encode("not a pdf").buffer as ArrayBuffer;
     const file = { arrayBuffer: async () => garbage } as File;
     expect(await readPageBoxSnapshot(file)).toBeNull();
+  });
+});
+
+describe("pdfRectToPageFractions", () => {
+  const visible = { x: 0, y: 0, width: 600, height: 800 };
+
+  it("maps a rect covering the visible box to the full page", () => {
+    expect(pdfRectToPageFractions(visible, visible)).toEqual({
+      x: 0,
+      y: 0,
+      width: 1,
+      height: 1,
+    });
+  });
+
+  it("flips the Y axis: a rect at the PDF bottom sits at the CSS bottom", () => {
+    const f = pdfRectToPageFractions(
+      { x: 0, y: 0, width: 600, height: 200 },
+      visible,
+    );
+    expect(f.y).toBeCloseTo(0.75);
+  });
+
+  it("offsets rects against a non-origin CropBox", () => {
+    const cropBox = { x: 10, y: 20, width: 400, height: 600 };
+    expect(pdfRectToPageFractions(cropBox, cropBox)).toEqual({
+      x: 0,
+      y: 0,
+      width: 1,
+      height: 1,
+    });
+  });
+
+  it("can produce fractions outside 0–1 for boxes extending past the crop box", () => {
+    const bleed = { x: -10, y: -10, width: 620, height: 820 };
+    const f = pdfRectToPageFractions(bleed, visible);
+    expect(f.x).toBeLessThan(0);
+    expect(f.y).toBeLessThan(0);
+    expect(f.width).toBeGreaterThan(1);
+    expect(f.height).toBeGreaterThan(1);
   });
 });

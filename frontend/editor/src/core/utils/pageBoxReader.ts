@@ -57,6 +57,26 @@ export async function readPageBoxSnapshot(
   }
 }
 
+/**
+ * Maps a PDF-space rect (bottom-left origin) onto the region a viewer renders —
+ * `visibleBox` is the page's effective CropBox — as 0–1 fractions in CSS space
+ * (top-left origin). The viewer page container applies the page rotation to its
+ * whole subtree, so fractions must be computed in unrotated space.
+ */
+export function pdfRectToPageFractions(
+  rect: BoxRect,
+  visibleBox: BoxRect,
+): BoxRect {
+  return {
+    x: (rect.x - visibleBox.x) / visibleBox.width,
+    y:
+      (visibleBox.y + visibleBox.height - rect.y - rect.height) /
+      visibleBox.height,
+    width: rect.width / visibleBox.width,
+    height: rect.height / visibleBox.height,
+  };
+}
+
 const MM_TO_PT = 72 / 25.4;
 
 const inset = (r: BoxRect, mm: number): BoxRect => {

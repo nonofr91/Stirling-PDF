@@ -13,7 +13,14 @@ import CropCoordinateInputs from "@app/components/tools/crop/CropCoordinateInput
 import PageBoxSelect from "@app/components/tools/shared/PageBoxSelect";
 import PageBoxDiagram from "@app/components/tools/shared/PageBoxDiagram";
 import { PageBox, PAGE_BOXES } from "@app/constants/pageBoxConstants";
-import { readPageBoxSnapshot, PageBoxSnapshot } from "@app/utils/pageBoxReader";
+import {
+  readPageBoxSnapshot,
+  pdfRectToPageFractions,
+  PageBoxSnapshot,
+} from "@app/utils/pageBoxReader";
+import { useSetPageOverlay } from "@app/contexts/PageOverlayContext";
+import { PAGE_BOX_COLORS } from "@app/constants/pageBoxConstants";
+import { getFormFillFileId } from "@app/types/fileContext";
 import { DEFAULT_CROP_AREA } from "@app/constants/cropConstants";
 import { PAGE_SIZES } from "@app/constants/pageSizeConstants";
 import {
@@ -39,7 +46,9 @@ const CropSettings = ({ parameters, disabled = false }: CropSettingsProps) => {
   const [selectedFile = null] = useViewScopedFiles();
 
   const [pdfBounds, setPdfBounds] = useState<PDFBounds | null>(null);
+  const [pageRotation, setPageRotation] = useState(0);
   const [boxSnapshot, setBoxSnapshot] = useState<PageBoxSnapshot | null>(null);
+  const setOverlay = useSetPageOverlay();
 
   // Named-box cropping shows the effective boxes of the selected page.
   useEffect(() => {
@@ -76,6 +85,7 @@ const CropSettings = ({ parameters, disabled = false }: CropSettingsProps) => {
 
         const firstPage = await pdf.getPage(1);
         const viewport = firstPage.getViewport({ scale: 1 });
+        setPageRotation(firstPage.rotate ?? 0);
 
         const pdfWidth = viewport.width;
         const pdfHeight = viewport.height;
@@ -134,6 +144,74 @@ const CropSettings = ({ parameters, disabled = false }: CropSettingsProps) => {
 
   // Current crop area
   const cropArea = parameters.getCropArea();
+  const { cropToBox, autoCrop, pageBox } = parameters.parameters;
+
+  // Mirror the tool's geometry on the viewer's pages. Manual cropArea lives in
+  // the pdf.js viewport space (page rotation applied), while the overlay layer
+  // sits inside the page's rotation transform (unrotated space) — on a rotated
+  // document the two frames differ, so the manual rect is only pushed when the
+  // page carries no rotation. Named boxes are in unrotated user space and stay
+  // aligned under any rotation.
+  useEffect(() => {
+    const documentKey = selectedFile ? getFormFillFileId(selectedFile) : null;
+    if (!documentKey) {
+      setOverlay(null);
+      return;
+    }
+    if (cropToBox) {
+      if (!boxSnapshot) {
+        setOverlay(null);
+        return;
+      }
+      const visible = boxSnapshot.boxes.CROP_BOX;
+      setOverlay({
+        documentKey,
+        rects: PAGE_BOXES.map((name) => ({
+          ...pdfRectToPageFractions(boxSnapshot.boxes[name], visible),
+          color: PAGE_BOX_COLORS[name],
+          dashed: !boxSnapshot.explicit.has(name),
+          emphasized: name === pageBox,
+        })),
+      });
+    } else if (
+      !autoCrop &&
+      pdfBounds &&
+      pageRotation % 360 === 0 &&
+      cropArea.width > 0 &&
+      cropArea.height > 0
+    ) {
+      const viewport = {
+        x: 0,
+        y: 0,
+        width: pdfBounds.actualWidth,
+        height: pdfBounds.actualHeight,
+      };
+      setOverlay({
+        documentKey,
+        rects: [
+          {
+            ...pdfRectToPageFractions(cropArea, viewport),
+            color: "var(--color-primary-500)",
+            emphasized: true,
+          },
+        ],
+      });
+    } else {
+      setOverlay(null);
+    }
+  }, [
+    selectedFile,
+    cropToBox,
+    autoCrop,
+    pageBox,
+    boxSnapshot,
+    pdfBounds,
+    pageRotation,
+    cropArea,
+    setOverlay,
+  ]);
+
+  useEffect(() => () => setOverlay(null), [setOverlay]);
 
   // Handle crop area changes from the selector
   const handleCropAreaChange = (newCropArea: Rectangle) => {

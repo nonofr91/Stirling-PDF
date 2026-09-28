@@ -571,7 +571,7 @@ export function useTranslatedToolCatalog(): TranslatedToolCatalog {
         operationConfig: asRegistryConfig(setPageBoxesOperationConfig),
         automationSettings: lazySettings(
           () =>
-            import("@app/components/tools/setPageBoxes/SetPageBoxesSettings"),
+            import("@app/components/tools/setPageBoxes/SetPageBoxesAutomationSettings"),
         ),
         synonyms: getSynonyms(t, "setPageBoxes"),
       },

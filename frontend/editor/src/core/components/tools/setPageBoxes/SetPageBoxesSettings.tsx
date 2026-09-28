@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Stack, TextInput, NumberInput, Checkbox, Text } from "@mantine/core";
+import { Stack, Text } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import {
   SetPageBoxesParameters,
@@ -10,12 +10,16 @@ import {
   useViewScopedFileStubs,
 } from "@app/hooks/tools/shared/useViewScopedFiles";
 import PageBoxDiagram from "@app/components/tools/shared/PageBoxDiagram";
+import SetPageBoxesFields from "@app/components/tools/setPageBoxes/SetPageBoxesFields";
 import {
   computeResultingBoxes,
+  pdfRectToPageFractions,
   readPageBoxSnapshot,
   PageBoxSnapshot,
 } from "@app/utils/pageBoxReader";
-import { PAGE_BOXES } from "@app/constants/pageBoxConstants";
+import { PAGE_BOXES, PAGE_BOX_COLORS } from "@app/constants/pageBoxConstants";
+import { useSetPageOverlay } from "@app/contexts/PageOverlayContext";
+import { getFormFillFileId } from "@app/types/fileContext";
 
 interface SetPageBoxesSettingsProps {
   parameters: SetPageBoxesParameters;
@@ -26,14 +30,6 @@ interface SetPageBoxesSettingsProps {
   disabled?: boolean;
 }
 
-const BOX_FIELDS = [
-  "mediaBox",
-  "cropBox",
-  "trimBox",
-  "bleedBox",
-  "artBox",
-] as const;
-
 const SetPageBoxesSettings = ({
   parameters,
   onParameterChange,
@@ -43,6 +39,7 @@ const SetPageBoxesSettings = ({
   const [selectedFile = null] = useViewScopedFiles();
   const [selectedStub = null] = useViewScopedFileStubs();
   const [snapshot, setSnapshot] = useState<PageBoxSnapshot | null>(null);
+  const setOverlay = useSetPageOverlay();
 
   useEffect(() => {
     let cancelled = false;
@@ -58,72 +55,33 @@ const SetPageBoxesSettings = ({
     };
   }, [selectedFile]);
 
-  const boxError = (value: string) =>
-    value.trim() !== "" && parseBoxString(value) === null
-      ? t(
-          "setPageBoxes.boxFormatError",
-          "Expected four numbers: x,y,width,height",
-        )
-      : undefined;
+  // Preview the resulting boxes on the viewer's pages, mapped against the
+  // CropBox the viewer currently renders (the file is not modified yet).
+  useEffect(() => {
+    const documentKey = selectedFile ? getFormFillFileId(selectedFile) : null;
+    if (!documentKey || !snapshot) {
+      setOverlay(null);
+      return;
+    }
+    const result = computeResultingBoxes(parameters, snapshot, parseBoxString);
+    const visible = snapshot.boxes.CROP_BOX;
+    setOverlay({
+      documentKey,
+      rects: PAGE_BOXES.map((name) => ({
+        ...pdfRectToPageFractions(result[name].rect, visible),
+        color: PAGE_BOX_COLORS[name],
+        dashed: result[name].inherited,
+      })),
+    });
+  }, [selectedFile, snapshot, parameters, setOverlay]);
+
+  useEffect(() => () => setOverlay(null), [setOverlay]);
 
   return (
     <Stack gap="md">
-      <Text size="sm" c="dimmed">
-        {t(
-          "setPageBoxes.help",
-          "Set page boxes in points as x,y,width,height. Leave a field empty to keep the existing box.",
-        )}
-      </Text>
-
-      {BOX_FIELDS.map((field) => (
-        <TextInput
-          key={field}
-          label={t(`setPageBoxes.${field}`, field)}
-          placeholder="0,0,595,842"
-          value={parameters[field]}
-          onChange={(e) => onParameterChange(field, e.currentTarget.value)}
-          error={boxError(parameters[field])}
-          disabled={disabled}
-        />
-      ))}
-
-      <NumberInput
-        label={t(
-          "setPageBoxes.trimMarginMm",
-          "Trim margin (mm, shrink MediaBox into TrimBox)",
-        )}
-        value={parameters.trimMarginMm}
-        onChange={(v) =>
-          onParameterChange(
-            "trimMarginMm",
-            typeof v === "number" ? v : undefined,
-          )
-        }
-        min={0}
-        decimalScale={2}
-        disabled={disabled}
-      />
-
-      <NumberInput
-        label={t("setPageBoxes.bleedMm", "Bleed (mm, expand around TrimBox)")}
-        value={parameters.bleedMm}
-        onChange={(v) =>
-          onParameterChange("bleedMm", typeof v === "number" ? v : undefined)
-        }
-        min={0}
-        decimalScale={2}
-        disabled={disabled}
-      />
-
-      <Checkbox
-        label={t(
-          "setPageBoxes.copyMissingFromMediaBox",
-          "Copy MediaBox into boxes left unset",
-        )}
-        checked={parameters.copyMissingFromMediaBox}
-        onChange={(e) =>
-          onParameterChange("copyMissingFromMediaBox", e.currentTarget.checked)
-        }
+      <SetPageBoxesFields
+        parameters={parameters}
+        onParameterChange={onParameterChange}
         disabled={disabled}
       />
 
