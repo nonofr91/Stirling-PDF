@@ -9,13 +9,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 import org.apache.pdfbox.Loader;
-import org.apache.pdfbox.contentstream.operator.Operator;
 import org.apache.pdfbox.cos.COSName;
-import org.apache.pdfbox.pdfparser.PDFStreamParser;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
-import org.apache.pdfbox.pdmodel.graphics.optionalcontent.PDOptionalContentProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -68,7 +65,9 @@ class SetPageBoxesControllerTest {
                 .thenAnswer(
                         inv ->
                                 Loader.loadPDF(
-                                        ((PDFFile) inv.getArgument(0)).getFileInput().getBytes()));
+                                        ((PDFFile) inv.getArgument(0))
+                                                .getFileInput()
+                                                .getBytes()));
         lenient()
                 .when(tempFileManager.createManagedTempFile(anyString()))
                 .thenAnswer(
@@ -121,10 +120,7 @@ class SetPageBoxesControllerTest {
             assertRectEquals(20, 20, 400, 600, page.getTrimBox());
             assertRectEquals(10, 10, 420, 620, page.getBleedBox());
             assertRectEquals(
-                    0,
-                    0,
-                    PDRectangle.A4.getWidth(),
-                    PDRectangle.A4.getHeight(),
+                    0, 0, PDRectangle.A4.getWidth(), PDRectangle.A4.getHeight(),
                     page.getMediaBox());
         }
     }
@@ -203,13 +199,6 @@ class SetPageBoxesControllerTest {
     }
 
     @Test
-    void testNonNumericRectThrows() throws Exception {
-        SetPageBoxesRequest request = request(createPdf(null));
-        request.setBleedBox("a,b,c,d");
-        assertThrows(IllegalArgumentException.class, () -> controller.setPageBoxes(request));
-    }
-
-    @Test
     void testNonFiniteRectThrows() throws Exception {
         SetPageBoxesRequest request = request(createPdf(null));
         request.setTrimBox("0,0,NaN,600");
@@ -219,47 +208,10 @@ class SetPageBoxesControllerTest {
     }
 
     @Test
-    void testDrawBoxesAppendsBoxOutlinesToContent() throws Exception {
+    void testNonNumericRectThrows() throws Exception {
         SetPageBoxesRequest request = request(createPdf(null));
-        request.setTrimBox("20,20,400,600");
-        request.setDrawBoxes(true);
-
-        ResponseEntity<Resource> response = controller.setPageBoxes(request);
-
-        assertEquals(200, response.getStatusCode().value());
-        try (PDDocument result = Loader.loadPDF(drainBody(response))) {
-            PDPage page = result.getPage(0);
-            PDFStreamParser parser = new PDFStreamParser(page);
-            long rectOps =
-                    parser.parse().stream()
-                            .filter(t -> t instanceof Operator op && "re".equals(op.getName()))
-                            .count();
-            // MediaBox and TrimBox entries exist after apply
-            assertEquals(2, rectOps);
-            PDOptionalContentProperties ocProps = result.getDocumentCatalog().getOCProperties();
-            assertNotNull(ocProps);
-            assertTrue(ocProps.hasGroup("Page boxes"));
-        }
-    }
-
-    @Test
-    void testDrawBoxesAloneIsValidWork() throws Exception {
-        SetPageBoxesRequest request = request(createPdf(new PDRectangle(20, 30, 400, 600)));
-        request.setDrawBoxes(true);
-
-        ResponseEntity<Resource> response = controller.setPageBoxes(request);
-
-        assertEquals(200, response.getStatusCode().value());
-        try (PDDocument result = Loader.loadPDF(drainBody(response))) {
-            PDPage page = result.getPage(0);
-            assertRectEquals(20, 30, 400, 600, page.getTrimBox());
-            PDFStreamParser parser = new PDFStreamParser(page);
-            long rectOps =
-                    parser.parse().stream()
-                            .filter(t -> t instanceof Operator op && "re".equals(op.getName()))
-                            .count();
-            assertEquals(2, rectOps);
-        }
+        request.setBleedBox("a,b,c,d");
+        assertThrows(IllegalArgumentException.class, () -> controller.setPageBoxes(request));
     }
 
     private SetPageBoxesRequest requestUnchecked() {

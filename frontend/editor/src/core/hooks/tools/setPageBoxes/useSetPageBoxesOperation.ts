@@ -32,7 +32,6 @@ export const setPageBoxesToApiParams = (
   trimMarginMm: parameters.trimMarginMm,
   bleedMm: parameters.bleedMm,
   copyMissingFromMediaBox: parameters.copyMissingFromMediaBox,
-  drawBoxes: parameters.drawBoxes,
 });
 
 export const setPageBoxesFromApiParams = (
@@ -48,7 +47,6 @@ export const setPageBoxesFromApiParams = (
   copyMissingFromMediaBox:
     apiParams.copyMissingFromMediaBox ??
     defaultParameters.copyMissingFromMediaBox,
-  drawBoxes: apiParams.drawBoxes ?? defaultParameters.drawBoxes,
 });
 
 export const buildSetPageBoxesFormData = (
