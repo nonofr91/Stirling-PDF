@@ -71,6 +71,8 @@ const SetPageBoxesSettings = ({
         ...pdfRectToPageFractions(result[name].rect, visible),
         color: PAGE_BOX_COLORS[name],
         dashed: result[name].inherited,
+        label: name.replace("_BOX", ""),
+        kind: "box",
       })),
     });
   }, [selectedFile, snapshot, parameters, setOverlay]);

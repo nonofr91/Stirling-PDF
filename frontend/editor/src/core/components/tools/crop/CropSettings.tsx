@@ -171,6 +171,8 @@ const CropSettings = ({ parameters, disabled = false }: CropSettingsProps) => {
           color: PAGE_BOX_COLORS[name],
           dashed: !boxSnapshot.explicit.has(name),
           emphasized: name === pageBox,
+          label: name.replace("_BOX", ""),
+          kind: "box",
         })),
       });
     } else if (

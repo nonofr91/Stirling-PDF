@@ -15,6 +15,9 @@ export interface PageOverlayRect {
   insetPx?: number;
   /** Short text shown inside the rect's top-left corner (e.g. "TRIM"). */
   label?: string;
+  /** "box" marks a page-box rect: the toolbar's page-boxes toggle hides these
+      even when a tool publishes them. Unset = tool geometry (crop rect…). */
+  kind?: "box";
 }
 
 export interface PageOverlayState {

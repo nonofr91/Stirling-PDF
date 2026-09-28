@@ -56,31 +56,44 @@ export const PageOverlayLayer = memo(function PageOverlayLayer({
 
   const rects = useMemo<PageOverlayRect[]>(() => {
     const out: PageOverlayRect[] = [];
-    if (pageBoxesVisible && snapshot) {
-      const coincidentRank = new Map<string, number>();
+    const toolRects =
+      overlay && documentKey && overlay.documentKey === documentKey
+        ? overlay.rects
+        : [];
+    const toolPublishesBoxes = toolRects.some((r) => r.kind === "box");
+
+    // The toolbar toggle is the master switch for page-box drawing.
+    // A tool publishing box rects wins over the persisted file's own boxes —
+    // its preview is the data being edited. Geometry previews (crop rect) are
+    // unaffected by the toggle.
+    if (pageBoxesVisible && snapshot && !toolPublishesBoxes) {
       for (const name of PAGE_BOXES) {
-        const f = pdfRectToPageFractions(
-          snapshot.boxes[name],
-          snapshot.boxes.CROP_BOX,
-        );
-        // On a plain PDF every box falls back to the MediaBox, so all five
-        // borders hug the page edge and the toggle looks dead.
-        const sig = [f.x, f.y, f.width, f.height]
-          .map((n) => n.toFixed(4))
-          .join(",");
-        const rank = coincidentRank.get(sig) ?? 0;
-        coincidentRank.set(sig, rank + 1);
         out.push({
-          ...f,
+          ...pdfRectToPageFractions(
+            snapshot.boxes[name],
+            snapshot.boxes.CROP_BOX,
+          ),
           color: PAGE_BOX_COLORS[name],
           dashed: !snapshot.explicit.has(name),
-          insetPx: rank * 4,
           label: name.replace("_BOX", ""),
+          kind: "box",
         });
       }
     }
-    if (overlay && documentKey && overlay.documentKey === documentKey) {
-      out.push(...overlay.rects);
+    out.push(...toolRects.filter((r) => pageBoxesVisible || r.kind !== "box"));
+
+    // On a plain PDF every box falls back to the MediaBox, so all five
+    // borders hug the page edge and the toggle looks dead. Coincident box
+    // rects get a per-rank inward nudge so they render as nested frames.
+    const coincidentRank = new Map<string, number>();
+    for (const r of out) {
+      if (r.kind !== "box") continue;
+      const sig = [r.x, r.y, r.width, r.height]
+        .map((n) => n.toFixed(4))
+        .join(",");
+      const rank = coincidentRank.get(sig) ?? 0;
+      coincidentRank.set(sig, rank + 1);
+      r.insetPx = rank * 4;
     }
     return out;
   }, [pageBoxesVisible, snapshot, overlay, documentKey]);
