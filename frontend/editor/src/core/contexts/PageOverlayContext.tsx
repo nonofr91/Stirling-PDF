@@ -22,18 +22,26 @@ export interface PageOverlayState {
 interface PageOverlayContextValue {
   overlay: PageOverlayState | null;
   setOverlay: (overlay: PageOverlayState | null) => void;
+  pageBoxesVisible: boolean;
+  setPageBoxesVisible: (value: boolean | ((prev: boolean) => boolean)) => void;
 }
 
 const PageOverlayContext = createContext<PageOverlayContextValue | null>(null);
 
 /**
- * What the active tool previews on the viewer's pages: crop rect, page boxes.
- * Written by tool settings panels (right pane), read by PageOverlayLayer in the
- * viewer tree — the two render in different subtrees, hence the context.
+ * What the viewer draws on top of each rendered page. `overlay` is the active
+ * tool's live preview (crop rect, page boxes) written by settings panels;
+ * `pageBoxesVisible` is the persistent toggle from the viewer toolbar. Read by
+ * PageOverlayLayer in the viewer tree — the two render in different subtrees,
+ * hence the context.
  */
 export function PageOverlayProvider({ children }: { children: ReactNode }) {
   const [overlay, setOverlay] = useState<PageOverlayState | null>(null);
-  const value = useMemo(() => ({ overlay, setOverlay }), [overlay]);
+  const [pageBoxesVisible, setPageBoxesVisible] = useState(false);
+  const value = useMemo(
+    () => ({ overlay, setOverlay, pageBoxesVisible, setPageBoxesVisible }),
+    [overlay, pageBoxesVisible],
+  );
   return (
     <PageOverlayContext.Provider value={value}>
       {children}
@@ -52,4 +60,19 @@ export function useSetPageOverlay(): PageOverlayContextValue["setOverlay"] {
 /** Read side for viewer layers — null outside a provider instead of throwing. */
 export function usePageOverlayState(): PageOverlayState | null {
   return useContext(PageOverlayContext)?.overlay ?? null;
+}
+
+const NOOP_TOGGLE = () => {};
+
+/** The toolbar's persistent "show page boxes" toggle — off and inert outside a
+ *  provider. */
+export function usePageBoxesVisibility(): [
+  boolean,
+  PageOverlayContextValue["setPageBoxesVisible"],
+] {
+  const ctx = useContext(PageOverlayContext);
+  return [
+    ctx?.pageBoxesVisible ?? false,
+    ctx?.setPageBoxesVisible ?? NOOP_TOGGLE,
+  ];
 }

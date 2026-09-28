@@ -25,36 +25,61 @@ const BOX_PDF_NAMES: Record<PageBox, string> = {
   ART_BOX: "ArtBox",
 };
 
+type PdfLib = typeof import("@cantoo/pdf-lib");
+
+interface LoadedPdf {
+  pdfLib: PdfLib;
+  doc: import("@cantoo/pdf-lib").PDFDocument;
+}
+
+// One pdf-lib parse per file, shared by every page-indexed read.
+const docCache = new WeakMap<Blob, Promise<LoadedPdf | null>>();
+
+function loadPdf(file: Blob): Promise<LoadedPdf | null> {
+  let cached = docCache.get(file);
+  if (!cached) {
+    cached = import("@cantoo/pdf-lib")
+      .then(async (pdfLib) => ({
+        pdfLib,
+        doc: await pdfLib.PDFDocument.load(await file.arrayBuffer(), {
+          ignoreEncryption: true,
+        }),
+      }))
+      .catch(() => null);
+    docCache.set(file, cached);
+  }
+  return cached;
+}
+
 /**
- * Reads the five page boxes of the first page. Returns null when the file
- * cannot be parsed — callers should render nothing rather than an empty frame.
+ * Reads the five page boxes of `pageIndex` (default: first page). Returns null
+ * when the file cannot be parsed or the page is out of range — callers should
+ * render nothing rather than an empty frame.
  */
 export async function readPageBoxSnapshot(
-  file: File,
+  file: Blob,
+  pageIndex = 0,
 ): Promise<PageBoxSnapshot | null> {
-  try {
-    const pdfLib = await import("@cantoo/pdf-lib");
-    const doc = await pdfLib.PDFDocument.load(await file.arrayBuffer(), {
-      ignoreEncryption: true,
-    });
-    const page = doc.getPage(0);
-    const boxes = {
-      MEDIA_BOX: page.getMediaBox(),
-      CROP_BOX: page.getCropBox(),
-      TRIM_BOX: page.getTrimBox(),
-      BLEED_BOX: page.getBleedBox(),
-      ART_BOX: page.getArtBox(),
-    };
-    const explicit = new Set<PageBox>();
-    for (const box of PAGE_BOXES) {
-      if (page.node.get(pdfLib.PDFName.of(BOX_PDF_NAMES[box]))) {
-        explicit.add(box);
-      }
-    }
-    return { boxes, explicit, rotation: page.getRotation().angle };
-  } catch {
+  const loaded = await loadPdf(file);
+  if (!loaded || pageIndex < 0 || pageIndex >= loaded.doc.getPageCount()) {
     return null;
   }
+  const { pdfLib } = loaded;
+  const page = loaded.doc.getPage(pageIndex);
+  const boxes = {
+    MEDIA_BOX: page.getMediaBox(),
+    CROP_BOX: page.getCropBox(),
+    TRIM_BOX: page.getTrimBox(),
+    BLEED_BOX: page.getBleedBox(),
+    ART_BOX: page.getArtBox(),
+  };
+  const explicit = new Set<PageBox>();
+  for (const box of PAGE_BOXES) {
+    if (page.node.get(pdfLib.PDFName.of(BOX_PDF_NAMES[box]))) {
+      explicit.add(box);
+    }
+  }
+  return { boxes, explicit, rotation: page.getRotation().angle };
 }
 
 /**

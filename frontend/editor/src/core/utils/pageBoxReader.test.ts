@@ -55,6 +55,39 @@ describe("readPageBoxSnapshot", () => {
     const file = { arrayBuffer: async () => garbage } as File;
     expect(await readPageBoxSnapshot(file)).toBeNull();
   });
+
+  it("reads the boxes of a specific page index", async () => {
+    const doc = await PDFDocument.create();
+    doc.addPage([595, 842]);
+    const second = doc.addPage([300, 400]);
+    second.setTrimBox(10, 10, 200, 300);
+    const bytes = await doc.save();
+    const ab = bytes.buffer.slice(
+      bytes.byteOffset,
+      bytes.byteOffset + bytes.byteLength,
+    ) as ArrayBuffer;
+    const file = { arrayBuffer: async () => ab } as File;
+
+    const page2 = await readPageBoxSnapshot(file, 1);
+    expect(page2!.explicit.has("TRIM_BOX")).toBe(true);
+    expect(page2!.boxes.TRIM_BOX).toEqual({
+      x: 10,
+      y: 10,
+      width: 200,
+      height: 300,
+    });
+
+    const page1 = await readPageBoxSnapshot(file, 0);
+    expect(page1!.boxes.MEDIA_BOX).toEqual({
+      x: 0,
+      y: 0,
+      width: 595,
+      height: 842,
+    });
+    expect(page1!.explicit.has("TRIM_BOX")).toBe(false);
+
+    expect(await readPageBoxSnapshot(file, 5)).toBeNull();
+  });
 });
 
 describe("pdfRectToPageFractions", () => {

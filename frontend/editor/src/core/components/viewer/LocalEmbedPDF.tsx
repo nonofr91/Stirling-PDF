@@ -1494,6 +1494,7 @@ export function LocalEmbedPDF({
                                   pageWidth={width}
                                   pageHeight={height}
                                   documentKey={fileId ?? null}
+                                  file={file}
                                 />
                               </ViewerPageContainer>
                             </ViewerPagePointerProvider>
