@@ -32,6 +32,19 @@ export const setPageBoxesToApiParams = (
   trimMarginMm: parameters.trimMarginMm,
   bleedMm: parameters.bleedMm,
   copyMissingFromMediaBox: parameters.copyMissingFromMediaBox,
+  generateBleed: parameters.generateBleed,
+  bleedMethod: parameters.bleedMethod,
+  bleedTopMm: parameters.bleedTopMm,
+  bleedRightMm: parameters.bleedRightMm,
+  bleedBottomMm: parameters.bleedBottomMm,
+  bleedLeftMm: parameters.bleedLeftMm,
+  bleedCorners: parameters.bleedCorners,
+  bleedDpi: parameters.bleedDpi,
+  bleedInsetMm: parameters.bleedInsetMm,
+  addCropMarks: parameters.addCropMarks,
+  cropMarkLengthMm: parameters.cropMarkLengthMm,
+  cropMarkOffsetMm: parameters.cropMarkOffsetMm,
+  cropMarkWeightPt: parameters.cropMarkWeightPt,
 });
 
 export const setPageBoxesFromApiParams = (
@@ -47,6 +60,21 @@ export const setPageBoxesFromApiParams = (
   copyMissingFromMediaBox:
     apiParams.copyMissingFromMediaBox ??
     defaultParameters.copyMissingFromMediaBox,
+  generateBleed: apiParams.generateBleed ?? defaultParameters.generateBleed,
+  bleedMethod:
+    (apiParams.bleedMethod as SetPageBoxesParameters["bleedMethod"]) ??
+    defaultParameters.bleedMethod,
+  bleedTopMm: apiParams.bleedTopMm,
+  bleedRightMm: apiParams.bleedRightMm,
+  bleedBottomMm: apiParams.bleedBottomMm,
+  bleedLeftMm: apiParams.bleedLeftMm,
+  bleedCorners: apiParams.bleedCorners ?? defaultParameters.bleedCorners,
+  bleedDpi: apiParams.bleedDpi,
+  bleedInsetMm: apiParams.bleedInsetMm,
+  addCropMarks: apiParams.addCropMarks ?? defaultParameters.addCropMarks,
+  cropMarkLengthMm: apiParams.cropMarkLengthMm,
+  cropMarkOffsetMm: apiParams.cropMarkOffsetMm,
+  cropMarkWeightPt: apiParams.cropMarkWeightPt,
 });
 
 export const buildSetPageBoxesFormData = (

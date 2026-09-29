@@ -11271,6 +11271,33 @@ submit = "Set Page Boxes"
 trimBox = "TrimBox"
 trimMarginMm = "Trim margin (mm, shrink MediaBox into TrimBox)"
 
+[setPageBoxes.cropMarks]
+enable = "Draw crop marks at the TrimBox corners"
+length = "Length (mm)"
+offset = "Offset (mm)"
+section = "Crop marks"
+weight = "Stroke (pt)"
+
+[setPageBoxes.generateBleed]
+bleedBottomMm = "Bottom (mm)"
+bleedLeftMm = "Left (mm)"
+bleedRightMm = "Right (mm)"
+bleedTopMm = "Top (mm)"
+corners = "Generate bleed in the corners too"
+dpi = "Render DPI"
+enable = "Paint bleed content between TrimBox and BleedBox"
+hint = "A BleedBox alone is only geometry. This paints extra content past the trim edge (like PitStop's Add Bleed) so trimming never shows a white edge."
+inset = "Source inset (mm, skip inner margin)"
+method = "Bleed method"
+section = "Generate bleed"
+sideFallback = "bleedMm"
+
+[setPageBoxes.generateBleed.methods]
+MIRROR = "Mirror edges (vector)"
+MIRROR_IMAGE = "Mirror edges (image)"
+PIXEL_REPEAT = "Repeat last pixel"
+UPSCALE = "Upscale page content"
+
 [setPageBoxes.error]
 failed = "An error occurred while setting page boxes."
 

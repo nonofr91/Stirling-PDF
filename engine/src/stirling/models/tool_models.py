@@ -1557,25 +1557,62 @@ class ScannerEffectParams(ApiModel):
     yellowish: bool | None = Field(None, description="Simulate yellowed paper", examples=[False])
 
 
-class SetPageBoxesParams(ApiModel):
+class BleedMethod(StrEnum):
     """
-    Sets MediaBox, CropBox, TrimBox, BleedBox and/or ArtBox on every page of the input PDF, either from explicit rectangles or from prepress shortcuts (bleed around trim, trim inset from media). Input:PDF Output:PDF Type:SISO
+    How bleed content is generated. MIRROR reflects the page's vector content across the trim edge (lossless). MIRROR_IMAGE mirrors a rendered strip (robust on shadings/transparency). PIXEL_REPEAT stretches the last edge pixel (safer when text touches the trim edge). UPSCALE enlarges the page content until it covers the BleedBox (final printed size shrinks slightly)
     """
 
+    mirror = "MIRROR"
+    mirror_image = "MIRROR_IMAGE"
+    pixel_repeat = "PIXEL_REPEAT"
+    upscale = "UPSCALE"
+
+
+class SetPageBoxesParams(ApiModel):
+    """
+    Sets MediaBox, CropBox, TrimBox, BleedBox and/or ArtBox on every page of the input PDF, either from explicit rectangles or from prepress shortcuts (bleed around trim, trim inset from media). Can also generate real bleed content between the TrimBox and BleedBox (mirrored or repeated edge content, like PitStop's Add Bleed) and draw crop marks. Input:PDF Output:PDF Type:SISO
+    """
+
+    add_crop_marks: bool = Field(
+        False, description="Draw crop marks at the TrimBox corners, in the slug area beyond the bleed"
+    )
     art_box: str | None = Field(
         None,
         description='ArtBox as "x,y,width,height" in points, applied to every page',
         examples=["20,20,555.28,801.89"],
+    )
+    bleed_bottom_mm: float = Field(
+        -1, description="Bleed width in millimetres on the bottom edge. Negative falls back to bleedMm"
     )
     bleed_box: str | None = Field(
         None,
         description='BleedBox as "x,y,width,height" in points, applied to every page',
         examples=["14.17,14.17,567.11,813.71"],
     )
+    bleed_corners: bool = Field(True, description="Generate bleed in the corners in addition to the edges")
+    bleed_dpi: int = Field(300, description="Render resolution used by MIRROR_IMAGE and PIXEL_REPEAT", ge=72, le=600)
+    bleed_inset_mm: float = Field(
+        0,
+        description="Skip this many millimetres of content inside the trim edge before mirroring, to jump over an inner white margin",
+        ge=0.0,
+    )
+    bleed_left_mm: float = Field(
+        -1, description="Bleed width in millimetres on the left edge. Negative falls back to bleedMm"
+    )
+    bleed_method: BleedMethod = Field(
+        BleedMethod.mirror,
+        description="How bleed content is generated. MIRROR reflects the page's vector content across the trim edge (lossless). MIRROR_IMAGE mirrors a rendered strip (robust on shadings/transparency). PIXEL_REPEAT stretches the last edge pixel (safer when text touches the trim edge). UPSCALE enlarges the page content until it covers the BleedBox (final printed size shrinks slightly)",
+    )
     bleed_mm: float = Field(
         0,
         description="BleedBox expanded by this many millimetres around the resolved TrimBox on every page. Ignored when bleedBox is set",
         ge=0.0,
+    )
+    bleed_right_mm: float = Field(
+        -1, description="Bleed width in millimetres on the right edge. Negative falls back to bleedMm"
+    )
+    bleed_top_mm: float = Field(
+        -1, description="Bleed width in millimetres on the top edge. Negative falls back to bleedMm"
     )
     copy_missing_from_media_box: bool = Field(
         False,
@@ -1585,6 +1622,15 @@ class SetPageBoxesParams(ApiModel):
         None,
         description='CropBox as "x,y,width,height" in points, applied to every page',
         examples=["0,0,595.28,841.89"],
+    )
+    crop_mark_length_mm: float = Field(5, description="Crop mark length in millimetres", ge=0.0)
+    crop_mark_offset_mm: float = Field(
+        3, description="Gap in millimetres between the trim edge and where each crop mark starts", ge=0.0
+    )
+    crop_mark_weight_pt: float = Field(0.25, description="Crop mark stroke width in points", ge=0.0)
+    generate_bleed: bool = Field(
+        False,
+        description="Paint real bleed content between TrimBox and BleedBox on every page (mirrored or repeated edge content), so trimming leaves no white edge. Requires a positive bleedMm or per-side amount, or an explicit bleedBox larger than the trim",
     )
     media_box: str | None = Field(
         None,

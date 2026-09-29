@@ -124,6 +124,34 @@ const expand = (r: BoxRect, mm: number): BoxRect => {
   };
 };
 
+const expandSides = (
+  r: BoxRect,
+  leftMm: number,
+  rightMm: number,
+  bottomMm: number,
+  topMm: number,
+): BoxRect => {
+  const l = leftMm * MM_TO_PT;
+  const b = bottomMm * MM_TO_PT;
+  return {
+    x: r.x - l,
+    y: r.y - b,
+    width: r.width + l + rightMm * MM_TO_PT,
+    height: r.height + b + topMm * MM_TO_PT,
+  };
+};
+
+const union = (a: BoxRect, b: BoxRect): BoxRect => {
+  const x = Math.min(a.x, b.x);
+  const y = Math.min(a.y, b.y);
+  return {
+    x,
+    y,
+    width: Math.max(a.x + a.width, b.x + b.width) - x,
+    height: Math.max(a.y + a.height, b.y + b.height) - y,
+  };
+};
+
 export interface ResultingBox {
   rect: BoxRect;
   /** Still absent from the page after apply (shows an inherited value). */
@@ -132,7 +160,8 @@ export interface ResultingBox {
 
 /**
  * Mirrors SetPageBoxesController.applyBoxes: explicit param > margin convenience >
- * existing page entry > copyMissingFromMediaBox fill.
+ * existing page entry > copyMissingFromMediaBox fill. With generateBleed or
+ * addCropMarks the MediaBox/CropBox grow to cover the generated content.
  */
 export function computeResultingBoxes(
   params: {
@@ -144,6 +173,14 @@ export function computeResultingBoxes(
     trimMarginMm?: number;
     bleedMm?: number;
     copyMissingFromMediaBox: boolean;
+    generateBleed?: boolean;
+    bleedTopMm?: number;
+    bleedRightMm?: number;
+    bleedBottomMm?: number;
+    bleedLeftMm?: number;
+    addCropMarks?: boolean;
+    cropMarkLengthMm?: number;
+    cropMarkOffsetMm?: number;
   },
   snapshot: PageBoxSnapshot,
   parseBox: (value: string) => number[] | null,
@@ -170,13 +207,47 @@ export function computeResultingBoxes(
   setFrom("TRIM_BOX", trimRect);
 
   let bleedRect = parse(params.bleedBox);
-  if (!bleedRect && (params.bleedMm ?? 0) > 0) {
+  if (params.generateBleed) {
+    // Negative/undefined per-side values fall back to bleedMm, like the backend.
+    const side = (v?: number) =>
+      Math.max(0, v !== undefined && v >= 0 ? v : (params.bleedMm ?? 0));
+    const generated = expandSides(
+      result.TRIM_BOX.rect,
+      side(params.bleedLeftMm),
+      side(params.bleedRightMm),
+      side(params.bleedBottomMm),
+      side(params.bleedTopMm),
+    );
+    bleedRect = bleedRect ? union(bleedRect, generated) : generated;
+  } else if (!bleedRect && (params.bleedMm ?? 0) > 0) {
     bleedRect = expand(result.TRIM_BOX.rect, params.bleedMm!);
   }
   setFrom("BLEED_BOX", bleedRect);
 
   setFrom("CROP_BOX", parse(params.cropBox));
   setFrom("ART_BOX", parse(params.artBox));
+
+  if (params.generateBleed || params.addCropMarks) {
+    const marksMm = params.addCropMarks
+      ? (params.cropMarkOffsetMm ?? 3) + (params.cropMarkLengthMm ?? 5)
+      : 0;
+    const marksArea = expand(result.TRIM_BOX.rect, marksMm);
+    // With generateBleed the bleed rect is the generated target and already
+    // covers the trim; without it the existing bleed box is left as is.
+    const required = params.generateBleed
+      ? union(result.BLEED_BOX.rect, marksArea)
+      : marksArea;
+    result.MEDIA_BOX = {
+      rect: union(result.MEDIA_BOX.rect, required),
+      inherited: false,
+    };
+    result.CROP_BOX = {
+      rect: union(result.CROP_BOX.rect, required),
+      inherited: false,
+    };
+    // The controller materializes the TrimBox it painted bleed around.
+    result.TRIM_BOX = { rect: result.TRIM_BOX.rect, inherited: false };
+  }
 
   if (params.copyMissingFromMediaBox) {
     // `inherited` is exactly "no param, no margin, no dict entry" — the

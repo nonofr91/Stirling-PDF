@@ -4,7 +4,10 @@ import {
   parseBoxString,
   validateSetPageBoxesParameters,
 } from "@app/hooks/tools/setPageBoxes/useSetPageBoxesParameters";
-import { setPageBoxesToApiParams } from "@app/hooks/tools/setPageBoxes/useSetPageBoxesOperation";
+import {
+  setPageBoxesFromApiParams,
+  setPageBoxesToApiParams,
+} from "@app/hooks/tools/setPageBoxes/useSetPageBoxesOperation";
 
 describe("setPageBoxes mappers", () => {
   test("empty fields are omitted from the request body", () => {
@@ -18,6 +21,41 @@ describe("setPageBoxes mappers", () => {
     expect(api.bleedMm).toBe(5);
     expect(api.mediaBox).toBeUndefined();
     expect(api.cropBox).toBeUndefined();
+  });
+
+  test("bleed generation options are mapped to the request body", () => {
+    const api = setPageBoxesToApiParams({
+      ...defaultParameters,
+      generateBleed: true,
+      bleedMethod: "PIXEL_REPEAT",
+      bleedMm: 3,
+      bleedLeftMm: 5,
+      bleedCorners: false,
+      bleedDpi: 200,
+      bleedInsetMm: 1.5,
+      addCropMarks: true,
+      cropMarkLengthMm: 4,
+      cropMarkOffsetMm: 2,
+      cropMarkWeightPt: 0.5,
+    });
+
+    expect(api.generateBleed).toBe(true);
+    expect(api.bleedMethod).toBe("PIXEL_REPEAT");
+    expect(api.bleedLeftMm).toBe(5);
+    expect(api.bleedRightMm).toBeUndefined();
+    expect(api.bleedCorners).toBe(false);
+    expect(api.bleedDpi).toBe(200);
+    expect(api.addCropMarks).toBe(true);
+    expect(api.cropMarkLengthMm).toBe(4);
+    expect(api.cropMarkWeightPt).toBe(0.5);
+  });
+
+  test("api params map back with defaults for absent fields", () => {
+    const params = setPageBoxesFromApiParams({ generateBleed: true });
+    expect(params.generateBleed).toBe(true);
+    expect(params.bleedMethod).toBe("MIRROR");
+    expect(params.bleedCorners).toBe(true);
+    expect(params.addCropMarks).toBe(false);
   });
 });
 
@@ -57,6 +95,71 @@ describe("validateSetPageBoxesParameters", () => {
         copyMissingFromMediaBox: true,
       }),
     ).toBe(true);
+  });
+
+  test("generateBleed alone is not enough without a bleed source", () => {
+    expect(
+      validateSetPageBoxesParameters({
+        ...defaultParameters,
+        generateBleed: true,
+      }),
+    ).toBe(false);
+  });
+
+  test.each([
+    { bleedMm: 3 },
+    { bleedLeftMm: 3 },
+    { bleedBox: "10,10,575,822" },
+  ])("accepts generateBleed with a bleed source %o", (extra) => {
+    expect(
+      validateSetPageBoxesParameters({
+        ...defaultParameters,
+        generateBleed: true,
+        ...extra,
+      }),
+    ).toBe(true);
+  });
+
+  test("rejects out-of-range dpi and negative inset for generateBleed", () => {
+    expect(
+      validateSetPageBoxesParameters({
+        ...defaultParameters,
+        generateBleed: true,
+        bleedMm: 3,
+        bleedDpi: 50,
+      }),
+    ).toBe(false);
+    expect(
+      validateSetPageBoxesParameters({
+        ...defaultParameters,
+        generateBleed: true,
+        bleedMm: 3,
+        bleedInsetMm: -1,
+      }),
+    ).toBe(false);
+  });
+
+  test("addCropMarks alone is a valid request but validates its dimensions", () => {
+    expect(
+      validateSetPageBoxesParameters({
+        ...defaultParameters,
+        addCropMarks: true,
+      }),
+    ).toBe(true);
+    expect(
+      validateSetPageBoxesParameters({
+        ...defaultParameters,
+        addCropMarks: true,
+        cropMarkLengthMm: 0,
+      }),
+    ).toBe(false);
+    expect(
+      validateSetPageBoxesParameters({
+        ...defaultParameters,
+        addCropMarks: true,
+        cropMarkOffsetMm: -1,
+      }),
+    ).toBe(false);
   });
 });
 
@@ -147,5 +250,47 @@ describe("computeResultingBoxes", () => {
     );
     expect(r.TRIM_BOX.inherited).toBe(true);
     expect(r.MEDIA_BOX.inherited).toBe(false);
+  });
+
+  test("generateBleed expands BleedBox per side and grows MediaBox", () => {
+    const r = computeResultingBoxes(
+      {
+        ...defaultParameters,
+        trimMarginMm: 10,
+        generateBleed: true,
+        bleedLeftMm: 8,
+        bleedRightMm: 2,
+        bleedBottomMm: 4,
+        bleedTopMm: 0,
+      },
+      bareSnapshot,
+      parseBoxString,
+    );
+    const pt = (mm: number) => mm * (72 / 25.4);
+    const mm10 = pt(10);
+    const bleed = r.BLEED_BOX.rect;
+    expect(bleed.x).toBeCloseTo(mm10 - pt(8));
+    expect(bleed.width).toBeCloseTo(595 - 2 * mm10 + pt(8) + pt(2));
+    expect(bleed.y).toBeCloseTo(mm10 - pt(4));
+    expect(bleed.height).toBeCloseTo(842 - 2 * mm10 + pt(4));
+    // 8mm left bleed reaches x = 10mm - 8mm = 2mm > 0 → media stays A4.
+    expect(r.MEDIA_BOX.rect).toEqual(rect(0, 0, 595, 842));
+    expect(r.TRIM_BOX.inherited).toBe(false);
+  });
+
+  test("crop marks grow MediaBox past the trim", () => {
+    const r = computeResultingBoxes(
+      {
+        ...defaultParameters,
+        trimMarginMm: 5,
+        addCropMarks: true,
+      },
+      bareSnapshot,
+      parseBoxString,
+    );
+    // marks extent = 3mm offset + 5mm length = 8mm past the 5mm trim margin.
+    const expected = (8 - 5) * (72 / 25.4);
+    expect(r.MEDIA_BOX.rect.x).toBeCloseTo(-expected);
+    expect(r.CROP_BOX.rect.x).toBeCloseTo(-expected);
   });
 });

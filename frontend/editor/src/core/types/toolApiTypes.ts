@@ -1421,17 +1421,53 @@ export type SecurityRemoveCertSignRequest = Record<string, never>;
 export type SecurityValidateComplianceRequest = Record<string, never>;
 export interface SetPageBoxesRequest {
   /**
+   * Draw crop marks at the TrimBox corners, in the slug area beyond the bleed
+   */
+  addCropMarks?: boolean;
+  /**
    * ArtBox as "x,y,width,height" in points, applied to every page
    */
   artBox?: string;
+  /**
+   * Bleed width in millimetres on the bottom edge. Negative falls back to bleedMm
+   */
+  bleedBottomMm?: number;
   /**
    * BleedBox as "x,y,width,height" in points, applied to every page
    */
   bleedBox?: string;
   /**
+   * Generate bleed in the corners in addition to the edges
+   */
+  bleedCorners?: boolean;
+  /**
+   * Render resolution used by MIRROR_IMAGE and PIXEL_REPEAT
+   */
+  bleedDpi?: number;
+  /**
+   * Skip this many millimetres of content inside the trim edge before mirroring, to jump over an inner white margin
+   */
+  bleedInsetMm?: number;
+  /**
+   * Bleed width in millimetres on the left edge. Negative falls back to bleedMm
+   */
+  bleedLeftMm?: number;
+  /**
+   * How bleed content is generated. MIRROR reflects the page's vector content across the trim edge (lossless). MIRROR_IMAGE mirrors a rendered strip (robust on shadings/transparency). PIXEL_REPEAT stretches the last edge pixel (safer when text touches the trim edge). UPSCALE enlarges the page content until it covers the BleedBox (final printed size shrinks slightly)
+   */
+  bleedMethod?: "MIRROR" | "MIRROR_IMAGE" | "PIXEL_REPEAT" | "UPSCALE";
+  /**
    * BleedBox expanded by this many millimetres around the resolved TrimBox on every page. Ignored when bleedBox is set
    */
   bleedMm?: number;
+  /**
+   * Bleed width in millimetres on the right edge. Negative falls back to bleedMm
+   */
+  bleedRightMm?: number;
+  /**
+   * Bleed width in millimetres on the top edge. Negative falls back to bleedMm
+   */
+  bleedTopMm?: number;
   /**
    * Copy the MediaBox into any of CropBox/TrimBox/BleedBox/ArtBox still unset after the other parameters are applied
    */
@@ -1440,6 +1476,22 @@ export interface SetPageBoxesRequest {
    * CropBox as "x,y,width,height" in points, applied to every page
    */
   cropBox?: string;
+  /**
+   * Crop mark length in millimetres
+   */
+  cropMarkLengthMm?: number;
+  /**
+   * Gap in millimetres between the trim edge and where each crop mark starts
+   */
+  cropMarkOffsetMm?: number;
+  /**
+   * Crop mark stroke width in points
+   */
+  cropMarkWeightPt?: number;
+  /**
+   * Paint real bleed content between TrimBox and BleedBox on every page (mirrored or repeated edge content), so trimming leaves no white edge. Requires a positive bleedMm or per-side amount, or an explicit bleedBox larger than the trim
+   */
+  generateBleed?: boolean;
   /**
    * MediaBox as "x,y,width,height" in points, applied to every page
    */

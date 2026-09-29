@@ -25,6 +25,9 @@ import stirling.software.common.model.tool.ToolFormat;
 import stirling.software.common.model.tool.ToolIO;
 import stirling.software.common.service.CustomPDFDocumentFactory;
 import stirling.software.common.util.GeneralUtils;
+import stirling.software.common.util.PageBleedGenerator;
+import stirling.software.common.util.PageBleedGenerator.BleedEdges;
+import stirling.software.common.util.PageBleedGenerator.BleedMethod;
 import stirling.software.common.util.TempFileManager;
 import stirling.software.common.util.WebResponseUtils;
 
@@ -48,18 +51,25 @@ public class SetPageBoxesController {
             description =
                     "Sets MediaBox, CropBox, TrimBox, BleedBox and/or ArtBox on every page of the"
                             + " input PDF, either from explicit rectangles or from prepress"
-                            + " shortcuts (bleed around trim, trim inset from media).")
+                            + " shortcuts (bleed around trim, trim inset from media). Can also"
+                            + " generate real bleed content between the TrimBox and BleedBox"
+                            + " (mirrored or repeated edge content, like PitStop's Add Bleed) and"
+                            + " draw crop marks.")
     public ResponseEntity<Resource> setPageBoxes(@ModelAttribute SetPageBoxesRequest request)
             throws IOException {
         if (!hasWork(request)) {
             throw new IllegalArgumentException(
-                    "At least one page box, bleedMm, trimMarginMm or copyMissingFromMediaBox must"
-                            + " be provided");
+                    "At least one page box, bleedMm, trimMarginMm, copyMissingFromMediaBox,"
+                            + " generateBleed or addCropMarks must be provided");
         }
+        validateRequest(request);
+        BleedMethod method =
+                request.isGenerateBleed() ? BleedMethod.parse(request.getBleedMethod()) : null;
 
         try (PDDocument document = pdfDocumentFactory.load(request)) {
+            int pageIndex = 0;
             for (PDPage page : document.getPages()) {
-                applyBoxes(page, request);
+                applyBoxes(document, page, pageIndex++, request, method);
             }
 
             return WebResponseUtils.pdfDocToWebResponse(
@@ -78,39 +88,157 @@ public class SetPageBoxesController {
                 || notBlank(request.getArtBox())
                 || request.getBleedMm() > 0
                 || request.getTrimMarginMm() > 0
-                || request.isCopyMissingFromMediaBox();
+                || request.isCopyMissingFromMediaBox()
+                || request.isGenerateBleed()
+                || request.isAddCropMarks();
     }
 
-    private static void applyBoxes(PDPage page, SetPageBoxesRequest request) {
-        PDRectangle media = parseRect(request.getMediaBox(), "mediaBox");
-        if (media != null) {
-            page.setMediaBox(media);
+    private static void validateRequest(SetPageBoxesRequest request) {
+        requireFinite("bleedMm", request.getBleedMm());
+        requireFinite("trimMarginMm", request.getTrimMarginMm());
+        requireFinite("bleedTopMm", request.getBleedTopMm());
+        requireFinite("bleedRightMm", request.getBleedRightMm());
+        requireFinite("bleedBottomMm", request.getBleedBottomMm());
+        requireFinite("bleedLeftMm", request.getBleedLeftMm());
+        requireFinite("bleedInsetMm", request.getBleedInsetMm());
+        if (request.getBleedInsetMm() < 0) {
+            throw new IllegalArgumentException("bleedInsetMm must be >= 0");
         }
+        if (request.isGenerateBleed()) {
+            if (request.getBleedDpi() < 72 || request.getBleedDpi() > 600) {
+                throw new IllegalArgumentException(
+                        "bleedDpi must be between 72 and 600, got: " + request.getBleedDpi());
+            }
+            boolean anyBleed =
+                    request.getBleedMm() > 0
+                            || request.getBleedTopMm() > 0
+                            || request.getBleedRightMm() > 0
+                            || request.getBleedBottomMm() > 0
+                            || request.getBleedLeftMm() > 0;
+            if (!anyBleed && !notBlank(request.getBleedBox())) {
+                throw new IllegalArgumentException(
+                        "generateBleed requires bleedMm > 0, a positive per-side bleed value, or"
+                                + " a bleedBox larger than the TrimBox");
+            }
+        }
+        if (request.isAddCropMarks()) {
+            requireFinite("cropMarkLengthMm", request.getCropMarkLengthMm());
+            requireFinite("cropMarkOffsetMm", request.getCropMarkOffsetMm());
+            requireFinite("cropMarkWeightPt", request.getCropMarkWeightPt());
+            if (request.getCropMarkLengthMm() <= 0) {
+                throw new IllegalArgumentException("cropMarkLengthMm must be > 0");
+            }
+            if (request.getCropMarkOffsetMm() < 0) {
+                throw new IllegalArgumentException("cropMarkOffsetMm must be >= 0");
+            }
+            if (request.getCropMarkWeightPt() <= 0) {
+                throw new IllegalArgumentException("cropMarkWeightPt must be > 0");
+            }
+        }
+    }
+
+    private static void requireFinite(String name, float value) {
+        if (!Float.isFinite(value)) {
+            throw new IllegalArgumentException(name + " must be finite, got: " + value);
+        }
+    }
+
+    private static void applyBoxes(
+            PDDocument document,
+            PDPage page,
+            int pageIndex,
+            SetPageBoxesRequest request,
+            BleedMethod method)
+            throws IOException {
+        PDRectangle media = parseRect(request.getMediaBox(), "mediaBox");
         PDRectangle effectiveMedia = media != null ? media : page.getMediaBox();
 
         PDRectangle trim = parseRect(request.getTrimBox(), "trimBox");
         if (trim == null && request.getTrimMarginMm() > 0) {
             trim = inset(effectiveMedia, request.getTrimMarginMm(), "trimMarginMm");
         }
+        PDRectangle workTrim = trim != null ? trim : page.getTrimBox();
+
+        PDRectangle bleed = parseRect(request.getBleedBox(), "bleedBox");
+        PDRectangle crop = parseRect(request.getCropBox(), "cropBox");
+        PDRectangle art = parseRect(request.getArtBox(), "artBox");
+
+        boolean generate = request.isGenerateBleed();
+        boolean marks = request.isAddCropMarks();
+        float markOffsetPt = request.getCropMarkOffsetMm() * MM_TO_POINTS;
+        float markLengthPt = request.getCropMarkLengthMm() * MM_TO_POINTS;
+
+        // Content is generated before any box is applied: raster methods render the original
+        // CropBox, and form import takes the original CropBox as its bounding box.
+        PDRectangle required = null;
+        if (generate) {
+            BleedEdges edges = resolveBleedEdges(request, workTrim, bleed);
+            if (!edges.any()) {
+                throw new IllegalArgumentException(
+                        "generateBleed resolved no bleed on page "
+                                + (pageIndex + 1)
+                                + " (TrimBox already covers the requested BleedBox?)");
+            }
+            float insetPt = request.getBleedInsetMm() * MM_TO_POINTS;
+            if (insetPt * 2 >= Math.min(workTrim.getWidth(), workTrim.getHeight())) {
+                throw new IllegalArgumentException(
+                        "bleedInsetMm of "
+                                + request.getBleedInsetMm()
+                                + "mm leaves no content to mirror inside the TrimBox");
+            }
+            PageBleedGenerator.generateBleed(
+                    document,
+                    page,
+                    pageIndex,
+                    workTrim,
+                    edges,
+                    method,
+                    request.isBleedCorners(),
+                    request.getBleedDpi(),
+                    insetPt);
+            required = edges.unionWith(workTrim, marks, markOffsetPt, markLengthPt);
+            PDRectangle generated = edges.unionWith(workTrim, false, 0, 0);
+            bleed = bleed != null ? union(bleed, generated) : generated;
+        }
+        if (marks) {
+            PageBleedGenerator.drawCropMarks(
+                    document,
+                    page,
+                    workTrim,
+                    markOffsetPt,
+                    markLengthPt,
+                    request.getCropMarkWeightPt());
+            if (required == null) {
+                required =
+                        new BleedEdges(0, 0, 0, 0)
+                                .unionWith(workTrim, true, markOffsetPt, markLengthPt);
+            }
+        }
+        // MediaBox/CropBox grow to cover whatever content was generated outside them.
+        if (required != null) {
+            page.setMediaBox(union(effectiveMedia, required));
+            PDRectangle effectiveCrop = crop != null ? crop : page.getCropBox();
+            page.setCropBox(union(effectiveCrop, required));
+            if (trim == null) {
+                // The bleed was painted relative to this box; materialize it so viewers and
+                // downstream tools see the same geometry the generator used.
+                page.setTrimBox(workTrim);
+            }
+        } else if (media != null) {
+            page.setMediaBox(media);
+        }
         if (trim != null) {
             page.setTrimBox(trim);
         }
-
-        PDRectangle bleed = parseRect(request.getBleedBox(), "bleedBox");
-        if (bleed == null && request.getBleedMm() > 0) {
-            PDRectangle resolvedTrim = trim != null ? trim : page.getTrimBox();
-            bleed = expand(resolvedTrim, request.getBleedMm());
+        if (bleed == null && request.getBleedMm() > 0 && !generate) {
+            bleed = expand(workTrim, request.getBleedMm());
         }
         if (bleed != null) {
             page.setBleedBox(bleed);
         }
-
-        PDRectangle crop = parseRect(request.getCropBox(), "cropBox");
-        if (crop != null) {
+        if (crop != null && required == null) {
             page.setCropBox(crop);
         }
-
-        PDRectangle art = parseRect(request.getArtBox(), "artBox");
         if (art != null) {
             page.setArtBox(art);
         }
@@ -119,19 +247,64 @@ public class SetPageBoxesController {
             // All PDPage box getters fall back to CropBox or MediaBox when the entry is
             // absent, so presence is tested on the page dictionary.
             COSDictionary dict = page.getCOSObject();
-            if (crop == null && dict.getItem(COSName.CROP_BOX) == null) {
-                page.setCropBox(effectiveMedia);
+            PDRectangle appliedMedia = page.getMediaBox();
+            if (dict.getItem(COSName.CROP_BOX) == null) {
+                page.setCropBox(appliedMedia);
             }
-            if (trim == null && dict.getItem(COSName.TRIM_BOX) == null) {
-                page.setTrimBox(effectiveMedia);
+            if (dict.getItem(COSName.TRIM_BOX) == null) {
+                page.setTrimBox(appliedMedia);
             }
-            if (bleed == null && dict.getItem(COSName.BLEED_BOX) == null) {
-                page.setBleedBox(effectiveMedia);
+            if (dict.getItem(COSName.BLEED_BOX) == null) {
+                page.setBleedBox(appliedMedia);
             }
-            if (art == null && dict.getItem(COSName.ART_BOX) == null) {
-                page.setArtBox(effectiveMedia);
+            if (dict.getItem(COSName.ART_BOX) == null) {
+                page.setArtBox(appliedMedia);
             }
         }
+    }
+
+    /**
+     * Per-side bleed in points: each explicit side wins, otherwise bleedMm, otherwise the gap
+     * between an explicit bleedBox and the trim.
+     */
+    private static BleedEdges resolveBleedEdges(
+            SetPageBoxesRequest request, PDRectangle trim, PDRectangle bleedBox) {
+        float left = resolveSide(request.getBleedLeftMm(), request.getBleedMm());
+        float right = resolveSide(request.getBleedRightMm(), request.getBleedMm());
+        float bottom = resolveSide(request.getBleedBottomMm(), request.getBleedMm());
+        float top = resolveSide(request.getBleedTopMm(), request.getBleedMm());
+        if (bleedBox != null) {
+            left =
+                    Math.max(
+                            left,
+                            Math.max(0, trim.getLowerLeftX() - bleedBox.getLowerLeftX())
+                                    / MM_TO_POINTS);
+            right =
+                    Math.max(
+                            right,
+                            Math.max(0, bleedBox.getUpperRightX() - trim.getUpperRightX())
+                                    / MM_TO_POINTS);
+            bottom =
+                    Math.max(
+                            bottom,
+                            Math.max(0, trim.getLowerLeftY() - bleedBox.getLowerLeftY())
+                                    / MM_TO_POINTS);
+            top =
+                    Math.max(
+                            top,
+                            Math.max(0, bleedBox.getUpperRightY() - trim.getUpperRightY())
+                                    / MM_TO_POINTS);
+        }
+        return new BleedEdges(
+                left * MM_TO_POINTS,
+                right * MM_TO_POINTS,
+                bottom * MM_TO_POINTS,
+                top * MM_TO_POINTS);
+    }
+
+    private static float resolveSide(float sideMm, float bleedMm) {
+        // Negative per-side values mean "not set": fall back to the uniform bleedMm.
+        return Math.max(0, sideMm >= 0 ? sideMm : bleedMm);
     }
 
     private static boolean notBlank(String value) {
@@ -180,8 +353,7 @@ public class SetPageBoxesController {
             throw new IllegalArgumentException(
                     name + " of " + marginMm + "mm leaves no area inside the MediaBox");
         }
-        return new PDRectangle(
-                rect.getLowerLeftX() + m, rect.getLowerLeftY() + m, width, height);
+        return new PDRectangle(rect.getLowerLeftX() + m, rect.getLowerLeftY() + m, width, height);
     }
 
     private static PDRectangle expand(PDRectangle rect, float marginMm) {
@@ -191,5 +363,15 @@ public class SetPageBoxesController {
                 rect.getLowerLeftY() - m,
                 rect.getWidth() + 2 * m,
                 rect.getHeight() + 2 * m);
+    }
+
+    private static PDRectangle union(PDRectangle a, PDRectangle b) {
+        float llx = Math.min(a.getLowerLeftX(), b.getLowerLeftX());
+        float lly = Math.min(a.getLowerLeftY(), b.getLowerLeftY());
+        return new PDRectangle(
+                llx,
+                lly,
+                Math.max(a.getUpperRightX(), b.getUpperRightX()) - llx,
+                Math.max(a.getUpperRightY(), b.getUpperRightY()) - lly);
     }
 }
