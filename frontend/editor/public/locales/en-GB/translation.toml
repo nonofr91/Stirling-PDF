@@ -13306,6 +13306,7 @@ fonts = "Fonts"
 images = "Images"
 lowRes = "{{count}} below threshold"
 pageCount = "Pages"
+technical = "Technical separations"
 title = "Document facts"
 type3 = "Type 3"
 

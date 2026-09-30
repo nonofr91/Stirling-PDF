@@ -519,4 +519,298 @@ class PrintPreflightControllerTest {
                     "expected notes for page-level findings, got " + annotations.size());
         }
     }
+
+    /**
+     * A thin stroke painted in a named separation — crop marks ("All") and die-cut paths
+     * ("CutContour") are machine drivers, not spot ink on the artwork.
+     */
+    private static byte[] spotStrokePdf(String colorant) throws IOException {
+        PDDocument doc = new PDDocument();
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
+        org.apache.pdfbox.pdmodel.graphics.color.PDSeparation sep =
+                new org.apache.pdfbox.pdmodel.graphics.color.PDSeparation();
+        sep.setColorantName(colorant);
+        sep.setAlternateColorSpace(org.apache.pdfbox.pdmodel.graphics.color.PDDeviceCMYK.INSTANCE);
+        org.apache.pdfbox.cos.COSDictionary fn = new org.apache.pdfbox.cos.COSDictionary();
+        fn.setInt(org.apache.pdfbox.cos.COSName.FUNCTION_TYPE, 2);
+        org.apache.pdfbox.cos.COSArray c0 = new org.apache.pdfbox.cos.COSArray();
+        org.apache.pdfbox.cos.COSArray c1 = new org.apache.pdfbox.cos.COSArray();
+        for (int i = 0; i < 4; i++) {
+            c0.add(org.apache.pdfbox.cos.COSInteger.ZERO);
+            c1.add(org.apache.pdfbox.cos.COSInteger.ZERO);
+        }
+        c1.set(3, org.apache.pdfbox.cos.COSInteger.ONE);
+        fn.setItem(org.apache.pdfbox.cos.COSName.C0, c0);
+        fn.setItem(org.apache.pdfbox.cos.COSName.C1, c1);
+        fn.setFloat(org.apache.pdfbox.cos.COSName.N, 1f);
+        sep.setTintTransform(new org.apache.pdfbox.pdmodel.common.function.PDFunctionType2(fn));
+        try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+            cs.setStrokingColor(
+                    new org.apache.pdfbox.pdmodel.graphics.color.PDColor(new float[] {1f}, sep));
+            cs.setLineWidth(0.1f);
+            cs.moveTo(50, 50);
+            cs.lineTo(400, 50);
+            cs.stroke();
+        }
+        return toBytes(doc);
+    }
+
+    @Test
+    void testRegistrationAndCutPathSeparationsAreTechnical() throws Exception {
+        for (String colorant : new String[] {"All", "CutContour"}) {
+            PrintPreflightReport report =
+                    controller.printPreflight(request(spotStrokePdf(colorant))).getBody();
+            assertNotNull(report);
+            assertFalse(
+                    hasFinding(report, "COLOR_SPOT"),
+                    colorant + " is a technical separation, not print ink");
+            assertFalse(
+                    hasFinding(report, "HAIRLINE"),
+                    colorant + " paths drive finishing — never a hairline finding");
+            assertTrue(
+                    report.getFacts().getTechnicalSeparations().contains(colorant),
+                    "expected " + colorant + " in technicalSeparations");
+        }
+    }
+
+    @Test
+    void testRealSpotInkStillFlags() throws Exception {
+        PrintPreflightReport report =
+                controller.printPreflight(request(spotStrokePdf("PANTONE 185 C"))).getBody();
+        assertNotNull(report);
+        assertTrue(hasFinding(report, "COLOR_SPOT"));
+        assertTrue(hasFinding(report, "HAIRLINE"));
+        assertTrue(report.getFacts().getTechnicalSeparations().isEmpty());
+    }
+
+    /** A hairline stroked inside an optional-content layer; printOff adds Usage/Print/OFF. */
+    private static byte[] layerStrokePdf(
+            String layerName,
+            boolean printOff,
+            org.apache.pdfbox.pdmodel.graphics.color.PDColor ink)
+            throws IOException {
+        PDDocument doc = new PDDocument();
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
+        org.apache.pdfbox.pdmodel.graphics.optionalcontent.PDOptionalContentGroup ocg =
+                new org.apache.pdfbox.pdmodel.graphics.optionalcontent.PDOptionalContentGroup(
+                        layerName);
+        if (printOff) {
+            org.apache.pdfbox.cos.COSDictionary usage = new org.apache.pdfbox.cos.COSDictionary();
+            org.apache.pdfbox.cos.COSDictionary print = new org.apache.pdfbox.cos.COSDictionary();
+            print.setItem(
+                    org.apache.pdfbox.cos.COSName.getPDFName("PrintState"),
+                    org.apache.pdfbox.cos.COSName.OFF);
+            usage.setItem(org.apache.pdfbox.cos.COSName.getPDFName("Print"), print);
+            ocg.getCOSObject().setItem(org.apache.pdfbox.cos.COSName.getPDFName("Usage"), usage);
+        }
+        org.apache.pdfbox.pdmodel.graphics.optionalcontent.PDOptionalContentProperties ocProps =
+                new org.apache.pdfbox.pdmodel.graphics.optionalcontent
+                        .PDOptionalContentProperties();
+        ocProps.addGroup(ocg);
+        doc.getDocumentCatalog().setOCProperties(ocProps);
+        page.setResources(new org.apache.pdfbox.pdmodel.PDResources());
+        page.getResources().put(org.apache.pdfbox.cos.COSName.getPDFName("Layer"), ocg);
+        try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+            cs.beginMarkedContent(org.apache.pdfbox.cos.COSName.OC, ocg);
+            cs.setStrokingColor(ink);
+            cs.setLineWidth(0.1f);
+            cs.moveTo(50, 50);
+            cs.lineTo(400, 50);
+            cs.stroke();
+            cs.endMarkedContent();
+        }
+        return toBytes(doc);
+    }
+
+    @Test
+    void testNonPrintingLayerContentIsTechnical() throws Exception {
+        // A hairline inside an OCG whose usage turns print off drives finishing gear —
+        // it must not surface as a print hairline.
+        byte[] pdf =
+                layerStrokePdf(
+                        "Process",
+                        true,
+                        new org.apache.pdfbox.pdmodel.graphics.color.PDColor(
+                                new float[] {0f, 0f, 0f, 1f},
+                                org.apache.pdfbox.pdmodel.graphics.color.PDDeviceCMYK.INSTANCE));
+
+        PrintPreflightReport report = controller.printPreflight(request(pdf)).getBody();
+        assertNotNull(report);
+        assertFalse(
+                hasFinding(report, "HAIRLINE"),
+                "strokes on a print-off layer drive machines, not the press sheet");
+    }
+
+    @Test
+    void testRgbInNonPrintingLayerIsNotFlagged() throws Exception {
+        // RGB paint that never reaches the sheet is not a print risk.
+        byte[] pdf =
+                layerStrokePdf(
+                        "Guides",
+                        true,
+                        new org.apache.pdfbox.pdmodel.graphics.color.PDColor(
+                                new float[] {1f, 0f, 0f},
+                                org.apache.pdfbox.pdmodel.graphics.color.PDDeviceRGB.INSTANCE));
+
+        PrintPreflightReport report = controller.printPreflight(request(pdf)).getBody();
+        assertNotNull(report);
+        assertFalse(
+                hasFinding(report, "COLOR_RGB_USED"),
+                "RGB on a print-off layer never reaches the press sheet");
+    }
+
+    @Test
+    void testFinishingNamedLayerIsTechnical() throws Exception {
+        // A layer named like a cut path is technical even when print stays ON.
+        byte[] pdf =
+                layerStrokePdf(
+                        "dieline",
+                        false,
+                        new org.apache.pdfbox.pdmodel.graphics.color.PDColor(
+                                new float[] {0f, 0f, 0f, 1f},
+                                org.apache.pdfbox.pdmodel.graphics.color.PDDeviceCMYK.INSTANCE));
+
+        PrintPreflightReport report = controller.printPreflight(request(pdf)).getBody();
+        assertNotNull(report);
+        assertFalse(
+                hasFinding(report, "HAIRLINE"),
+                "a layer named 'dieline' drives the die, not the press sheet");
+    }
+
+    /** An OCG named {@code name} flagged off for the print destination, registered on the page. */
+    private static org.apache.pdfbox.pdmodel.graphics.optionalcontent.PDOptionalContentGroup
+            printOffOcg(PDDocument doc, PDPage page, String name) {
+        org.apache.pdfbox.pdmodel.graphics.optionalcontent.PDOptionalContentGroup ocg =
+                new org.apache.pdfbox.pdmodel.graphics.optionalcontent.PDOptionalContentGroup(name);
+        org.apache.pdfbox.cos.COSDictionary usage = new org.apache.pdfbox.cos.COSDictionary();
+        org.apache.pdfbox.cos.COSDictionary print = new org.apache.pdfbox.cos.COSDictionary();
+        print.setItem(
+                org.apache.pdfbox.cos.COSName.getPDFName("PrintState"),
+                org.apache.pdfbox.cos.COSName.OFF);
+        usage.setItem(org.apache.pdfbox.cos.COSName.getPDFName("Print"), print);
+        ocg.getCOSObject().setItem(org.apache.pdfbox.cos.COSName.getPDFName("Usage"), usage);
+        page.setResources(new org.apache.pdfbox.pdmodel.PDResources());
+        return ocg;
+    }
+
+    @Test
+    void testTechnicalTransparencyIgnored() throws Exception {
+        // Alpha on a print-off layer never reaches the sheet — nothing to flatten.
+        PDDocument doc = new PDDocument();
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
+        org.apache.pdfbox.pdmodel.graphics.optionalcontent.PDOptionalContentGroup ocg =
+                printOffOcg(doc, page, "Guides");
+        try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+            cs.beginMarkedContent(org.apache.pdfbox.cos.COSName.OC, ocg);
+            PDExtendedGraphicsState gs = new PDExtendedGraphicsState();
+            gs.setNonStrokingAlphaConstant(0.5f);
+            cs.setGraphicsStateParameters(gs);
+            cs.setNonStrokingColor(0f, 0f, 0f);
+            cs.addRect(50, 50, 100, 100);
+            cs.fill();
+            cs.endMarkedContent();
+        }
+        byte[] pdf = toBytes(doc);
+
+        PrintPreflightReport report = controller.printPreflight(request(pdf)).getBody();
+        assertNotNull(report);
+        assertFalse(
+                hasFinding(report, "TRANSPARENCY"),
+                "alpha on a print-off layer never reaches the press sheet");
+        assertFalse(report.getFacts().isTransparencyUsed());
+    }
+
+    @Test
+    void testTechnicalImageIgnored() throws Exception {
+        // A raster guide on a print-off layer is not artwork — no low-res warning.
+        PDDocument doc = new PDDocument();
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
+        org.apache.pdfbox.pdmodel.graphics.optionalcontent.PDOptionalContentGroup ocg =
+                printOffOcg(doc, page, "Guides");
+        BufferedImage img = new BufferedImage(10, 10, BufferedImage.TYPE_INT_RGB);
+        PDImageXObject xo = LosslessFactory.createFromImage(doc, img);
+        try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+            cs.beginMarkedContent(org.apache.pdfbox.cos.COSName.OC, ocg);
+            cs.drawImage(xo, 50, 50, 300, 300);
+            cs.endMarkedContent();
+        }
+        byte[] pdf = toBytes(doc);
+
+        PrintPreflightReport report = controller.printPreflight(request(pdf)).getBody();
+        assertNotNull(report);
+        assertFalse(hasFinding(report, "IMAGE_LOW_RES"));
+        assertEquals(0, report.getFacts().getImageCount());
+    }
+
+    @Test
+    void testMalformedPrintStateDoesNotAbort() throws Exception {
+        // A PrintState outside the RenderState enum must not sink the page's whole pass.
+        PDDocument doc = new PDDocument();
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
+        org.apache.pdfbox.pdmodel.graphics.optionalcontent.PDOptionalContentGroup ocg =
+                new org.apache.pdfbox.pdmodel.graphics.optionalcontent.PDOptionalContentGroup(
+                        "Weird");
+        org.apache.pdfbox.cos.COSDictionary usage = new org.apache.pdfbox.cos.COSDictionary();
+        org.apache.pdfbox.cos.COSDictionary print = new org.apache.pdfbox.cos.COSDictionary();
+        print.setItem(
+                org.apache.pdfbox.cos.COSName.getPDFName("PrintState"),
+                org.apache.pdfbox.cos.COSName.getPDFName("Bogus"));
+        usage.setItem(org.apache.pdfbox.cos.COSName.getPDFName("Print"), print);
+        ocg.getCOSObject().setItem(org.apache.pdfbox.cos.COSName.getPDFName("Usage"), usage);
+        page.setResources(new org.apache.pdfbox.pdmodel.PDResources());
+        try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+            cs.beginMarkedContent(org.apache.pdfbox.cos.COSName.OC, ocg);
+            cs.setStrokingColor(0f, 0f, 0f, 1f);
+            cs.setLineWidth(0.1f);
+            cs.moveTo(50, 50);
+            cs.lineTo(400, 50);
+            cs.stroke();
+            cs.endMarkedContent();
+        }
+        byte[] pdf = toBytes(doc);
+
+        PrintPreflightReport report = controller.printPreflight(request(pdf)).getBody();
+        assertNotNull(report);
+        assertFalse(
+                hasFinding(report, "CONTENT_PARSE_ERROR"),
+                "one malformed layer state must not abort the page's analysis");
+        assertTrue(hasFinding(report, "HAIRLINE"), "content pass should survive a bogus state");
+    }
+
+    @Test
+    void testOcmdTechnicalContext() throws Exception {
+        // An OCMD grouping only print-off layers is technical too — ISO 19593-1 files wrap
+        // finishing steps in membership dictionaries.
+        PDDocument doc = new PDDocument();
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
+        org.apache.pdfbox.pdmodel.graphics.optionalcontent.PDOptionalContentGroup ocg =
+                printOffOcg(doc, page, "Cut");
+        org.apache.pdfbox.pdmodel.graphics.optionalcontent.PDOptionalContentMembershipDictionary
+                ocmd =
+                        new org.apache.pdfbox.pdmodel.graphics.optionalcontent
+                                .PDOptionalContentMembershipDictionary();
+        ocmd.setOCGs(java.util.List.of(ocg));
+        try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+            cs.beginMarkedContent(org.apache.pdfbox.cos.COSName.OC, ocmd);
+            cs.setStrokingColor(0f, 0f, 0f, 1f);
+            cs.setLineWidth(0.1f);
+            cs.moveTo(50, 50);
+            cs.lineTo(400, 50);
+            cs.stroke();
+            cs.endMarkedContent();
+        }
+        byte[] pdf = toBytes(doc);
+
+        PrintPreflightReport report = controller.printPreflight(request(pdf)).getBody();
+        assertNotNull(report);
+        assertFalse(
+                hasFinding(report, "HAIRLINE"),
+                "content under an OCMD of print-off layers drives machines, not the sheet");
+    }
 }

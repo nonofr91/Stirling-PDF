@@ -133,6 +133,7 @@ public class PrintPreflightReport {
         private List<FontFact> fonts = new ArrayList<>();
         private List<String> colorSpaces = new ArrayList<>();
         private List<String> spotColors = new ArrayList<>();
+        private List<String> technicalSeparations = new ArrayList<>();
         private int imageCount;
         private int lowResImageCount;
         private boolean transparencyUsed;

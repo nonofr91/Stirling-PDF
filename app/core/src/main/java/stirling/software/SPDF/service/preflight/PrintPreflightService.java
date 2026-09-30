@@ -65,6 +65,7 @@ public class PrintPreflightService {
         Map<String, FontUse> fonts = new LinkedHashMap<>();
         Map<String, Integer> colorSpaceCounts = new LinkedHashMap<>();
         Set<String> spotColors = new LinkedHashSet<>();
+        Set<String> technicalSeparations = new LinkedHashSet<>();
         List<ImageUse> images = new ArrayList<>();
         Map<Integer, List<ImageUse>> lowResByPage = new LinkedHashMap<>();
         double minImageDpi = Double.MAX_VALUE;
@@ -131,7 +132,11 @@ public class PrintPreflightService {
             engine.getColorSpaceCounts()
                     .forEach((k, v) -> colorSpaceCounts.merge(k, v, Integer::sum));
             spotColors.addAll(engine.getSpotColors());
+            technicalSeparations.addAll(engine.getTechnicalSeparations());
             for (ImageUse img : engine.getImages()) {
+                if (img.technical) {
+                    continue;
+                }
                 images.add(img);
                 if (!Double.isNaN(img.effectiveDpi)) {
                     minImageDpi = Math.min(minImageDpi, img.effectiveDpi);
@@ -141,6 +146,9 @@ public class PrintPreflightService {
                 }
             }
             for (PaintedArea area : engine.getPaintAreas()) {
+                if (area.technical) {
+                    continue;
+                }
                 String label = area.label != null ? area.label : "";
                 if (label.contains("RGB") || label.startsWith("Indexed over DeviceRGB")) {
                     rgbAreasByPage.computeIfAbsent(pageNum, k -> new ArrayList<>()).add(area);
@@ -149,14 +157,14 @@ public class PrintPreflightService {
                     spotAreasByPage.computeIfAbsent(pageNum, k -> new ArrayList<>()).add(area);
                 }
             }
-            if (!engine.getAlphaAreas().isEmpty()) {
-                alphaAreasByPage
-                        .computeIfAbsent(pageNum, k -> new ArrayList<>())
-                        .addAll(engine.getAlphaAreas());
+            for (PaintedArea area : engine.getAlphaAreas()) {
+                if (!area.technical) {
+                    alphaAreasByPage.computeIfAbsent(pageNum, k -> new ArrayList<>()).add(area);
+                }
             }
             List<StrokeUse> thin = new ArrayList<>();
             for (StrokeUse s : engine.getStrokes()) {
-                if (s.widthPt < request.getHairlineThresholdPt()) {
+                if (!s.technical && s.widthPt < request.getHairlineThresholdPt()) {
                     thin.add(s);
                 }
             }
@@ -239,6 +247,11 @@ public class PrintPreflightService {
             }
         }
 
+        // Registration marks and finishing separations (cut paths, fold, varnish…) live in
+        // facts.technicalSeparations — they are machine drivers, not ink on the artwork.
+        Set<String> printSpots = new LinkedHashSet<>(spotColors);
+        printSpots.removeAll(technicalSeparations);
+
         Facts facts = report.getFacts();
         for (FontUse f : fonts.values()) {
             FontFact fact = new FontFact(f.name, f.subType, f.embedded, f.type3);
@@ -246,7 +259,8 @@ public class PrintPreflightService {
             facts.getFonts().add(fact);
         }
         facts.setColorSpaces(new ArrayList<>(colorSpaceCounts.keySet()));
-        facts.setSpotColors(new ArrayList<>(spotColors));
+        facts.setSpotColors(new ArrayList<>(printSpots));
+        facts.setTechnicalSeparations(new ArrayList<>(technicalSeparations));
         facts.setImageCount(images.size());
         facts.setLowResImageCount(lowResByPage.values().stream().mapToInt(List::size).sum());
         facts.setTransparencyUsed(transparency);
@@ -332,13 +346,13 @@ public class PrintPreflightService {
             addPaintAreas(finding, rgbAreasByPage);
             report.addFinding(finding);
         }
-        if (!spotColors.isEmpty()) {
+        if (!printSpots.isEmpty()) {
             Finding finding =
                     new Finding(
                             Severity.INFO,
                             Category.COLOR,
                             "COLOR_SPOT",
-                            "Spot colors in use: " + String.join(", ", spotColors),
+                            "Spot colors in use: " + String.join(", ", printSpots),
                             new ArrayList<>(spotAreasByPage.keySet()));
             addPaintAreas(finding, spotAreasByPage);
             report.addFinding(finding);

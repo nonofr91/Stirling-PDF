@@ -13306,6 +13306,7 @@ fonts = "Polices"
 images = "Images"
 lowRes = "{{count}} sous le seuil"
 pageCount = "Pages"
+technical = "Séparations techniques"
 title = "Caractéristiques du document"
 type3 = "Type 3"
 

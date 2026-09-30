@@ -56,6 +56,7 @@ export interface PreflightFacts {
   fonts: PreflightFontFact[];
   colorSpaces: string[];
   spotColors: string[];
+  technicalSeparations: string[];
   imageCount: number;
   lowResImageCount: number;
   transparencyUsed: boolean;

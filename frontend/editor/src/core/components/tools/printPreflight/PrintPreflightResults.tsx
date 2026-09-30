@@ -402,6 +402,28 @@ const PrintPreflightResults = ({
                         </Group>
                       </Stack>
                     )}
+                    {report.facts.technicalSeparations.length > 0 && (
+                      <Stack gap={2}>
+                        <Text size="sm" fw={600}>
+                          {t(
+                            "printPreflight.facts.technical",
+                            "Technical separations",
+                          )}
+                        </Text>
+                        <Group gap="xs">
+                          {report.facts.technicalSeparations.map((s) => (
+                            <Badge
+                              key={s}
+                              variant="outline"
+                              size="sm"
+                              color="teal"
+                            >
+                              {s}
+                            </Badge>
+                          ))}
+                        </Group>
+                      </Stack>
+                    )}
                     <Text size="sm">
                       <strong>
                         {t("printPreflight.facts.images", "Images")}:
