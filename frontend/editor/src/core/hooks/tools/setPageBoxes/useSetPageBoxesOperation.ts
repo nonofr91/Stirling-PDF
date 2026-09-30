@@ -31,6 +31,7 @@ export const setPageBoxesToApiParams = (
   artBox: nonEmpty(parameters.artBox),
   trimMarginMm: parameters.trimMarginMm,
   bleedMm: parameters.bleedMm,
+  deriveFromCropMarks: parameters.deriveFromCropMarks,
   copyMissingFromMediaBox: parameters.copyMissingFromMediaBox,
   generateBleed: parameters.generateBleed,
   bleedMethod: parameters.bleedMethod,
@@ -57,6 +58,8 @@ export const setPageBoxesFromApiParams = (
   artBox: apiParams.artBox ?? defaultParameters.artBox,
   trimMarginMm: apiParams.trimMarginMm,
   bleedMm: apiParams.bleedMm,
+  deriveFromCropMarks:
+    apiParams.deriveFromCropMarks ?? defaultParameters.deriveFromCropMarks,
   copyMissingFromMediaBox:
     apiParams.copyMissingFromMediaBox ??
     defaultParameters.copyMissingFromMediaBox,

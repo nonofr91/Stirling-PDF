@@ -24,6 +24,7 @@ import stirling.software.common.enumeration.ResourceWeight;
 import stirling.software.common.model.tool.ToolFormat;
 import stirling.software.common.model.tool.ToolIO;
 import stirling.software.common.service.CustomPDFDocumentFactory;
+import stirling.software.common.util.CropMarkDetector;
 import stirling.software.common.util.GeneralUtils;
 import stirling.software.common.util.PageBleedGenerator;
 import stirling.software.common.util.PageBleedGenerator.BleedEdges;
@@ -88,6 +89,7 @@ public class SetPageBoxesController {
                 || notBlank(request.getArtBox())
                 || request.getBleedMm() > 0
                 || request.getTrimMarginMm() > 0
+                || request.isDeriveFromCropMarks()
                 || request.isCopyMissingFromMediaBox()
                 || request.isGenerateBleed()
                 || request.isAddCropMarks();
@@ -154,8 +156,17 @@ public class SetPageBoxesController {
         PDRectangle effectiveMedia = media != null ? media : page.getMediaBox();
 
         PDRectangle trim = parseRect(request.getTrimBox(), "trimBox");
+        boolean trimDetected = false;
         if (trim == null && request.getTrimMarginMm() > 0) {
             trim = inset(effectiveMedia, request.getTrimMarginMm(), "trimMarginMm");
+        }
+        if (trim == null && request.isDeriveFromCropMarks()) {
+            trim = CropMarkDetector.detect(page);
+            if (trim == null) {
+                throw new IllegalArgumentException(
+                        "No unambiguous crop marks detected on page " + (pageIndex + 1));
+            }
+            trimDetected = true;
         }
         PDRectangle workTrim = trim != null ? trim : page.getTrimBox();
 
@@ -224,6 +235,11 @@ public class SetPageBoxesController {
         PDRectangle growTo = required;
         if (bleed != null) {
             growTo = growTo == null ? bleed : union(growTo, bleed);
+        }
+        if (trimDetected) {
+            // A trim read off the marks can legitimately extend past the current page edges
+            // (marks sit on a larger printed sheet); clip-bound boxes must grow to cover it.
+            growTo = growTo == null ? trim : union(growTo, trim);
         }
         if (growTo != null) {
             page.setMediaBox(union(effectiveMedia, growTo));

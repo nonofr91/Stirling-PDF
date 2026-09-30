@@ -13340,6 +13340,10 @@ offset = "Offset (mm)"
 section = "Crop marks"
 weight = "Stroke (pt)"
 
+[setPageBoxes.deriveFromCropMarks]
+desc = "Detect painted cut marks to place the TrimBox. Used only when no TrimBox or trim margin is given; fails on pages without clear marks."
+label = "Derive TrimBox from crop marks"
+
 [setPageBoxes.generateBleed]
 bleedBottomMm = "Bottom (mm)"
 bleedLeftMm = "Left (mm)"

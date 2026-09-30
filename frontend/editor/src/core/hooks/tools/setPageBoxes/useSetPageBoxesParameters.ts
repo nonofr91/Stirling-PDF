@@ -26,6 +26,7 @@ export interface SetPageBoxesParameters extends BaseParameters {
   artBox: string;
   trimMarginMm?: number;
   bleedMm?: number;
+  deriveFromCropMarks: boolean;
   copyMissingFromMediaBox: boolean;
   generateBleed: boolean;
   bleedMethod: BleedMethod;
@@ -51,6 +52,7 @@ export const defaultParameters: SetPageBoxesParameters = {
   artBox: "",
   trimMarginMm: undefined,
   bleedMm: undefined,
+  deriveFromCropMarks: false,
   copyMissingFromMediaBox: false,
   generateBleed: false,
   bleedMethod: "MIRROR",
@@ -96,6 +98,7 @@ export function validateSetPageBoxesParameters(
   if (
     !hasExplicitBox &&
     !hasMargin &&
+    !params.deriveFromCropMarks &&
     !params.copyMissingFromMediaBox &&
     !params.generateBleed &&
     !params.addCropMarks

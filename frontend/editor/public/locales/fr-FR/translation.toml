@@ -13340,6 +13340,10 @@ offset = "Décalage (mm)"
 section = "Traits de coupe"
 weight = "Épaisseur (pt)"
 
+[setPageBoxes.deriveFromCropMarks]
+desc = "Détecte les traits de coupe peints pour placer la TrimBox. Utilisé seulement si aucune TrimBox ni marge de rognage n'est fournie ; échoue sur les pages sans marques nettes."
+label = "Dériver la TrimBox des traits de coupe"
+
 [setPageBoxes.generateBleed]
 bleedBottomMm = "Bas (mm)"
 bleedLeftMm = "Gauche (mm)"

@@ -64,6 +64,15 @@ describe("validateSetPageBoxesParameters", () => {
     expect(validateSetPageBoxesParameters(defaultParameters)).toBe(false);
   });
 
+  test("accepts deriveFromCropMarks alone as work", () => {
+    expect(
+      validateSetPageBoxesParameters({
+        ...defaultParameters,
+        deriveFromCropMarks: true,
+      }),
+    ).toBe(true);
+  });
+
   test.each(["10,10,400,600", " 0 , 0 , 595 , 842 ", "-15,-15,630,875"])(
     "accepts a valid box string %s",
     (trimBox) => {
@@ -318,5 +327,56 @@ describe("computeResultingBoxes", () => {
     );
     expect(r.MEDIA_BOX.rect.width).toBeCloseTo(595 + 30);
     expect(r.CROP_BOX.rect.width).toBeCloseTo(595 + 30);
+  });
+
+  test("deriveFromCropMarks leaves the trim and dependent boxes undecided", () => {
+    // The detected trim is unknowable client-side: expanding bleed or crop
+    // marks from the inherited rect would draw them around the wrong area.
+    const r = computeResultingBoxes(
+      {
+        ...defaultParameters,
+        deriveFromCropMarks: true,
+        bleedMm: 5,
+        addCropMarks: true,
+      },
+      bareSnapshot,
+      parseBoxString,
+    );
+    expect(r.TRIM_BOX.inherited).toBe(true);
+    expect(r.BLEED_BOX.inherited).toBe(true);
+    expect(r.MEDIA_BOX.rect).toEqual(rect(0, 0, 595, 842));
+    expect(r.CROP_BOX.rect).toEqual(rect(0, 0, 595, 842));
+  });
+
+  test("deriveFromCropMarks yields to an explicit trimBox", () => {
+    const r = computeResultingBoxes(
+      {
+        ...defaultParameters,
+        deriveFromCropMarks: true,
+        trimBox: "20,30,400,600",
+        bleedMm: 5,
+      },
+      bareSnapshot,
+      parseBoxString,
+    );
+    expect(r.TRIM_BOX.rect).toEqual(rect(20, 30, 400, 600));
+    expect(r.TRIM_BOX.inherited).toBe(false);
+    const mm5 = 5 * (72 / 25.4);
+    expect(r.BLEED_BOX.rect.x).toBeCloseTo(20 - mm5);
+  });
+
+  test("copyMissingFromMediaBox does not fill the derived TrimBox", () => {
+    const r = computeResultingBoxes(
+      {
+        ...defaultParameters,
+        deriveFromCropMarks: true,
+        copyMissingFromMediaBox: true,
+      },
+      bareSnapshot,
+      parseBoxString,
+    );
+    expect(r.TRIM_BOX.inherited).toBe(true);
+    expect(r.BLEED_BOX.inherited).toBe(false);
+    expect(r.BLEED_BOX.rect).toEqual(rect(0, 0, 595, 842));
   });
 });

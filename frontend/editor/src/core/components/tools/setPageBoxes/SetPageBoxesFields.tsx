@@ -111,6 +111,30 @@ const SetPageBoxesFields = ({
       />
 
       <Checkbox
+        label={
+          <div>
+            <Text size="sm">
+              {t(
+                "setPageBoxes.deriveFromCropMarks.label",
+                "Derive TrimBox from crop marks",
+              )}
+            </Text>
+            <Text size="xs" c="dimmed">
+              {t(
+                "setPageBoxes.deriveFromCropMarks.desc",
+                "Detect painted cut marks to place the TrimBox. Used only when no TrimBox or trim margin is given; fails on pages without clear marks.",
+              )}
+            </Text>
+          </div>
+        }
+        checked={parameters.deriveFromCropMarks}
+        onChange={(e) =>
+          onParameterChange("deriveFromCropMarks", e.currentTarget.checked)
+        }
+        disabled={disabled}
+      />
+
+      <Checkbox
         label={t(
           "setPageBoxes.copyMissingFromMediaBox",
           "Copy MediaBox into boxes left unset",

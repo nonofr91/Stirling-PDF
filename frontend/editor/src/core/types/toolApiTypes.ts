@@ -1507,6 +1507,10 @@ export interface SetPageBoxesRequest {
    */
   cropMarkWeightPt?: number;
   /**
+   * Derive the TrimBox from crop marks painted on the page (like pdfToolbox's derive geometry fixup). Used only when no explicit trimBox or trimMarginMm resolves a trim; fails the page when the mark layout is absent or ambiguous
+   */
+  deriveFromCropMarks?: boolean;
+  /**
    * Paint real bleed content between TrimBox and BleedBox on every page (mirrored or repeated edge content), so trimming leaves no white edge. Requires a positive bleedMm or per-side amount, or an explicit bleedBox larger than the trim
    */
   generateBleed?: boolean;

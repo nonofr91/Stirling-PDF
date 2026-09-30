@@ -1650,6 +1650,10 @@ class SetPageBoxesParams(ApiModel):
         3, description="Gap in millimetres between the trim edge and where each crop mark starts", ge=0.0
     )
     crop_mark_weight_pt: float = Field(0.25, description="Crop mark stroke width in points", ge=0.0)
+    derive_from_crop_marks: bool = Field(
+        False,
+        description="Derive the TrimBox from crop marks painted on the page (like pdfToolbox's derive geometry fixup). Used only when no explicit trimBox or trimMarginMm resolves a trim; fails the page when the mark layout is absent or ambiguous",
+    )
     generate_bleed: bool = Field(
         False,
         description="Paint real bleed content between TrimBox and BleedBox on every page (mirrored or repeated edge content), so trimming leaves no white edge. Requires a positive bleedMm or per-side amount, or an explicit bleedBox larger than the trim",

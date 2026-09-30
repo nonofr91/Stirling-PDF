@@ -54,6 +54,16 @@ public class SetPageBoxesRequest extends PDFFile {
 
     @Schema(
             description =
+                    "Derive the TrimBox from crop marks painted on the page (like pdfToolbox's"
+                            + " derive geometry fixup). Used only when no explicit trimBox or"
+                            + " trimMarginMm resolves a trim; fails the page when the mark layout"
+                            + " is absent or ambiguous",
+            type = "boolean",
+            defaultValue = "false")
+    private boolean deriveFromCropMarks = false;
+
+    @Schema(
+            description =
                     "Copy the MediaBox into any of CropBox/TrimBox/BleedBox/ArtBox still unset"
                             + " after the other parameters are applied",
             type = "boolean",

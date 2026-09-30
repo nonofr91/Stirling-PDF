@@ -264,6 +264,7 @@ export function computeResultingBoxes(
     artBox: string;
     trimMarginMm?: number;
     bleedMm?: number;
+    deriveFromCropMarks?: boolean;
     copyMissingFromMediaBox: boolean;
     generateBleed?: boolean;
     bleedTopMm?: number;
@@ -297,9 +298,17 @@ export function computeResultingBoxes(
     trimRect = inset(effectiveMedia, params.trimMarginMm!);
   }
   setFrom("TRIM_BOX", trimRect);
+  // With deriveFromCropMarks the trim is detected server-side from painted
+  // marks: the shown rect is only the page's current value, so keep it
+  // flagged inherited and don't expand bleed or mark previews from it —
+  // they would be drawn around the wrong area.
+  const trimDerived = !trimRect && (params.deriveFromCropMarks ?? false);
+  if (trimDerived) {
+    result.TRIM_BOX = { rect: result.TRIM_BOX.rect, inherited: true };
+  }
 
   let bleedRect = parse(params.bleedBox);
-  if (params.generateBleed) {
+  if (params.generateBleed && !trimDerived) {
     // Negative/undefined per-side values fall back to bleedMm, like the backend.
     const side = (v?: number) =>
       Math.max(0, v !== undefined && v >= 0 ? v : (params.bleedMm ?? 0));
@@ -311,7 +320,7 @@ export function computeResultingBoxes(
       side(params.bleedTopMm),
     );
     bleedRect = bleedRect ? union(bleedRect, generated) : generated;
-  } else if (!bleedRect && (params.bleedMm ?? 0) > 0) {
+  } else if (!bleedRect && (params.bleedMm ?? 0) > 0 && !trimDerived) {
     bleedRect = expand(result.TRIM_BOX.rect, params.bleedMm!);
   }
   setFrom("BLEED_BOX", bleedRect);
@@ -320,7 +329,7 @@ export function computeResultingBoxes(
   setFrom("ART_BOX", parse(params.artBox));
 
   let growTo: BoxRect | null = null;
-  if (params.generateBleed || params.addCropMarks) {
+  if ((params.generateBleed || params.addCropMarks) && !trimDerived) {
     const marksMm = params.addCropMarks
       ? (params.cropMarkOffsetMm ?? 3) + (params.cropMarkLengthMm ?? 5)
       : 0;
@@ -352,14 +361,15 @@ export function computeResultingBoxes(
 
   if (params.copyMissingFromMediaBox) {
     // `inherited` is exactly "no param, no margin, no dict entry" — the
-    // controller's condition for filling from the MediaBox.
+    // controller's condition for filling from the MediaBox. A derived
+    // TrimBox is written by the backend, so copy-missing never fills it.
     for (const box of [
       "CROP_BOX",
       "TRIM_BOX",
       "BLEED_BOX",
       "ART_BOX",
     ] as PageBox[]) {
-      if (result[box].inherited) {
+      if (result[box].inherited && !(box === "TRIM_BOX" && trimDerived)) {
         result[box] = { rect: effectiveMedia, inherited: false };
       }
     }

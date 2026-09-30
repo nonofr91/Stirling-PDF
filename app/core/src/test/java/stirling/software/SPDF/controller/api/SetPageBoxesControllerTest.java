@@ -12,10 +12,14 @@ import java.nio.file.Path;
 
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.cos.COSName;
+import org.apache.pdfbox.pdmodel.PDAppearanceContentStream;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
+import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationRubberStamp;
+import org.apache.pdfbox.pdmodel.interactive.annotation.PDAppearanceDictionary;
+import org.apache.pdfbox.pdmodel.interactive.annotation.PDAppearanceStream;
 import org.apache.pdfbox.rendering.ImageType;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.junit.jupiter.api.BeforeEach;
@@ -99,6 +103,52 @@ class SetPageBoxesControllerTest {
         return new MockMultipartFile(
                 "fileInput",
                 "input.pdf",
+                MediaType.APPLICATION_PDF_VALUE,
+                Files.readAllBytes(pdfPath));
+    }
+
+    /**
+     * An A4 page carrying standard crop marks around {@code trim}: a horizontal and a vertical
+     * hairline at each corner, drawn the way Phase 1's generator (and InDesign) paints them.
+     */
+    private MockMultipartFile createPdfWithCropMarks(PDRectangle trim) throws IOException {
+        Path pdfPath = tempDir.resolve("marked.pdf");
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = new PDPage(PDRectangle.A4);
+            doc.addPage(page);
+            try (PDPageContentStream stream =
+                    new PDPageContentStream(
+                            doc, page, PDPageContentStream.AppendMode.APPEND, true)) {
+                stream.setLineWidth(0.25f);
+                float off = 3 * MM;
+                float len = 5 * MM;
+                float l = trim.getLowerLeftX();
+                float r = trim.getUpperRightX();
+                float b = trim.getLowerLeftY();
+                float t = trim.getUpperRightY();
+                stream.moveTo(l - off, b);
+                stream.lineTo(l - off - len, b);
+                stream.moveTo(l, b - off);
+                stream.lineTo(l, b - off - len);
+                stream.moveTo(r + off, b);
+                stream.lineTo(r + off + len, b);
+                stream.moveTo(r, b - off);
+                stream.lineTo(r, b - off - len);
+                stream.moveTo(l - off, t);
+                stream.lineTo(l - off - len, t);
+                stream.moveTo(l, t + off);
+                stream.lineTo(l, t + off + len);
+                stream.moveTo(r + off, t);
+                stream.lineTo(r + off + len, t);
+                stream.moveTo(r, t + off);
+                stream.lineTo(r, t + off + len);
+                stream.stroke();
+            }
+            doc.save(pdfPath.toFile());
+        }
+        return new MockMultipartFile(
+                "fileInput",
+                "marked.pdf",
                 MediaType.APPLICATION_PDF_VALUE,
                 Files.readAllBytes(pdfPath));
     }
@@ -586,5 +636,618 @@ class SetPageBoxesControllerTest {
         request.setBleedMethod("MIRROR_IMAGE");
 
         assertThrows(IllegalArgumentException.class, () -> controller.setPageBoxes(request));
+    }
+
+    @Test
+    void testDeriveTrimBoxFromCropMarks() throws Exception {
+        float m = 15 * MM;
+        PDRectangle painted =
+                new PDRectangle(
+                        m,
+                        m,
+                        PDRectangle.A4.getWidth() - 2 * m,
+                        PDRectangle.A4.getHeight() - 2 * m);
+        SetPageBoxesRequest request = request(createPdfWithCropMarks(painted));
+        request.setDeriveFromCropMarks(true);
+
+        ResponseEntity<Resource> response = controller.setPageBoxes(request);
+
+        assertEquals(200, response.getStatusCode().value());
+        try (PDDocument result = Loader.loadPDF(drainBody(response))) {
+            assertRectEquals(
+                    painted.getLowerLeftX(),
+                    painted.getLowerLeftY(),
+                    painted.getWidth(),
+                    painted.getHeight(),
+                    result.getPage(0).getTrimBox());
+        }
+    }
+
+    @Test
+    void testDeriveTrimBoxFromCropMarksAndBleed() throws Exception {
+        float m = 15 * MM;
+        PDRectangle painted =
+                new PDRectangle(
+                        m,
+                        m,
+                        PDRectangle.A4.getWidth() - 2 * m,
+                        PDRectangle.A4.getHeight() - 2 * m);
+        SetPageBoxesRequest request = request(createPdfWithCropMarks(painted));
+        request.setDeriveFromCropMarks(true);
+        request.setBleedMm(3);
+
+        ResponseEntity<Resource> response = controller.setPageBoxes(request);
+
+        assertEquals(200, response.getStatusCode().value());
+        try (PDDocument result = Loader.loadPDF(drainBody(response))) {
+            PDPage page = result.getPage(0);
+            assertRectEquals(
+                    painted.getLowerLeftX() - 3 * MM,
+                    painted.getLowerLeftY() - 3 * MM,
+                    painted.getWidth() + 6 * MM,
+                    painted.getHeight() + 6 * MM,
+                    page.getBleedBox());
+            assertRectEquals(
+                    painted.getLowerLeftX(),
+                    painted.getLowerLeftY(),
+                    painted.getWidth(),
+                    painted.getHeight(),
+                    page.getTrimBox());
+        }
+    }
+
+    @Test
+    void testDeriveFromCropMarksNonePaintedThrows() throws Exception {
+        SetPageBoxesRequest request = request(createPdf(null));
+        request.setDeriveFromCropMarks(true);
+        assertThrows(IllegalArgumentException.class, () -> controller.setPageBoxes(request));
+    }
+
+    @Test
+    void testDeriveFromCropMarksExplicitTrimWins() throws Exception {
+        float m = 15 * MM;
+        PDRectangle painted =
+                new PDRectangle(
+                        m,
+                        m,
+                        PDRectangle.A4.getWidth() - 2 * m,
+                        PDRectangle.A4.getHeight() - 2 * m);
+        SetPageBoxesRequest request = request(createPdfWithCropMarks(painted));
+        request.setDeriveFromCropMarks(true);
+        request.setTrimBox("20,20,400,600");
+
+        ResponseEntity<Resource> response = controller.setPageBoxes(request);
+
+        assertEquals(200, response.getStatusCode().value());
+        try (PDDocument result = Loader.loadPDF(drainBody(response))) {
+            assertRectEquals(20, 20, 400, 600, result.getPage(0).getTrimBox());
+        }
+    }
+
+    @Test
+    void testDeriveFromCropMarksAmbiguousFoldMarksThrows() throws Exception {
+        float m = 15 * MM;
+        PDRectangle painted =
+                new PDRectangle(
+                        m,
+                        m,
+                        PDRectangle.A4.getWidth() - 2 * m,
+                        PDRectangle.A4.getHeight() - 2 * m);
+        Path pdfPath = tempDir.resolve("folded.pdf");
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = new PDPage(PDRectangle.A4);
+            doc.addPage(page);
+            try (PDPageContentStream stream =
+                    new PDPageContentStream(
+                            doc, page, PDPageContentStream.AppendMode.APPEND, true)) {
+                stream.setLineWidth(0.25f);
+                float off = 3 * MM;
+                float len = 5 * MM;
+                float l = painted.getLowerLeftX();
+                float r = painted.getUpperRightX();
+                float b = painted.getLowerLeftY();
+                float t = painted.getUpperRightY();
+                stream.moveTo(l - off, b);
+                stream.lineTo(l - off - len, b);
+                stream.moveTo(l, b - off);
+                stream.lineTo(l, b - off - len);
+                stream.moveTo(r + off, b);
+                stream.lineTo(r + off + len, b);
+                stream.moveTo(r, b - off);
+                stream.lineTo(r, b - off - len);
+                stream.moveTo(l - off, t);
+                stream.lineTo(l - off - len, t);
+                stream.moveTo(l, t + off);
+                stream.lineTo(l, t + off + len);
+                stream.moveTo(r + off, t);
+                stream.lineTo(r + off + len, t);
+                stream.moveTo(r, t + off);
+                stream.lineTo(r, t + off + len);
+                // Third vertical mark column: a centre fold mark top and bottom — a real trim
+                // edge has exactly two columns, so detection must refuse rather than guess.
+                float cx = PDRectangle.A4.getWidth() / 2;
+                stream.moveTo(cx, t + off);
+                stream.lineTo(cx, t + off + len);
+                stream.moveTo(cx, b - off);
+                stream.lineTo(cx, b - off - len);
+                stream.stroke();
+            }
+            doc.save(pdfPath.toFile());
+        }
+        SetPageBoxesRequest request =
+                request(
+                        new MockMultipartFile(
+                                "fileInput",
+                                "folded.pdf",
+                                MediaType.APPLICATION_PDF_VALUE,
+                                Files.readAllBytes(pdfPath)));
+        request.setDeriveFromCropMarks(true);
+        assertThrows(IllegalArgumentException.class, () -> controller.setPageBoxes(request));
+    }
+
+    @Test
+    void testDeriveFromCropMarksFilledRectMarks() throws Exception {
+        float m = 15 * MM;
+        PDRectangle painted =
+                new PDRectangle(
+                        m,
+                        m,
+                        PDRectangle.A4.getWidth() - 2 * m,
+                        PDRectangle.A4.getHeight() - 2 * m);
+        Path pdfPath = tempDir.resolve("rectmarks.pdf");
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = new PDPage(PDRectangle.A4);
+            doc.addPage(page);
+            try (PDPageContentStream stream =
+                    new PDPageContentStream(
+                            doc, page, PDPageContentStream.AppendMode.APPEND, true)) {
+                float off = 3 * MM;
+                float len = 5 * MM;
+                float w = 0.5f;
+                float l = painted.getLowerLeftX();
+                float r = painted.getUpperRightX();
+                float b = painted.getLowerLeftY();
+                float t = painted.getUpperRightY();
+                stream.addRect(l - off - len, b - w / 2, len, w);
+                stream.addRect(l - w / 2, b - off - len, w, len);
+                stream.addRect(r + off, b - w / 2, len, w);
+                stream.addRect(r - w / 2, b - off - len, w, len);
+                stream.addRect(l - off - len, t - w / 2, len, w);
+                stream.addRect(l - w / 2, t + off, w, len);
+                stream.addRect(r + off, t - w / 2, len, w);
+                stream.addRect(r - w / 2, t + off, w, len);
+                stream.fill();
+            }
+            doc.save(pdfPath.toFile());
+        }
+        SetPageBoxesRequest request =
+                request(
+                        new MockMultipartFile(
+                                "fileInput",
+                                "rectmarks.pdf",
+                                MediaType.APPLICATION_PDF_VALUE,
+                                Files.readAllBytes(pdfPath)));
+        request.setDeriveFromCropMarks(true);
+
+        ResponseEntity<Resource> response = controller.setPageBoxes(request);
+
+        assertEquals(200, response.getStatusCode().value());
+        try (PDDocument result = Loader.loadPDF(drainBody(response))) {
+            PDRectangle detected = result.getPage(0).getTrimBox();
+            assertEquals(painted.getLowerLeftX(), detected.getLowerLeftX(), 0.5);
+            assertEquals(painted.getUpperRightX(), detected.getUpperRightX(), 0.5);
+            assertEquals(painted.getLowerLeftY(), detected.getLowerLeftY(), 0.5);
+            assertEquals(painted.getUpperRightY(), detected.getUpperRightY(), 0.5);
+        }
+    }
+
+    @Test
+    void testDeriveFromCropMarksStrokedRectMarks() throws Exception {
+        float m = 15 * MM;
+        PDRectangle painted =
+                new PDRectangle(
+                        m,
+                        m,
+                        PDRectangle.A4.getWidth() - 2 * m,
+                        PDRectangle.A4.getHeight() - 2 * m);
+        Path pdfPath = tempDir.resolve("strokedrectmarks.pdf");
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = new PDPage(PDRectangle.A4);
+            doc.addPage(page);
+            try (PDPageContentStream stream =
+                    new PDPageContentStream(
+                            doc, page, PDPageContentStream.AppendMode.APPEND, true)) {
+                stream.setLineWidth(0.25f);
+                float off = 3 * MM;
+                float len = 5 * MM;
+                float w = 0.5f;
+                float l = painted.getLowerLeftX();
+                float r = painted.getUpperRightX();
+                float b = painted.getLowerLeftY();
+                float t = painted.getUpperRightY();
+                stream.addRect(l - off - len, b - w / 2, len, w);
+                stream.addRect(l - w / 2, b - off - len, w, len);
+                stream.addRect(r + off, b - w / 2, len, w);
+                stream.addRect(r - w / 2, b - off - len, w, len);
+                stream.addRect(l - off - len, t - w / 2, len, w);
+                stream.addRect(l - w / 2, t + off, w, len);
+                stream.addRect(r + off, t - w / 2, len, w);
+                stream.addRect(r - w / 2, t + off, w, len);
+                stream.stroke();
+            }
+            doc.save(pdfPath.toFile());
+        }
+        SetPageBoxesRequest request =
+                request(
+                        new MockMultipartFile(
+                                "fileInput",
+                                "strokedrectmarks.pdf",
+                                MediaType.APPLICATION_PDF_VALUE,
+                                Files.readAllBytes(pdfPath)));
+        request.setDeriveFromCropMarks(true);
+
+        ResponseEntity<Resource> response = controller.setPageBoxes(request);
+
+        assertEquals(200, response.getStatusCode().value());
+        try (PDDocument result = Loader.loadPDF(drainBody(response))) {
+            PDRectangle detected = result.getPage(0).getTrimBox();
+            assertRectEquals(
+                    painted.getLowerLeftX(),
+                    painted.getLowerLeftY(),
+                    painted.getWidth(),
+                    painted.getHeight(),
+                    detected);
+        }
+    }
+
+    @Test
+    void testDeriveFromCropMarksRotatedPage() throws Exception {
+        float m = 15 * MM;
+        PDRectangle painted =
+                new PDRectangle(
+                        m,
+                        m,
+                        PDRectangle.A4.getWidth() - 2 * m,
+                        PDRectangle.A4.getHeight() - 2 * m);
+        Path pdfPath = tempDir.resolve("rotated.pdf");
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = new PDPage(PDRectangle.A4);
+            page.setRotation(90);
+            doc.addPage(page);
+            try (PDPageContentStream stream =
+                    new PDPageContentStream(
+                            doc, page, PDPageContentStream.AppendMode.APPEND, true)) {
+                stream.setLineWidth(0.25f);
+                float off = 3 * MM;
+                float len = 5 * MM;
+                float l = painted.getLowerLeftX();
+                float r = painted.getUpperRightX();
+                float b = painted.getLowerLeftY();
+                float t = painted.getUpperRightY();
+                stream.moveTo(l - off, b);
+                stream.lineTo(l - off - len, b);
+                stream.moveTo(l, b - off);
+                stream.lineTo(l, b - off - len);
+                stream.moveTo(r + off, b);
+                stream.lineTo(r + off + len, b);
+                stream.moveTo(r, b - off);
+                stream.lineTo(r, b - off - len);
+                stream.moveTo(l - off, t);
+                stream.lineTo(l - off - len, t);
+                stream.moveTo(l, t + off);
+                stream.lineTo(l, t + off + len);
+                stream.moveTo(r + off, t);
+                stream.lineTo(r + off + len, t);
+                stream.moveTo(r, t + off);
+                stream.lineTo(r, t + off + len);
+                stream.stroke();
+            }
+            doc.save(pdfPath.toFile());
+        }
+        SetPageBoxesRequest request =
+                request(
+                        new MockMultipartFile(
+                                "fileInput",
+                                "rotated.pdf",
+                                MediaType.APPLICATION_PDF_VALUE,
+                                Files.readAllBytes(pdfPath)));
+        request.setDeriveFromCropMarks(true);
+
+        ResponseEntity<Resource> response = controller.setPageBoxes(request);
+
+        assertEquals(200, response.getStatusCode().value());
+        try (PDDocument result = Loader.loadPDF(drainBody(response))) {
+            PDRectangle detected = result.getPage(0).getTrimBox();
+            // Page boxes live in unrotated user space; detection must return the painted box
+            // unchanged even though the page carries /Rotate 90.
+            assertRectEquals(
+                    painted.getLowerLeftX(),
+                    painted.getLowerLeftY(),
+                    painted.getWidth(),
+                    painted.getHeight(),
+                    detected);
+        }
+    }
+
+    @Test
+    void testDeriveFromCropMarksSmallTrim() throws Exception {
+        // A business-card trim centred on an A4 sheet: well under 30% of the page extent, so
+        // the former span-fraction heuristic could not see it; the quad consistency check can.
+        PDRectangle painted = new PDRectangle(220, 320, 120, 160);
+        Path pdfPath = tempDir.resolve("smalltrim.pdf");
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = new PDPage(PDRectangle.A4);
+            doc.addPage(page);
+            try (PDPageContentStream stream =
+                    new PDPageContentStream(
+                            doc, page, PDPageContentStream.AppendMode.APPEND, true)) {
+                stream.setLineWidth(0.25f);
+                float off = 3 * MM;
+                float len = 5 * MM;
+                float l = painted.getLowerLeftX();
+                float r = painted.getUpperRightX();
+                float b = painted.getLowerLeftY();
+                float t = painted.getUpperRightY();
+                stream.moveTo(l - off, b);
+                stream.lineTo(l - off - len, b);
+                stream.moveTo(l, b - off);
+                stream.lineTo(l, b - off - len);
+                stream.moveTo(r + off, b);
+                stream.lineTo(r + off + len, b);
+                stream.moveTo(r, b - off);
+                stream.lineTo(r, b - off - len);
+                stream.moveTo(l - off, t);
+                stream.lineTo(l - off - len, t);
+                stream.moveTo(l, t + off);
+                stream.lineTo(l, t + off + len);
+                stream.moveTo(r + off, t);
+                stream.lineTo(r + off + len, t);
+                stream.moveTo(r, t + off);
+                stream.lineTo(r, t + off + len);
+                stream.stroke();
+            }
+            doc.save(pdfPath.toFile());
+        }
+        SetPageBoxesRequest request =
+                request(
+                        new MockMultipartFile(
+                                "fileInput",
+                                "smalltrim.pdf",
+                                MediaType.APPLICATION_PDF_VALUE,
+                                Files.readAllBytes(pdfPath)));
+        request.setDeriveFromCropMarks(true);
+
+        ResponseEntity<Resource> response = controller.setPageBoxes(request);
+
+        assertEquals(200, response.getStatusCode().value());
+        try (PDDocument result = Loader.loadPDF(drainBody(response))) {
+            assertRectEquals(
+                    painted.getLowerLeftX(),
+                    painted.getLowerLeftY(),
+                    painted.getWidth(),
+                    painted.getHeight(),
+                    result.getPage(0).getTrimBox());
+        }
+    }
+
+    @Test
+    void testDeriveFromCropMarksFreeformFilledMarks() throws Exception {
+        // Some generators fill thin quadrilateral paths (m/l/h f) instead of using `re` or
+        // stroking a hairline; the strip's midline still marks the trim edge.
+        float m = 15 * MM;
+        PDRectangle painted =
+                new PDRectangle(
+                        m,
+                        m,
+                        PDRectangle.A4.getWidth() - 2 * m,
+                        PDRectangle.A4.getHeight() - 2 * m);
+        Path pdfPath = tempDir.resolve("freeform.pdf");
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = new PDPage(PDRectangle.A4);
+            doc.addPage(page);
+            try (PDPageContentStream stream =
+                    new PDPageContentStream(
+                            doc, page, PDPageContentStream.AppendMode.APPEND, true)) {
+                float off = 3 * MM;
+                float len = 5 * MM;
+                float w = 0.5f;
+                float l = painted.getLowerLeftX();
+                float r = painted.getUpperRightX();
+                float b = painted.getLowerLeftY();
+                float t = painted.getUpperRightY();
+                for (float[] mark :
+                        new float[][] {
+                            {l - off - len, b - w / 2, l - off, b + w / 2},
+                            {l - w / 2, b - off - len, l + w / 2, b - off},
+                            {r + off, b - w / 2, r + off + len, b + w / 2},
+                            {r - w / 2, b - off - len, r + w / 2, b - off},
+                            {l - off - len, t - w / 2, l - off, t + w / 2},
+                            {l - w / 2, t + off, l + w / 2, t + off + len},
+                            {r + off, t - w / 2, r + off + len, t + w / 2},
+                            {r - w / 2, t + off, r + w / 2, t + off + len},
+                        }) {
+                    stream.moveTo(mark[0], mark[1]);
+                    stream.lineTo(mark[2], mark[1]);
+                    stream.lineTo(mark[2], mark[3]);
+                    stream.lineTo(mark[0], mark[3]);
+                    stream.closePath();
+                }
+                stream.fill();
+            }
+            doc.save(pdfPath.toFile());
+        }
+        SetPageBoxesRequest request =
+                request(
+                        new MockMultipartFile(
+                                "fileInput",
+                                "freeform.pdf",
+                                MediaType.APPLICATION_PDF_VALUE,
+                                Files.readAllBytes(pdfPath)));
+        request.setDeriveFromCropMarks(true);
+
+        ResponseEntity<Resource> response = controller.setPageBoxes(request);
+
+        assertEquals(200, response.getStatusCode().value());
+        try (PDDocument result = Loader.loadPDF(drainBody(response))) {
+            assertRectEquals(
+                    painted.getLowerLeftX(),
+                    painted.getLowerLeftY(),
+                    painted.getWidth(),
+                    painted.getHeight(),
+                    result.getPage(0).getTrimBox());
+        }
+    }
+
+    @Test
+    void testDeriveFromCropMarksInAnnotationAppearance() throws Exception {
+        // Printer's marks painted inside an annotation's normal appearance stream still count:
+        // the detector scans appearance streams in page user space.
+        float m = 15 * MM;
+        PDRectangle painted =
+                new PDRectangle(
+                        m,
+                        m,
+                        PDRectangle.A4.getWidth() - 2 * m,
+                        PDRectangle.A4.getHeight() - 2 * m);
+        Path pdfPath = tempDir.resolve("annotmarks.pdf");
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = new PDPage(PDRectangle.A4);
+            doc.addPage(page);
+            PDAnnotationRubberStamp annotation = new PDAnnotationRubberStamp();
+            annotation.setRectangle(PDRectangle.A4);
+            PDAppearanceStream appearance = new PDAppearanceStream(doc);
+            appearance.setBBox(PDRectangle.A4);
+            try (PDAppearanceContentStream appearanceStream =
+                    new PDAppearanceContentStream(appearance)) {
+                appearanceStream.setLineWidth(0.25f);
+                float off = 3 * MM;
+                float len = 5 * MM;
+                float l = painted.getLowerLeftX();
+                float r = painted.getUpperRightX();
+                float b = painted.getLowerLeftY();
+                float t = painted.getUpperRightY();
+                appearanceStream.moveTo(l - off, b);
+                appearanceStream.lineTo(l - off - len, b);
+                appearanceStream.moveTo(l, b - off);
+                appearanceStream.lineTo(l, b - off - len);
+                appearanceStream.moveTo(r + off, b);
+                appearanceStream.lineTo(r + off + len, b);
+                appearanceStream.moveTo(r, b - off);
+                appearanceStream.lineTo(r, b - off - len);
+                appearanceStream.moveTo(l - off, t);
+                appearanceStream.lineTo(l - off - len, t);
+                appearanceStream.moveTo(l, t + off);
+                appearanceStream.lineTo(l, t + off + len);
+                appearanceStream.moveTo(r + off, t);
+                appearanceStream.lineTo(r + off + len, t);
+                appearanceStream.moveTo(r, t + off);
+                appearanceStream.lineTo(r, t + off + len);
+                appearanceStream.stroke();
+            }
+            PDAppearanceDictionary appearanceDictionary = new PDAppearanceDictionary();
+            appearanceDictionary.setNormalAppearance(appearance);
+            annotation.setAppearance(appearanceDictionary);
+            page.getAnnotations().add(annotation);
+            doc.save(pdfPath.toFile());
+        }
+        SetPageBoxesRequest request =
+                request(
+                        new MockMultipartFile(
+                                "fileInput",
+                                "annotmarks.pdf",
+                                MediaType.APPLICATION_PDF_VALUE,
+                                Files.readAllBytes(pdfPath)));
+        request.setDeriveFromCropMarks(true);
+
+        ResponseEntity<Resource> response = controller.setPageBoxes(request);
+
+        assertEquals(200, response.getStatusCode().value());
+        try (PDDocument result = Loader.loadPDF(drainBody(response))) {
+            assertRectEquals(
+                    painted.getLowerLeftX(),
+                    painted.getLowerLeftY(),
+                    painted.getWidth(),
+                    painted.getHeight(),
+                    result.getPage(0).getTrimBox());
+        }
+    }
+
+    @Test
+    void testDeriveFromCropMarksBeyondPageGrowsBoxes() throws Exception {
+        // Marks on a sheet larger than the declared MediaBox: the detected trim extends 5 mm
+        // past every edge, so MediaBox and CropBox must grow to keep it visible.
+        PDRectangle painted =
+                new PDRectangle(
+                        -5 * MM,
+                        -5 * MM,
+                        PDRectangle.A4.getWidth() + 10 * MM,
+                        PDRectangle.A4.getHeight() + 10 * MM);
+        Path pdfPath = tempDir.resolve("oversized.pdf");
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = new PDPage(PDRectangle.A4);
+            doc.addPage(page);
+            try (PDPageContentStream stream =
+                    new PDPageContentStream(
+                            doc, page, PDPageContentStream.AppendMode.APPEND, true)) {
+                stream.setLineWidth(0.25f);
+                float off = 3 * MM;
+                float len = 5 * MM;
+                float l = painted.getLowerLeftX();
+                float r = painted.getUpperRightX();
+                float b = painted.getLowerLeftY();
+                float t = painted.getUpperRightY();
+                stream.moveTo(l - off, b);
+                stream.lineTo(l - off - len, b);
+                stream.moveTo(l, b - off);
+                stream.lineTo(l, b - off - len);
+                stream.moveTo(r + off, b);
+                stream.lineTo(r + off + len, b);
+                stream.moveTo(r, b - off);
+                stream.lineTo(r, b - off - len);
+                stream.moveTo(l - off, t);
+                stream.lineTo(l - off - len, t);
+                stream.moveTo(l, t + off);
+                stream.lineTo(l, t + off + len);
+                stream.moveTo(r + off, t);
+                stream.lineTo(r + off + len, t);
+                stream.moveTo(r, t + off);
+                stream.lineTo(r, t + off + len);
+                stream.stroke();
+            }
+            doc.save(pdfPath.toFile());
+        }
+        SetPageBoxesRequest request =
+                request(
+                        new MockMultipartFile(
+                                "fileInput",
+                                "oversized.pdf",
+                                MediaType.APPLICATION_PDF_VALUE,
+                                Files.readAllBytes(pdfPath)));
+        request.setDeriveFromCropMarks(true);
+
+        ResponseEntity<Resource> response = controller.setPageBoxes(request);
+
+        assertEquals(200, response.getStatusCode().value());
+        try (PDDocument result = Loader.loadPDF(drainBody(response))) {
+            PDPage page = result.getPage(0);
+            assertRectEquals(
+                    painted.getLowerLeftX(),
+                    painted.getLowerLeftY(),
+                    painted.getWidth(),
+                    painted.getHeight(),
+                    page.getTrimBox());
+            assertRectEquals(
+                    painted.getLowerLeftX(),
+                    painted.getLowerLeftY(),
+                    painted.getWidth(),
+                    painted.getHeight(),
+                    page.getMediaBox());
+            assertRectEquals(
+                    painted.getLowerLeftX(),
+                    painted.getLowerLeftY(),
+                    painted.getWidth(),
+                    painted.getHeight(),
+                    page.getCropBox());
+        }
     }
 }
