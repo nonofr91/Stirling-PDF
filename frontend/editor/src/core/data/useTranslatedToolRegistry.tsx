@@ -594,6 +594,22 @@ export function useTranslatedToolCatalog(): TranslatedToolCatalog {
         ),
         synonyms: getSynonyms(t, "textToOutlines"),
       },
+      printPreflight: {
+        icon: <Icon name="list-checks" size="1.5rem" />,
+        name: t("home.printPreflight.title", "Print Preflight"),
+        component: lazy(() => import("@app/tools/PrintPreflight")),
+        description: t(
+          "home.printPreflight.desc",
+          "Check a PDF for print production issues: unembedded fonts, RGB/spot colors, low-resolution images, missing or unpainted bleed, hairlines, transparency.",
+        ),
+        categoryId: ToolCategoryId.STANDARD_TOOLS,
+        subcategoryId: SubcategoryId.PREPRESS,
+        endpoints: ["print-preflight"],
+        supportsAutomate: false,
+        automationSettings: null,
+        maxFiles: 1,
+        synonyms: getSynonyms(t, "printPreflight"),
+      },
       rotate: {
         icon: <Icon name="rotate-cw" size="1.5rem" />,
         name: t("home.rotate.title", "Rotate"),

@@ -73,6 +73,7 @@ const TOOL_IDS = [
   "formFill",
   "setPageBoxes",
   "textToOutlines",
+  "printPreflight",
   // Super tools
   "multiTool",
   "read",

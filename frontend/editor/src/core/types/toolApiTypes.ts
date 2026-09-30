@@ -1059,6 +1059,24 @@ export interface PosterPdfRequest {
    */
   yFactor?: number;
 }
+export interface PrintPreflightRequest {
+  /**
+   * Render each page and check the bleed band between TrimBox and BleedBox is actually painted, so trimming cannot reveal white
+   */
+  checkBleedCoverage?: boolean;
+  /**
+   * Strokes thinner than this width in points are reported as hairlines at risk of disappearing in print
+   */
+  hairlineThresholdPt?: number;
+  /**
+   * Images rendered below this effective resolution are reported as low resolution
+   */
+  minImageDpi?: number;
+  /**
+   * Bleed width in millimetres required on every side beyond the TrimBox
+   */
+  requiredBleedMm?: number;
+}
 export interface ProcessPdfWithOcrRequest {
   /**
    * Clean the input file if set to true
@@ -1748,6 +1766,7 @@ export type ToolEndpoint =
   | "/api/v1/security/cert-sign/sessions"
   | "/api/v1/security/cert-sign/validate-certificate"
   | "/api/v1/security/get-info-on-pdf"
+  | "/api/v1/security/print-preflight"
   | "/api/v1/security/redact"
   | "/api/v1/security/redact-execute"
   | "/api/v1/security/remove-cert-sign"
@@ -1859,6 +1878,7 @@ export interface ToolApiParams {
   "/api/v1/security/cert-sign/sessions": SecurityCertSignSessionsRequest;
   "/api/v1/security/cert-sign/validate-certificate": SecurityCertSignValidateCertificateRequest;
   "/api/v1/security/get-info-on-pdf": SecurityGetInfoOnPdfRequest;
+  "/api/v1/security/print-preflight": PrintPreflightRequest;
   "/api/v1/security/redact": ManualRedactPdfRequest;
   "/api/v1/security/redact-execute": RedactExecuteRequest;
   "/api/v1/security/remove-cert-sign": SecurityRemoveCertSignRequest;
@@ -1971,6 +1991,7 @@ export const TOOL_ENDPOINTS = [
   "/api/v1/security/cert-sign/sessions",
   "/api/v1/security/cert-sign/validate-certificate",
   "/api/v1/security/get-info-on-pdf",
+  "/api/v1/security/print-preflight",
   "/api/v1/security/redact",
   "/api/v1/security/redact-execute",
   "/api/v1/security/remove-cert-sign",

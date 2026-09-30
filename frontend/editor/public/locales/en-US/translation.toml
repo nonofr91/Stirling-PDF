@@ -5509,6 +5509,11 @@ desc = "Merges all PDF pages into one large single page"
 tags = "combine,merge,single,single page,one page,merge to single,combine all,stitch pages,concatenate vertical,long page,poster"
 title = "PDF to Single Large Page"
 
+[home.printPreflight]
+desc = "Check a PDF for print production issues: unembedded fonts, RGB/spot colors, low-resolution images, missing or unpainted bleed, hairlines, transparency."
+tags = "preflight,prepress,print,check,report,fonts,embedded,RGB,CMYK,bleed,fond perdu,trim,marks,hairline,dpi,resolution,overprint,transparency,pdfx,pdf/x"
+title = "Print Preflight"
+
 [home.read]
 desc = "View and annotate PDFs. Highlight text, draw, or insert comments for review and collaboration."
 tags = "view,open,display,read,viewer,PDF viewer,PDF reader,open PDF,view PDF,display PDF,preview,browse"
@@ -10445,6 +10450,70 @@ unlimited = "{{used}} seats · Unlimited"
 
 [printFile]
 title = "Print File"
+
+[printPreflight]
+counts = "{{errors}} errors · {{warnings}} warnings · {{infos}} info"
+downloadJson = "Download report (JSON)"
+noResults = "Run the tool to generate a preflight report."
+pages = "Pages"
+processing = "Running preflight checks..."
+results = "Results"
+submit = "Run preflight"
+
+[printPreflight.category]
+COLOR = "Color"
+CONTENT = "Content"
+DOCUMENT = "Document"
+FONTS = "Fonts"
+GEOMETRY = "Geometry"
+IMAGES = "Images"
+
+[printPreflight.checkBleedCoverage]
+desc = "Render each page to verify the bleed area is actually covered by content, not just declared."
+label = "Check bleed is painted"
+
+[printPreflight.error]
+noReport = "No report returned."
+partial = "Some files could not be analyzed."
+unexpected = "Unexpected error during preflight."
+
+[printPreflight.facts]
+boxes = "Page boxes"
+colors = "Color spaces"
+fonts = "Fonts"
+images = "Images"
+lowRes = "{{count}} below threshold"
+pageCount = "Pages"
+title = "Document facts"
+type3 = "Type 3"
+
+[printPreflight.hairlineThresholdPt]
+help = "Strokes thinner than this are flagged — they may drop out on press."
+label = "Hairline threshold (pt)"
+
+[printPreflight.minImageDpi]
+help = "Images placed below this effective resolution are flagged. 300 is ideal for offset; 150 is a common minimum."
+label = "Minimum image resolution (dpi)"
+
+[printPreflight.options]
+stepTitle = "Check thresholds"
+
+[printPreflight.requiredBleedMm]
+help = "Bleed width expected on every side past the trim. 3 mm is standard in Europe."
+label = "Required bleed (mm)"
+
+[printPreflight.severity]
+ERROR = "Error"
+INFO = "Info"
+WARNING = "Warning"
+
+[printPreflight.status]
+complete = "Preflight complete"
+
+[printPreflight.verdict]
+clean = "Ready for print"
+errors = "{{errors}} blocking issue(s) found"
+warnings = "Printable with {{warnings}} warning(s)"
 
 [processingFolders.setup]
 addFolder = "Add folder"

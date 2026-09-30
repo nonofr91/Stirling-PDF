@@ -42,6 +42,7 @@ export const CORE_REGULAR_TOOL_IDS = [
   "crop",
   "setPageBoxes",
   "textToOutlines",
+  "printPreflight",
   "pdfToSinglePage",
   "repair",
   "compare",
