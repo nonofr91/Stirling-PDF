@@ -776,6 +776,11 @@ export const TOOL_IO: ToolIOTable = {
     produces: "JSON",
     arity: "SISO",
   },
+  "/api/v1/security/print-preflight-annotated": {
+    accepts: ["PDF"],
+    produces: "PDF",
+    arity: "SISO",
+  },
   "/api/v1/security/redact": {
     accepts: ["PDF"],
     produces: "PDF",

@@ -424,6 +424,7 @@ public class EndpointConfiguration {
         addEndpointToGroup("Other", "remove-annotations");
         addEndpointToGroup("Other", "get-info-on-pdf");
         addEndpointToGroup("Other", "print-preflight");
+        addEndpointToGroup("Other", "print-preflight-annotated");
         addEndpointToGroup("Other", "add-attachments");
         addEndpointToGroup("Other", "replace-invert-pdf");
         addEndpointToGroup("Other", "edit-table-of-contents");
@@ -532,6 +533,7 @@ public class EndpointConfiguration {
         addEndpointToGroup("Java", "set-page-boxes");
         addEndpointToGroup("Java", "get-info-on-pdf");
         addEndpointToGroup("Java", "print-preflight");
+        addEndpointToGroup("Java", "print-preflight-annotated");
         addEndpointToGroup("Java", "pdf-to-single-page");
         addEndpointToGroup("Java", "markdown-to-pdf");
         addEndpointToGroup("Java", "show-javascript");

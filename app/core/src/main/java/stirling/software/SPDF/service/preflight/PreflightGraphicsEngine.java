@@ -53,6 +53,9 @@ final class PreflightGraphicsEngine extends PDFGraphicsStreamEngine {
         final boolean type3;
         final Set<Integer> pages = new TreeSet<>();
 
+        /** A few glyph boxes (page space) so unembedded/Type3 text can be located. */
+        final List<float[]> bounds = new ArrayList<>();
+
         FontUse(PDFont font) {
             String base = font.getName();
             this.name = base != null ? base : font.getSubType();
@@ -67,20 +70,57 @@ final class PreflightGraphicsEngine extends PDFGraphicsStreamEngine {
         final boolean softMasked;
         final String colorSpaceLabel;
 
-        ImageUse(double effectiveDpi, boolean softMasked, String label) {
+        /** Image quad in page space: llx, lly, urx, ury — where the object lands on the page. */
+        final float[] bounds;
+
+        ImageUse(double effectiveDpi, boolean softMasked, String label, float[] bounds) {
             this.effectiveDpi = effectiveDpi;
             this.softMasked = softMasked;
             this.colorSpaceLabel = label;
+            this.bounds = bounds;
         }
     }
+
+    /** One stroked path: effective width and its page-space bounds (llx, lly, urx, ury). */
+    static final class StrokeUse {
+        final float widthPt;
+        final float[] bounds;
+
+        StrokeUse(float widthPt, float[] bounds) {
+            this.widthPt = widthPt;
+            this.bounds = bounds;
+        }
+    }
+
+    /** Where a color space or live transparency was painted — page-space bounds or a glyph box. */
+    static final class PaintedArea {
+        final String label;
+        final float[] bounds;
+
+        PaintedArea(String label, float[] bounds) {
+            this.label = label;
+            this.bounds = bounds;
+        }
+    }
+
+    private static final int MAX_PAINT_AREAS = 400;
 
     private final Map<String, FontUse> fonts = new LinkedHashMap<>();
     private final Map<String, Integer> colorSpaceCounts = new LinkedHashMap<>();
     private final Set<String> spotColors = new LinkedHashSet<>();
     private final List<ImageUse> images = new ArrayList<>();
-    private final List<Float> effectiveStrokeWidths = new ArrayList<>();
+    private final List<StrokeUse> strokes = new ArrayList<>();
+    private final List<PaintedArea> paintAreas = new ArrayList<>();
+    private final List<PaintedArea> alphaAreas = new ArrayList<>();
     private boolean transparencyUsed;
     private boolean optionalContentUsed;
+
+    // Bounds of the path under construction, in page space.
+    private float pathMinX;
+    private float pathMinY;
+    private float pathMaxX;
+    private float pathMaxY;
+    private boolean pathHasPoints;
 
     PreflightGraphicsEngine(PDPage page) {
         super(page);
@@ -102,8 +142,16 @@ final class PreflightGraphicsEngine extends PDFGraphicsStreamEngine {
         return images;
     }
 
-    List<Float> getEffectiveStrokeWidths() {
-        return effectiveStrokeWidths;
+    List<StrokeUse> getStrokes() {
+        return strokes;
+    }
+
+    List<PaintedArea> getPaintAreas() {
+        return paintAreas;
+    }
+
+    List<PaintedArea> getAlphaAreas() {
+        return alphaAreas;
     }
 
     boolean isTransparencyUsed() {
@@ -118,15 +166,22 @@ final class PreflightGraphicsEngine extends PDFGraphicsStreamEngine {
     protected void showGlyph(Matrix textRenderingMatrix, PDFont font, int code, Vector displacement)
             throws IOException {
         if (font != null) {
-            fonts.computeIfAbsent(font.getName() + "|" + font.getSubType(), k -> new FontUse(font));
+            FontUse use =
+                    fonts.computeIfAbsent(
+                            font.getName() + "|" + font.getSubType(), k -> new FontUse(font));
+            // The glyph box is roughly one em around the position — enough to locate the text.
+            float[] bounds = matrixBounds(textRenderingMatrix);
+            if (use.bounds.size() < 8 && bounds != null) {
+                use.bounds.add(bounds);
+            }
             PDTextState ts = getGraphicsState().getTextState();
             RenderingMode mode = ts != null ? ts.getRenderingMode() : null;
             if (mode != null && mode.isStroke()) {
-                recordPainted(getGraphicsState().getStrokingColorSpace());
+                recordPainted(getGraphicsState().getStrokingColorSpace(), bounds);
             } else {
-                recordPainted(getGraphicsState().getNonStrokingColorSpace());
+                recordPainted(getGraphicsState().getNonStrokingColorSpace(), bounds);
             }
-            checkTransparency();
+            checkTransparency(bounds);
         }
         super.showGlyph(textRenderingMatrix, font, code, displacement);
     }
@@ -136,49 +191,56 @@ final class PreflightGraphicsEngine extends PDFGraphicsStreamEngine {
         PDGraphicsState state = getGraphicsState();
         Matrix ctm = state.getCurrentTransformationMatrix();
         double dpi = Double.NaN;
+        float[] bounds = null;
         if (ctm != null) {
             double sx = ctm.getScalingFactorX();
             double sy = ctm.getScalingFactorY();
             if (sx > 0 && sy > 0) {
                 dpi = Math.min(pdImage.getWidth() * 72.0 / sx, pdImage.getHeight() * 72.0 / sy);
             }
+            // The image unit square under the CTM is the quad painted on the page.
+            bounds = matrixBounds(ctm);
         }
         boolean smasked = pdImage instanceof PDImageXObject xo && xo.getSoftMask() != null;
         if (smasked) {
             transparencyUsed = true;
+            recordAlpha(bounds, "soft-masked image");
         }
         String label = null;
         try {
-            label = recordPainted(pdImage.getColorSpace());
+            label = recordPainted(pdImage.getColorSpace(), bounds);
             if (pdImage.isStencil()) {
-                recordPainted(state.getNonStrokingColorSpace());
+                recordPainted(state.getNonStrokingColorSpace(), bounds);
             }
         } catch (IOException ignored) {
             // unresolvable image color space is surfaced through other checks
         }
-        images.add(new ImageUse(dpi, smasked, label));
-        checkTransparency();
+        images.add(new ImageUse(dpi, smasked, label, bounds));
+        checkTransparency(bounds);
     }
 
     @Override
     public void strokePath() throws IOException {
-        recordPainted(getGraphicsState().getStrokingColorSpace());
-        recordStrokeWidth();
-        checkTransparency();
+        float[] bounds = takePathBounds();
+        recordPainted(getGraphicsState().getStrokingColorSpace(), bounds);
+        recordStrokeWidth(bounds);
+        checkTransparency(bounds);
     }
 
     @Override
     public void fillPath(int windingRule) throws IOException {
-        recordPainted(getGraphicsState().getNonStrokingColorSpace());
-        checkTransparency();
+        float[] bounds = takePathBounds();
+        recordPainted(getGraphicsState().getNonStrokingColorSpace(), bounds);
+        checkTransparency(bounds);
     }
 
     @Override
     public void fillAndStrokePath(int windingRule) throws IOException {
-        recordPainted(getGraphicsState().getNonStrokingColorSpace());
-        recordPainted(getGraphicsState().getStrokingColorSpace());
-        recordStrokeWidth();
-        checkTransparency();
+        float[] bounds = takePathBounds();
+        recordPainted(getGraphicsState().getNonStrokingColorSpace(), bounds);
+        recordPainted(getGraphicsState().getStrokingColorSpace(), bounds);
+        recordStrokeWidth(bounds);
+        checkTransparency(bounds);
     }
 
     @Override
@@ -186,12 +248,12 @@ final class PreflightGraphicsEngine extends PDFGraphicsStreamEngine {
         try {
             PDShading shading = getResources().getShading(shadingName);
             if (shading != null) {
-                recordPainted(shading.getColorSpace());
+                recordPainted(shading.getColorSpace(), null);
             }
         } catch (IOException ignored) {
             // a shading that cannot be resolved is reported through the other checks
         }
-        checkTransparency();
+        checkTransparency(null);
     }
 
     @Override
@@ -209,17 +271,27 @@ final class PreflightGraphicsEngine extends PDFGraphicsStreamEngine {
     }
 
     @Override
-    public void clip(int windingRule) throws IOException {}
+    public void clip(int windingRule) throws IOException {
+        pathHasPoints = false;
+    }
 
     @Override
-    public void moveTo(float x, float y) throws IOException {}
+    public void moveTo(float x, float y) throws IOException {
+        trackPoint(x, y);
+    }
 
     @Override
-    public void lineTo(float x, float y) throws IOException {}
+    public void lineTo(float x, float y) throws IOException {
+        trackPoint(x, y);
+    }
 
     @Override
     public void curveTo(float x1, float y1, float x2, float y2, float x3, float y3)
-            throws IOException {}
+            throws IOException {
+        trackPoint(x1, y1);
+        trackPoint(x2, y2);
+        trackPoint(x3, y3);
+    }
 
     @Override
     public Point2D getCurrentPoint() throws IOException {
@@ -227,16 +299,57 @@ final class PreflightGraphicsEngine extends PDFGraphicsStreamEngine {
     }
 
     @Override
-    public void appendRectangle(Point2D p0, Point2D p1, Point2D p2, Point2D p3)
-            throws IOException {}
+    public void appendRectangle(Point2D p0, Point2D p1, Point2D p2, Point2D p3) throws IOException {
+        trackPoint((float) p0.getX(), (float) p0.getY());
+        trackPoint((float) p2.getX(), (float) p2.getY());
+    }
 
     @Override
     public void closePath() throws IOException {}
 
     @Override
-    public void endPath() throws IOException {}
+    public void endPath() throws IOException {
+        pathHasPoints = false;
+    }
 
-    private void recordStrokeWidth() {
+    private void trackPoint(float x, float y) {
+        if (!pathHasPoints) {
+            pathMinX = pathMaxX = x;
+            pathMinY = pathMaxY = y;
+            pathHasPoints = true;
+        } else {
+            pathMinX = Math.min(pathMinX, x);
+            pathMaxX = Math.max(pathMaxX, x);
+            pathMinY = Math.min(pathMinY, y);
+            pathMaxY = Math.max(pathMaxY, y);
+        }
+    }
+
+    private float[] takePathBounds() {
+        if (!pathHasPoints) {
+            return null;
+        }
+        pathHasPoints = false;
+        return new float[] {pathMinX, pathMinY, pathMaxX, pathMaxY};
+    }
+
+    /** Bounding box of the unit square transformed by {@code m}: an image or ~1em glyph cell. */
+    private static float[] matrixBounds(Matrix m) {
+        float minX = Float.MAX_VALUE;
+        float minY = Float.MAX_VALUE;
+        float maxX = -Float.MAX_VALUE;
+        float maxY = -Float.MAX_VALUE;
+        for (float[] corner : new float[][] {{0, 0}, {1, 0}, {1, 1}, {0, 1}}) {
+            Point2D p = m.transformPoint(corner[0], corner[1]);
+            minX = Math.min(minX, (float) p.getX());
+            maxX = Math.max(maxX, (float) p.getX());
+            minY = Math.min(minY, (float) p.getY());
+            maxY = Math.max(maxY, (float) p.getY());
+        }
+        return new float[] {minX, minY, maxX, maxY};
+    }
+
+    private void recordStrokeWidth(float[] bounds) {
         PDGraphicsState state = getGraphicsState();
         Matrix ctm = state.getCurrentTransformationMatrix();
         float scale = 1;
@@ -247,20 +360,27 @@ final class PreflightGraphicsEngine extends PDFGraphicsStreamEngine {
                                     Math.abs(ctm.getScalingFactorX()),
                                     Math.abs(ctm.getScalingFactorY()));
         }
-        effectiveStrokeWidths.add(state.getLineWidth() * scale);
+        strokes.add(new StrokeUse(state.getLineWidth() * scale, bounds));
     }
 
-    private void checkTransparency() {
+    private void checkTransparency(float[] bounds) {
         PDGraphicsState state = getGraphicsState();
         if (state.getAlphaConstant() < 1
                 || state.getNonStrokeAlphaConstant() < 1
                 || (state.getBlendMode() != null && !BlendMode.NORMAL.equals(state.getBlendMode()))
                 || state.getSoftMask() != null) {
             transparencyUsed = true;
+            recordAlpha(bounds, "transparency");
         }
     }
 
-    private String recordPainted(PDColorSpace cs) throws IOException {
+    private void recordAlpha(float[] bounds, String detail) {
+        if (bounds != null && alphaAreas.size() < MAX_PAINT_AREAS) {
+            alphaAreas.add(new PaintedArea(detail, bounds));
+        }
+    }
+
+    private String recordPainted(PDColorSpace cs, float[] bounds) throws IOException {
         if (cs == null) {
             return null;
         }
@@ -270,6 +390,9 @@ final class PreflightGraphicsEngine extends PDFGraphicsStreamEngine {
             spotColors.add(sep.getColorantName());
         } else if (cs instanceof PDDeviceN devN) {
             spotColors.addAll(devN.getColorantNames());
+        }
+        if (bounds != null && paintAreas.size() < MAX_PAINT_AREAS) {
+            paintAreas.add(new PaintedArea(label, bounds));
         }
         return label;
     }

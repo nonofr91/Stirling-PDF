@@ -23,17 +23,20 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.core.io.Resource;
 import org.springframework.http.ResponseEntity;
 import org.springframework.mock.web.MockMultipartFile;
 
 import stirling.software.SPDF.model.api.security.PrintPreflightReport;
 import stirling.software.SPDF.model.api.security.PrintPreflightReport.Category;
 import stirling.software.SPDF.model.api.security.PrintPreflightReport.Finding;
+import stirling.software.SPDF.model.api.security.PrintPreflightReport.FindingArea;
 import stirling.software.SPDF.model.api.security.PrintPreflightReport.Severity;
 import stirling.software.SPDF.model.api.security.PrintPreflightRequest;
 import stirling.software.SPDF.service.preflight.PrintPreflightService;
 import stirling.software.common.model.api.PDFFile;
 import stirling.software.common.service.CustomPDFDocumentFactory;
+import stirling.software.common.util.TempFileManager;
 
 @ExtendWith(MockitoExtension.class)
 class PrintPreflightControllerTest {
@@ -41,11 +44,23 @@ class PrintPreflightControllerTest {
     private static final float MM = 72f / 25.4f;
 
     @Mock private CustomPDFDocumentFactory pdfDocumentFactory;
+    @Mock private TempFileManager tempFileManager;
     private PrintPreflightController controller;
 
     @BeforeEach
     void setUp() throws IOException {
-        controller = new PrintPreflightController(new PrintPreflightService(), pdfDocumentFactory);
+        controller =
+                new PrintPreflightController(
+                        new PrintPreflightService(), pdfDocumentFactory, tempFileManager);
+        lenient()
+                .when(tempFileManager.createTempFile(any()))
+                .thenAnswer(inv -> java.io.File.createTempFile("pf-test", ".pdf"));
+        lenient()
+                .when(tempFileManager.createManagedTempFile(any()))
+                .thenAnswer(
+                        inv ->
+                                new stirling.software.common.util.TempFile(
+                                        tempFileManager, inv.getArgument(0)));
         lenient()
                 .when(pdfDocumentFactory.load(any(PDFFile.class)))
                 .thenAnswer(
@@ -330,5 +345,178 @@ class PrintPreflightControllerTest {
     void testMissingFileRejected() {
         PrintPreflightRequest req = new PrintPreflightRequest();
         assertThrows(Exception.class, () -> controller.printPreflight(req));
+    }
+
+    @Test
+    void testLowResImageFindingCarriesArea() throws Exception {
+        PDDocument doc = new PDDocument();
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
+        BufferedImage img = new BufferedImage(10, 10, BufferedImage.TYPE_INT_RGB);
+        PDImageXObject xo = LosslessFactory.createFromImage(doc, img);
+        try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+            cs.drawImage(xo, 50, 100, 300, 300);
+        }
+        byte[] pdf = toBytes(doc);
+
+        PrintPreflightReport report = controller.printPreflight(request(pdf)).getBody();
+        assertNotNull(report);
+        Finding f = finding(report, "IMAGE_LOW_RES");
+        assertNotNull(f);
+        assertFalse(f.getAreas().isEmpty());
+        FindingArea area = f.getAreas().get(0);
+        assertEquals(1, area.getPage());
+        assertEquals(50, area.getX(), 0.5);
+        assertEquals(100, area.getY(), 0.5);
+        assertEquals(300, area.getWidth(), 0.5);
+        assertEquals(300, area.getHeight(), 0.5);
+    }
+
+    @Test
+    void testHairlineFindingCarriesArea() throws Exception {
+        PDDocument doc = new PDDocument();
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
+        try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+            cs.setLineWidth(0.1f);
+            cs.moveTo(50, 50);
+            cs.lineTo(400, 50);
+            cs.stroke();
+        }
+        byte[] pdf = toBytes(doc);
+
+        PrintPreflightReport report = controller.printPreflight(request(pdf)).getBody();
+        assertNotNull(report);
+        Finding f = finding(report, "HAIRLINE");
+        assertNotNull(f);
+        assertFalse(f.getAreas().isEmpty());
+        FindingArea area = f.getAreas().get(0);
+        assertEquals(1, area.getPage());
+        assertEquals(50, area.getX(), 0.5);
+        assertEquals(350, area.getWidth(), 0.5);
+    }
+
+    @Test
+    void testInsufficientBleedAreasPointAtDeficientSide() throws Exception {
+        PDDocument doc = new PDDocument();
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
+        page.setTrimBox(
+                new PDRectangle(
+                        5 * MM,
+                        5 * MM,
+                        page.getMediaBox().getWidth() - 10 * MM,
+                        page.getMediaBox().getHeight() - 10 * MM));
+        // 1mm declared bleed on every side, 3mm required — all four bands flagged.
+        page.setBleedBox(
+                new PDRectangle(
+                        4 * MM,
+                        4 * MM,
+                        page.getMediaBox().getWidth() - 8 * MM,
+                        page.getMediaBox().getHeight() - 8 * MM));
+        byte[] pdf = toBytes(doc);
+
+        PrintPreflightReport report = controller.printPreflight(request(pdf)).getBody();
+        assertNotNull(report);
+        Finding f = finding(report, "BLEED_INSUFFICIENT");
+        assertNotNull(f);
+        assertEquals(4, f.getAreas().size());
+        // Left gap: strip from required edge (5mm-3mm=2mm) to declared edge (4mm).
+        FindingArea left =
+                f.getAreas().stream()
+                        .filter(a -> "left: 1.0 mm declared".equals(a.getLabel()))
+                        .findFirst()
+                        .orElseThrow();
+        assertEquals(2 * MM, left.getX(), 0.5);
+        assertEquals(2 * MM, left.getWidth(), 0.5);
+    }
+
+    @Test
+    void testUnpaintedBleedAreasLocateWhiteBand() throws Exception {
+        PDDocument doc = new PDDocument();
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
+        try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+            // Paint everything red except a white strip along the top bleed band.
+            cs.setNonStrokingColor(0.8f, 0f, 0f);
+            cs.addRect(0, 0, page.getMediaBox().getWidth(), page.getMediaBox().getHeight());
+            cs.fill();
+            cs.setNonStrokingColor(1f, 1f, 1f);
+            cs.addRect(
+                    0,
+                    page.getMediaBox().getHeight() - 3 * MM,
+                    page.getMediaBox().getWidth(),
+                    3 * MM);
+            cs.fill();
+        }
+        page.setTrimBox(
+                new PDRectangle(
+                        5 * MM,
+                        5 * MM,
+                        page.getMediaBox().getWidth() - 10 * MM,
+                        page.getMediaBox().getHeight() - 10 * MM));
+        page.setBleedBox(page.getMediaBox());
+        byte[] pdf = toBytes(doc);
+
+        PrintPreflightReport report = controller.printPreflight(request(pdf)).getBody();
+        assertNotNull(report);
+        Finding f = finding(report, "BLEED_UNPAINTED");
+        assertNotNull(f);
+        assertFalse(f.getAreas().isEmpty());
+        FindingArea top =
+                f.getAreas().stream()
+                        .filter(a -> a.getLabel() != null && a.getLabel().startsWith("top"))
+                        .findFirst()
+                        .orElseThrow(
+                                () -> new AssertionError("no top-band area in " + f.getAreas()));
+        // The white strip sits inside the top 3mm of the page.
+        assertTrue(
+                top.getY() > page.getMediaBox().getHeight() - 5 * MM,
+                "white zone should sit near the top edge: " + top.getY());
+    }
+
+    @Test
+    void testAnnotatedEndpointProducesMarkedCopy() throws Exception {
+        PDDocument doc = new PDDocument();
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
+        try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+            cs.setLineWidth(0.1f);
+            cs.moveTo(50, 50);
+            cs.lineTo(400, 50);
+            cs.stroke();
+        }
+        byte[] pdf = toBytes(doc);
+
+        ResponseEntity<Resource> response = controller.printPreflightAnnotated(request(pdf));
+        assertEquals(200, response.getStatusCode().value());
+        Resource body = response.getBody();
+        assertNotNull(body);
+        java.io.File tmp = java.io.File.createTempFile("annotated", ".pdf");
+        body.getInputStream().transferTo(java.nio.file.Files.newOutputStream(tmp.toPath()));
+        try (PDDocument result = Loader.loadPDF(tmp)) {
+            java.util.List<?> annotations = result.getPage(0).getAnnotations();
+            assertFalse(annotations.isEmpty(), "annotated copy should carry annotations");
+        }
+    }
+
+    @Test
+    void testAnnotatedEndpointAddsNoteForPageLevelFindings() throws Exception {
+        // No TrimBox/BleedBox, no content: geometry findings carry no areas → note annotations.
+        PDDocument doc = new PDDocument();
+        doc.addPage(new PDPage(PDRectangle.A4));
+        byte[] pdf = toBytes(doc);
+
+        ResponseEntity<Resource> response = controller.printPreflightAnnotated(request(pdf));
+        Resource body = response.getBody();
+        assertNotNull(body);
+        java.io.File tmp = java.io.File.createTempFile("annotated-notes", ".pdf");
+        body.getInputStream().transferTo(java.nio.file.Files.newOutputStream(tmp.toPath()));
+        try (PDDocument result = Loader.loadPDF(tmp)) {
+            java.util.List<?> annotations = result.getPage(0).getAnnotations();
+            assertTrue(
+                    annotations.size() >= 2,
+                    "expected notes for page-level findings, got " + annotations.size());
+        }
     }
 }

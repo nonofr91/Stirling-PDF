@@ -1771,6 +1771,7 @@ export type ToolEndpoint =
   | "/api/v1/security/cert-sign/validate-certificate"
   | "/api/v1/security/get-info-on-pdf"
   | "/api/v1/security/print-preflight"
+  | "/api/v1/security/print-preflight-annotated"
   | "/api/v1/security/redact"
   | "/api/v1/security/redact-execute"
   | "/api/v1/security/remove-cert-sign"
@@ -1883,6 +1884,7 @@ export interface ToolApiParams {
   "/api/v1/security/cert-sign/validate-certificate": SecurityCertSignValidateCertificateRequest;
   "/api/v1/security/get-info-on-pdf": SecurityGetInfoOnPdfRequest;
   "/api/v1/security/print-preflight": PrintPreflightRequest;
+  "/api/v1/security/print-preflight-annotated": PrintPreflightRequest;
   "/api/v1/security/redact": ManualRedactPdfRequest;
   "/api/v1/security/redact-execute": RedactExecuteRequest;
   "/api/v1/security/remove-cert-sign": SecurityRemoveCertSignRequest;
@@ -1996,6 +1998,7 @@ export const TOOL_ENDPOINTS = [
   "/api/v1/security/cert-sign/validate-certificate",
   "/api/v1/security/get-info-on-pdf",
   "/api/v1/security/print-preflight",
+  "/api/v1/security/print-preflight-annotated",
   "/api/v1/security/redact",
   "/api/v1/security/redact-execute",
   "/api/v1/security/remove-cert-sign",

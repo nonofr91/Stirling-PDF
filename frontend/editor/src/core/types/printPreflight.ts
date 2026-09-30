@@ -8,12 +8,27 @@ export type PreflightCategory =
   | "CONTENT"
   | "DOCUMENT";
 
+/**
+ * Where a finding lives on the page, in PDF user space (unrotated, bottom-left
+ * origin, points). The viewer overlay converts with pdfRectToPageFractions.
+ */
+export interface PreflightArea {
+  page: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  label?: string | null;
+}
+
 export interface PreflightFinding {
   severity: PreflightSeverity;
   category: PreflightCategory;
   code: string;
   message: string;
   pages: number[];
+  areas?: PreflightArea[];
+  areasTruncated?: boolean;
 }
 
 export interface PreflightCounts {

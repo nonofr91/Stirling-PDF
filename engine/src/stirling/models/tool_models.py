@@ -1231,6 +1231,28 @@ class PdfToXmlParams(ApiModel):
     """
 
 
+class PrintPreflightAnnotatedParams(ApiModel):
+    """
+    Same analysis as print-preflight, but returns a copy of the PDF with each located issue framed by a colored square annotation (red/orange/blue by severity) and a note per page for document-wide findings. Input:PDF Output:PDF Type:SISO
+    """
+
+    check_bleed_coverage: bool = Field(
+        True,
+        description="Render each page and check the bleed band between TrimBox and BleedBox is actually painted, so trimming cannot reveal white",
+    )
+    hairline_threshold_pt: float = Field(
+        0.25,
+        description="Strokes thinner than this width in points are reported as hairlines at risk of disappearing in print",
+        ge=0.0,
+    )
+    min_image_dpi: int = Field(
+        150, description="Images rendered below this effective resolution are reported as low resolution", ge=1
+    )
+    required_bleed_mm: float = Field(
+        3, description="Bleed width in millimetres required on every side beyond the TrimBox", ge=0.0
+    )
+
+
 class PrintPreflightParams(ApiModel):
     """
     Analyzes a PDF for print production and reports issues: fonts not embedded, RGB or spot colors, low-resolution images, missing or unpainted bleed, hairline strokes, transparency, annotations inside the trim and mixed page sizes. Input:PDF Output:JSON Type:SISO
@@ -2031,6 +2053,7 @@ class Model(
         | AddWatermarkParams
         | AutoRedactParams
         | PrintPreflightParams
+        | PrintPreflightAnnotatedParams
         | RedactParams
         | RedactExecuteParams
         | RemoveCertSignParams
@@ -2113,6 +2136,7 @@ class Model(
         | AddWatermarkParams
         | AutoRedactParams
         | PrintPreflightParams
+        | PrintPreflightAnnotatedParams
         | RedactParams
         | RedactExecuteParams
         | RemoveCertSignParams
@@ -2196,6 +2220,7 @@ type ParamToolModel = (
     | AddWatermarkParams
     | AutoRedactParams
     | PrintPreflightParams
+    | PrintPreflightAnnotatedParams
     | RedactParams
     | RedactExecuteParams
     | RemoveCertSignParams
@@ -2280,6 +2305,7 @@ class ToolEndpoint(StrEnum):
     ADD_WATERMARK = "/api/v1/security/add-watermark"
     AUTO_REDACT = "/api/v1/security/auto-redact"
     PRINT_PREFLIGHT = "/api/v1/security/print-preflight"
+    PRINT_PREFLIGHT_ANNOTATED = "/api/v1/security/print-preflight-annotated"
     REDACT = "/api/v1/security/redact"
     REDACT_EXECUTE = "/api/v1/security/redact-execute"
     REMOVE_CERT_SIGN = "/api/v1/security/remove-cert-sign"
@@ -2362,6 +2388,7 @@ OPERATIONS: dict[ToolEndpoint, ParamToolModelType] = {
     ToolEndpoint.ADD_WATERMARK: AddWatermarkParams,
     ToolEndpoint.AUTO_REDACT: AutoRedactParams,
     ToolEndpoint.PRINT_PREFLIGHT: PrintPreflightParams,
+    ToolEndpoint.PRINT_PREFLIGHT_ANNOTATED: PrintPreflightAnnotatedParams,
     ToolEndpoint.REDACT: RedactParams,
     ToolEndpoint.REDACT_EXECUTE: RedactExecuteParams,
     ToolEndpoint.REMOVE_CERT_SIGN: RemoveCertSignParams,

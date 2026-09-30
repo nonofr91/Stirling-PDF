@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import apiClient from "@app/services/apiClient";
+import { downloadFile } from "@app/services/downloadService";
 import { ToolOperationHook } from "@app/hooks/tools/shared/useToolOperation";
 import type { StirlingFile } from "@app/types/fileContext";
 import { extractErrorMessage } from "@app/utils/toolErrorHandler";
@@ -19,7 +20,29 @@ export interface PrintPreflightResultEntry {
 
 export interface PrintPreflightOperationHook extends ToolOperationHook<PrintPreflightParameters> {
   results: PrintPreflightResultEntry[];
+  /** Fetch the annotated copy for one analyzed file and trigger a download. */
+  downloadAnnotated: (fileId: string) => Promise<void>;
+  annotatedLoading: string | null;
 }
+
+const buildFormData = (
+  file: StirlingFile,
+  params: PrintPreflightParameters,
+): FormData => {
+  const formData = new FormData();
+  formData.append("fileInput", file);
+  if (params.requiredBleedMm !== undefined) {
+    formData.append("requiredBleedMm", String(params.requiredBleedMm));
+  }
+  if (params.minImageDpi !== undefined) {
+    formData.append("minImageDpi", String(params.minImageDpi));
+  }
+  if (params.hairlineThresholdPt !== undefined) {
+    formData.append("hairlineThresholdPt", String(params.hairlineThresholdPt));
+  }
+  formData.append("checkBleedCoverage", String(params.checkBleedCoverage));
+  return formData;
+};
 
 export const usePrintPreflightOperation = (): PrintPreflightOperationHook => {
   const { t } = useTranslation();
@@ -33,6 +56,12 @@ export const usePrintPreflightOperation = (): PrintPreflightOperationHook => {
 
   const cancelRequested = useRef(false);
   const previousUrl = useRef<string | null>(null);
+  // Inputs of the current run, kept so the annotated copy can be re-requested
+  // without re-running the analysis client-side.
+  const lastRun = useRef<
+    Map<string, { file: StirlingFile; params: PrintPreflightParameters }>
+  >(new Map());
+  const [annotatedLoading, setAnnotatedLoading] = useState<string | null>(null);
 
   const cleanupDownloadUrl = useCallback(() => {
     if (previousUrl.current) {
@@ -45,6 +74,7 @@ export const usePrintPreflightOperation = (): PrintPreflightOperationHook => {
     cancelRequested.current = false;
     setResults([]);
     setFiles([]);
+    lastRun.current.clear();
     cleanupDownloadUrl();
     setDownloadUrl(null);
     setDownloadFilename("");
@@ -72,36 +102,19 @@ export const usePrintPreflightOperation = (): PrintPreflightOperationHook => {
       cleanupDownloadUrl();
       setDownloadUrl(null);
       setDownloadFilename("");
+      lastRun.current.clear();
 
       try {
         const aggregated: PrintPreflightResultEntry[] = [];
 
         for (const file of selectedFiles) {
           if (cancelRequested.current) break;
-
-          const formData = new FormData();
-          formData.append("fileInput", file);
-          if (params.requiredBleedMm !== undefined) {
-            formData.append("requiredBleedMm", String(params.requiredBleedMm));
-          }
-          if (params.minImageDpi !== undefined) {
-            formData.append("minImageDpi", String(params.minImageDpi));
-          }
-          if (params.hairlineThresholdPt !== undefined) {
-            formData.append(
-              "hairlineThresholdPt",
-              String(params.hairlineThresholdPt),
-            );
-          }
-          formData.append(
-            "checkBleedCoverage",
-            String(params.checkBleedCoverage),
-          );
+          lastRun.current.set(file.fileId, { file, params });
 
           try {
             const response = await apiClient.post(
               "/api/v1/security/print-preflight",
-              formData,
+              buildFormData(file, params),
             );
             aggregated.push({
               fileId: file.fileId,
@@ -162,6 +175,39 @@ export const usePrintPreflightOperation = (): PrintPreflightOperationHook => {
     [cleanupDownloadUrl, t],
   );
 
+  const downloadAnnotated = useCallback(
+    async (fileId: string) => {
+      const run = lastRun.current.get(fileId);
+      if (!run || annotatedLoading) {
+        return;
+      }
+      setAnnotatedLoading(fileId);
+      try {
+        const response = await apiClient.post(
+          "/api/v1/security/print-preflight-annotated",
+          buildFormData(run.file, run.params),
+          { responseType: "blob" },
+        );
+        const blob =
+          response.data instanceof Blob
+            ? response.data
+            : new Blob([response.data], { type: "application/pdf" });
+        const base = run.file.name.replace(/\.pdf$/i, "");
+        await downloadFile({
+          data: new File([blob], `${base}_preflight.pdf`, {
+            type: "application/pdf",
+          }),
+          filename: `${base}_preflight.pdf`,
+        });
+      } catch (error) {
+        setErrorMessage(extractErrorMessage(error));
+      } finally {
+        setAnnotatedLoading(null);
+      }
+    },
+    [annotatedLoading],
+  );
+
   const cancelOperation = useCallback(() => {
     if (isLoading) {
       cancelRequested.current = true;
@@ -197,10 +243,14 @@ export const usePrintPreflightOperation = (): PrintPreflightOperationHook => {
       cancelOperation,
       undoOperation,
       results,
+      downloadAnnotated,
+      annotatedLoading,
     }),
     [
+      annotatedLoading,
       cancelOperation,
       clearError,
+      downloadAnnotated,
       downloadFilename,
       downloadUrl,
       errorMessage,

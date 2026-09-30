@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Accordion,
   Alert,
@@ -7,6 +7,7 @@ import {
   Loader,
   Stack,
   Text,
+  Tooltip,
 } from "@mantine/core";
 import { Button } from "@app/ui/Button";
 import { Icon } from "@app/ui/Icon";
@@ -17,6 +18,18 @@ import type {
   PreflightSeverity,
 } from "@app/types/printPreflight";
 import { downloadFile } from "@app/services/downloadService";
+import { useViewScopedFiles } from "@app/hooks/tools/shared/useViewScopedFiles";
+import { useViewer } from "@app/contexts/ViewerContext";
+import {
+  useSetPageOverlay,
+  type PageOverlayRect,
+} from "@app/contexts/PageOverlayContext";
+import { getFormFillFileId } from "@app/types/fileContext";
+import {
+  pdfRectToPageFractions,
+  readPageBoxSnapshots,
+  type PageBoxSnapshot,
+} from "@app/utils/pageBoxReader";
 
 interface PrintPreflightResultsProps {
   operation: PrintPreflightOperationHook;
@@ -35,11 +48,45 @@ const severityColor = (severity: PreflightSeverity): string => {
   }
 };
 
+/** Border + label colour of a finding's overlay rect, keyed by severity. */
+const severityStroke = (severity: PreflightSeverity): string => {
+  switch (severity) {
+    case "ERROR":
+      return "var(--mantine-color-red-7)";
+    case "WARNING":
+      return "var(--mantine-color-orange-7)";
+    case "INFO":
+      return "var(--mantine-color-blue-6)";
+  }
+};
+
 const severityRank = (severity: PreflightSeverity): number =>
   severity === "ERROR" ? 0 : severity === "WARNING" ? 1 : 2;
 
-const FindingRow = ({ finding }: { finding: PreflightFinding }) => {
+const severityAccent = (
+  severity: PreflightSeverity,
+): "danger" | "warning" | "default" => {
+  switch (severity) {
+    case "ERROR":
+      return "danger";
+    case "WARNING":
+      return "warning";
+    case "INFO":
+      return "default";
+  }
+};
+
+const FindingRow = ({
+  finding,
+  located,
+  onLocate,
+}: {
+  finding: PreflightFinding;
+  located: boolean;
+  onLocate?: () => void;
+}) => {
   const { t } = useTranslation();
+  const hasAreas = (finding.areas?.length ?? 0) > 0;
   return (
     <Group gap="sm" align="flex-start" wrap="nowrap">
       <Badge color={severityColor(finding.severity)} variant="light" mt={2}>
@@ -54,7 +101,30 @@ const FindingRow = ({ finding }: { finding: PreflightFinding }) => {
             {finding.pages.length > 20 && "…"}
           </Text>
         )}
+        {finding.areasTruncated && (
+          <Text size="xs" c="dimmed">
+            {t(
+              "printPreflight.areasTruncated",
+              "Additional locations omitted from the preview",
+            )}
+          </Text>
+        )}
       </Stack>
+      {hasAreas && onLocate && (
+        <Tooltip
+          label={t("printPreflight.locate", "Show on document")}
+          withArrow
+        >
+          <Button
+            variant={located ? "primary" : "tertiary"}
+            accent={severityAccent(finding.severity)}
+            size="sm"
+            aria-label={t("printPreflight.locate", "Show on document")}
+            leftSection={<Icon name="locate-fixed" size={14} />}
+            onClick={onLocate}
+          />
+        </Tooltip>
+      )}
       <Text size="xs" c="dimmed" ff="monospace">
         {t(`printPreflight.category.${finding.category}`, finding.category)}
       </Text>
@@ -68,6 +138,15 @@ const PrintPreflightResults = ({
   errorMessage,
 }: PrintPreflightResultsProps) => {
   const { t } = useTranslation();
+  const [selectedFile = null] = useViewScopedFiles();
+  const { scrollActions } = useViewer();
+  const setOverlay = useSetPageOverlay();
+  const [snapshots, setSnapshots] = useState<(PageBoxSnapshot | null)[] | null>(
+    null,
+  );
+  // Index into the sorted findings of the report currently on screen; null =
+  // every located finding is drawn, an index emphasizes just that one.
+  const [located, setLocated] = useState<number | null>(null);
 
   const jsonFile = useMemo(
     () =>
@@ -76,6 +155,67 @@ const PrintPreflightResults = ({
       ) ?? null,
     [operation.files],
   );
+
+  // The overlay belongs to the viewed file's report — painting another file's
+  // findings on it would mislead (results outlive a file switch by one change).
+  const overlayReport =
+    operation.results.find(
+      (e) => !e.error && e.report && e.fileId === selectedFile?.fileId,
+    )?.report ?? null;
+
+  useEffect(() => {
+    let cancelled = false;
+    setLocated(null);
+    if (
+      !selectedFile ||
+      !overlayReport?.findings.some((f) => f.areas?.length)
+    ) {
+      setSnapshots(null);
+      return;
+    }
+    readPageBoxSnapshots(selectedFile).then((s) => {
+      if (!cancelled) setSnapshots(s);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedFile, overlayReport]);
+
+  // Paint the findings' areas over the viewer pages — one rect per area,
+  // colored by severity; the located finding's rects get the emphasis style.
+  useEffect(() => {
+    const documentKey = selectedFile ? getFormFillFileId(selectedFile) : null;
+    if (!documentKey || !snapshots || !overlayReport) {
+      setOverlay(null);
+      return;
+    }
+    const sorted = [...overlayReport.findings].sort(
+      (a, b) => severityRank(a.severity) - severityRank(b.severity),
+    );
+    setOverlay({
+      documentKey,
+      rects: [],
+      rectsPerPage: snapshots.map((pageSnapshot, pageIndex) => {
+        if (!pageSnapshot) return [];
+        const out: PageOverlayRect[] = [];
+        for (let i = 0; i < sorted.length; i++) {
+          const finding = sorted[i];
+          for (const area of finding.areas ?? []) {
+            if (area.page !== pageIndex + 1) continue;
+            out.push({
+              ...pdfRectToPageFractions(area, pageSnapshot.boxes.CROP_BOX),
+              color: severityStroke(finding.severity),
+              dashed: finding.severity === "INFO",
+              emphasized: located === i,
+              label: area.label ?? finding.code,
+            });
+          }
+        }
+        return out;
+      }),
+    });
+    return () => setOverlay(null);
+  }, [selectedFile, snapshots, overlayReport, located, setOverlay]);
 
   const handleDownload = useCallback((file: File) => {
     void downloadFile({ data: file, filename: file.name });
@@ -180,8 +320,34 @@ const PrintPreflightResults = ({
 
             {sorted.length > 0 && (
               <Stack gap="sm">
+                {report === overlayReport &&
+                  snapshots &&
+                  sorted.some((f) => (f.areas?.length ?? 0) > 0) && (
+                    <Text size="xs" c="dimmed">
+                      {t(
+                        "printPreflight.locatedHint",
+                        "Located issues are framed on the document — use the target button to isolate one.",
+                      )}
+                    </Text>
+                  )}
                 {sorted.map((finding, idx) => (
-                  <FindingRow key={finding.code + idx} finding={finding} />
+                  <FindingRow
+                    key={finding.code + idx}
+                    finding={finding}
+                    located={report === overlayReport && located === idx}
+                    onLocate={
+                      report === overlayReport
+                        ? () => {
+                            const next = located === idx ? null : idx;
+                            setLocated(next);
+                            const page = finding.areas?.[0]?.page;
+                            if (next !== null && page) {
+                              scrollActions.scrollToPage(page);
+                            }
+                          }
+                        : undefined
+                    }
+                  />
                 ))}
               </Stack>
             )}
@@ -265,11 +431,29 @@ const PrintPreflightResults = ({
         );
       })}
 
-      {jsonFile && (
-        <Button onClick={() => handleDownload(jsonFile)} fullWidth>
-          {t("printPreflight.downloadJson", "Download report (JSON)")}
-        </Button>
-      )}
+      <Group grow wrap="nowrap">
+        {operation.results
+          .filter((entry) => !entry.error && entry.report)
+          .map((entry) => (
+            <Button
+              key={entry.fileId}
+              variant="secondary"
+              loading={operation.annotatedLoading === entry.fileId}
+              disabled={
+                operation.annotatedLoading != null &&
+                operation.annotatedLoading !== entry.fileId
+              }
+              onClick={() => void operation.downloadAnnotated(entry.fileId)}
+            >
+              {t("printPreflight.downloadAnnotated", "Annotated PDF")}
+            </Button>
+          ))}
+        {jsonFile && (
+          <Button onClick={() => handleDownload(jsonFile)}>
+            {t("printPreflight.downloadJson", "Download report (JSON)")}
+          </Button>
+        )}
+      </Group>
     </Stack>
   );
 };

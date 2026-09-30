@@ -10461,8 +10461,12 @@ unlimited = "{{used}} seats · Unlimited"
 title = "Print File"
 
 [printPreflight]
+areasTruncated = "Additional locations omitted from the preview"
 counts = "{{errors}} errors · {{warnings}} warnings · {{infos}} info"
+downloadAnnotated = "Annotated PDF"
 downloadJson = "Download report (JSON)"
+locate = "Show on document"
+locatedHint = "Located issues are framed on the document — use the target button to isolate one."
 noResults = "Run the tool to generate a preflight report."
 pages = "Pages"
 processing = "Running preflight checks..."

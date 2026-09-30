@@ -63,6 +63,17 @@ public class PrintPreflightReport {
         private String message;
         private List<Integer> pages = new ArrayList<>();
 
+        /**
+         * Page-space rectangles locating the issue (unrotated user space, bottom-left origin) —
+         * what a viewer overlay or an annotated copy can highlight. Empty for document-wide
+         * findings; capped at {@link #MAX_AREAS} to keep the report lean.
+         */
+        private List<FindingArea> areas = new ArrayList<>();
+
+        private boolean areasTruncated;
+
+        static final int MAX_AREAS = 64;
+
         public Finding(
                 Severity severity,
                 Category category,
@@ -74,6 +85,45 @@ public class PrintPreflightReport {
             this.code = code;
             this.message = message;
             this.pages = pages != null ? pages : new ArrayList<>();
+        }
+
+        public void addArea(FindingArea area) {
+            for (FindingArea existing : areas) {
+                if (existing.page == area.page
+                        && Math.abs(existing.x - area.x) < 0.5f
+                        && Math.abs(existing.y - area.y) < 0.5f
+                        && Math.abs(existing.width - area.width) < 0.5f
+                        && Math.abs(existing.height - area.height) < 0.5f) {
+                    return;
+                }
+            }
+            if (areas.size() < MAX_AREAS) {
+                areas.add(area);
+            } else {
+                areasTruncated = true;
+            }
+        }
+    }
+
+    @Data
+    @NoArgsConstructor
+    public static class FindingArea {
+        /** 1-based page number. */
+        private int page;
+
+        private float x;
+        private float y;
+        private float width;
+        private float height;
+        private String label;
+
+        public FindingArea(int page, float x, float y, float width, float height, String label) {
+            this.page = page;
+            this.x = x;
+            this.y = y;
+            this.width = width;
+            this.height = height;
+            this.label = label;
         }
     }
 
