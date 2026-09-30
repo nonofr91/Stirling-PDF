@@ -104,8 +104,10 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - name: Install dependencies
         run: npm ci
-      - name: Prepare env files
-        run: npx tsx editor/scripts/setup-env.mts
+      - name: Prepare env files and generated assets
+        run: |
+          npx tsx editor/scripts/setup-env.mts
+          node editor/scripts/generate-icons.js
       - name: Unit tests
         run: npx vitest run --root editor
       - name: Typecheck (core + proprietary)
