@@ -4130,8 +4130,8 @@ title = "Ce que cela fait"
 title = "À propos des portfolios PDF"
 
 [crop]
-cropToBox = "Recadrer sur une boîte de page nommée"
 autoCrop = "Recadrer automatiquement les marges blanches"
+cropToBox = "Recadrer sur une boîte de page nommée"
 noFileSelected = "Sélectionnez un fichier PDF pour commencer le recadrage"
 reset = "Réinitialiser au PDF complet"
 submit = "Envoyer"
@@ -4178,6 +4178,69 @@ drag = "Faites glisser la superposition pour déplacer la zone de recadrage"
 precision = "Utilisez les champs de coordonnées pour un positionnement précis"
 resize = "Faites glisser les poignées d’angle et de bord pour redimensionner"
 title = "Comment recadrer des PDF"
+
+[cutContour]
+aiModelId = "Identifiant du modèle IA"
+aiModelIdHint = "Modèle du catalogue pour le détourage ; vide = défaut (u2net)"
+aiThreshold = "Seuil de confiance IA"
+alphaThreshold = "Seuil alpha"
+alphaThresholdHint = "Pixels plus transparents que ce seuil comptent comme fond"
+backgroundTolerance = "Tolérance du fond"
+backgroundToleranceHint = "Distance de couleur depuis le bord de page encore comptée comme fond"
+bleedMm = "Fond perdu au-delà du tracé (mm)"
+bleedMmHint = "Répète les pixels de bord après le contour pour éviter tout liseré blanc à la découpe"
+clipArtwork = "Rogner le contenu de la page au tracé de découpe"
+dpi = "Résolution de détection (ppp)"
+extractionMode = "Détection du sujet"
+help = "Détoure la silhouette du graphisme sur chaque page et écrit un tracé de découpe fermé en couleur d'appoint CutContour sur un calque dédié — prêt pour les RIP, traceurs et tables de découpe."
+keepHoles = "Conserver les trous internes comme tracés de découpe (ex. le contre-poinçon d'un « o »)"
+layerName = "Nom du calque (optionnel)"
+mergeGapMm = "Fusionner les écarts jusqu'à (mm)"
+mergeGapMmHint = "Les éléments plus proches que cet écart fusionnent sous un seul contour ; 0 garde chaque pièce séparée"
+minAreaMm2 = "Surface minimale (mm²)"
+minAreaMm2Hint = "Les parties déconnectées plus petites sont ignorées comme bruit"
+offsetMm = "Décalage du tracé (mm)"
+offsetMmHint = "Décale le tracé vers l'extérieur ; une valeur négative le rentre dans la silhouette"
+processingSteps = "Taguer le calque comme étape de découpe ISO 19593-1 (non imprimante)"
+smoothness = "Lissage (0–100)"
+spotName = "Nom de la couleur d'appoint"
+spotNameError = "Le nom de couleur d'appoint est requis"
+spotNameHint = "Sensible à la casse ; les RIP attendent « CutContour »"
+strokeWidthPt = "Épaisseur du trait (pt)"
+submit = "Créer le tracé de découpe"
+trimToContour = "Définir TrimBox sur le rectangle englobant du contour"
+
+[cutContour.cutLine]
+section = "Tracé de découpe"
+
+[cutContour.error]
+failed = "Une erreur est survenue lors de la création du tracé de découpe."
+
+[cutContour.modes]
+AI = "Détourage IA (fonds complexes)"
+ALPHA = "Transparence (graphisme vectoriel/alpha)"
+AUTO = "Automatique (essaie chaque source)"
+BACKGROUND = "Fond de couleur uniforme"
+
+[cutContour.output]
+section = "Sortie"
+
+[cutContour.preview]
+loading = "Tracé du contour…"
+mode = "Détection utilisée :"
+toggle = "Prévisualiser le tracé de découpe sur le document"
+
+[cutContour.results]
+title = "Résultats du tracé de découpe"
+
+[cutContour.roi]
+active = "Périmètre défini — l'anneau intérieur donne la couleur de fond"
+clear = "Effacer"
+draw = "Dessiner le périmètre"
+drawing = "Tracez le périmètre sur le document…"
+
+[cutContour.steps]
+configure = "Réglages du tracé de découpe"
 
 [database]
 backupCreated = "Sauvegarde de la base de donnée réussie"
@@ -5402,6 +5465,11 @@ desc = "Redimensionnez un PDF pour réduire sa taille (en conservant le texte !
 tags = "rogner,couper,redimensionner"
 title = "Redimensionner"
 
+[home.cutContour]
+desc = "Détoure la silhouette du graphisme et écrit un tracé de découpe de production (couleur d'appoint CutContour) avec rognage et fond perdu en option."
+tags = "prépresse,tracé de découpe,cutcontour,cut contour,découpe,détourage,sticker,demi-découpe,contour,silhouette,plotter,rip"
+title = "Tracé de découpe"
+
 [home.devAirgapped]
 desc = "Lien vers le guide d’installation isolée (air-gapped)"
 tags = "air-gapped,offline,isolated,no internet,disconnected,secure,network isolation,standalone"
@@ -5508,6 +5576,11 @@ title = "Éditeur de texte PDF"
 desc = "Fusionnez toutes les pages PDF en une seule grande page."
 tags = "combiner,fusionner,unique"
 title = "Fusionner en une seule page"
+
+[home.printPreflight]
+desc = "Vérifie un PDF pour la production print : polices non incorporées, couleurs RVB/tons directs, images basse résolution, fond perdu absent ou non peint, filets, transparence."
+tags = "preflight,prépresse,prepress,print,impression,contrôle,rapport,polices,incorporées,RVB,CMJN,fond perdu,traits,coupe,dpi,résolution,surimpression,transparence,pdfx"
+title = "Preflight d'impression"
 
 [home.read]
 desc = "Afficher et annoter des PDF. Surlignez du texte, dessinez ou insérez des commentaires pour l’examen et la collaboration."
@@ -6125,6 +6198,10 @@ title = "Télécharger Stirling pour ordinateur"
 description = "Collaborez avec votre équipe"
 title = "Inviter des membres de l’équipe"
 
+[onboarding.checklist.setDefaultApp]
+description = "Ouvrir les fichiers PDF dans Stirling PDF"
+title = "Définir Stirling comme application par défaut"
+
 [onboarding.checklist.takeTour]
 description = "Découvrez le fonctionnement de Stirling avec une visite rapide"
 title = "Faire la visite guidée"
@@ -6280,15 +6357,15 @@ text = "Le premier plan place la superposition au-dessus de la page. L’arrièr
 title = "Position de superposition"
 
 [pageBox]
-label = "Boîte de page"
 diagram = "Diagramme des boîtes de page"
+label = "Boîte de page"
 
 [pageBox.options]
-MEDIA_BOX = "MediaBox"
-CROP_BOX = "CropBox"
-TRIM_BOX = "TrimBox"
-BLEED_BOX = "BleedBox"
 ART_BOX = "ArtBox"
+BLEED_BOX = "BleedBox"
+CROP_BOX = "CropBox"
+MEDIA_BOX = "MediaBox"
+TRIM_BOX = "TrimBox"
 
 [pageEdit]
 deselectAll = "Ne rien sélectionner"
@@ -6731,6 +6808,8 @@ upgradeCompleteMessage = "Votre abonnement a été mis à niveau avec succès. V
 upgradeSuccess = "Paiement réussi ! Votre abonnement a été mis à niveau. La licence a été mise à jour sur votre serveur. Vous recevrez bientôt un e‑mail de confirmation."
 upgradeTitle = "Mettre à niveau vers {{planName}}"
 yearly = "Annuel"
+
+[payment.addCapacity]
 
 [payment.adjustTeam]
 title = "Ajuster le plan Team"
@@ -7444,6 +7523,11 @@ recoveryTechnicalDetails = "Détails techniques"
 recoveryTitle = "Échec de l’application de la politique"
 viewAnyway = "Voir le fichier (politique toujours en cours d’application)"
 
+[policyOption]
+pdfa-1 = "PDF/A-1b"
+pdfa-2b = "PDF/A-2b"
+pdfa-3b = "PDF/A-3b"
+
 [portal.accountLink.card]
 billingNote = "Le traitement sans surveillance est facturé sur le portefeuille de votre organisation."
 connectDescription = "Connectez ce serveur pour utiliser le quota de traitement de votre équipe dans Stirling Cloud."
@@ -7858,6 +7942,8 @@ rateUnknown = "Nous afficherons le prix exact lors du paiement."
 [portal.billing.prepaid.consent]
 label = "Je comprends que lorsque ma capacité prépayée est épuisée ou expire après 12 mois, le traitement continue automatiquement au tarif standard de paiement à l’usage (jusqu’à ma limite de dépenses), sauf si j’annule, et que je peux annuler à tout moment depuis le portail de facturation."
 
+[portal.billing.prepaid.deploy]
+
 [portal.billing.prepaid.offer]
 title = "Obtenez 12 mois pour le prix de 10"
 
@@ -7871,9 +7957,15 @@ payOnline = "Payer en ligne"
 poNumber = "Numéro de commande (facultatif)"
 poNumberPlaceholder = "p. ex. PO-2026-0142"
 
+[portal.billing.prepaid.pipelines]
+
+[portal.billing.prepaid.posture]
+
 [portal.billing.prepaid.review]
 download = "Télécharger le devis (PDF)"
 downloading = "Préparation…"
+
+[portal.billing.prepaid.size]
 
 [portal.billing.processor]
 activate = "Activer le Processor"
@@ -7969,6 +8061,8 @@ useSuggested = "Utiliser la suggestion · {{amount}} / mois"
 body_one = "À {{rate}}/jour, vous atteindrez le plafond dans ~{{count}} jour (~{{monthEnd}} fin de mois). Limite suggérée ~{{suggested}}."
 body_other = "À {{rate}}/jour, vous atteindrez le plafond dans ~{{count}} jours (~{{monthEnd}} fin de mois). Limite suggérée ~{{suggested}}."
 label = "Dépassement prévu."
+
+[portal.billing.spendLimitModal]
 
 [portal.billing.subscribedPlan.capWarn]
 approachingBody = "Augmentez-la maintenant pour que le traitement automatisé ne soit jamais interrompu."
@@ -9197,6 +9291,14 @@ schedule = "Set how often it runs"
 setup = "Finish setting up: {{tools}}"
 source = "Choose an input source"
 
+[portal.pipelines.builder.diagnostic]
+fan-in = "Combine tous les fichiers entrants"
+fan-out = "S'exécute une fois par fichier entrant"
+format-mismatch = "Envoie {{produced}}, attend {{accepts}}"
+output-uncertain = "Peut ne pas s'exécuter : la sortie dépend de la configuration"
+source-mismatch = "L'entrée est {{produced}}, attend {{accepts}}"
+undeclared-operation = "Impossible de vérifier ce que cette étape accepte"
+
 [portal.pipelines.builder.icon]
 label = "Changer l’icône"
 
@@ -10129,6 +10231,9 @@ title = "Essai Enterprise"
 subtitle = "Tout ce qui provient des exécutions de vos politiques et des éditeurs de votre équipe et nécessite votre attention."
 title = "Révision"
 
+[portal.settings.sections]
+account-link = "Connexion du compte"
+
 [portal.shell.sidebar]
 appEditor = "Éditeur"
 appProcessor = "Processor"
@@ -10422,6 +10527,74 @@ unlimited = "{{used}} · Illimité"
 
 [printFile]
 title = "Imprimer le fichier"
+
+[printPreflight]
+areasTruncated = "Emplacements supplémentaires omis de l'aperçu"
+counts = "{{errors}} erreurs · {{warnings}} avertissements · {{infos}} infos"
+downloadAnnotated = "PDF annoté"
+downloadJson = "Télécharger le rapport (JSON)"
+locate = "Voir sur le document"
+locatedHint = "Les problèmes localisés sont encadrés sur le document — le bouton cible permet d'en isoler un."
+noResults = "Lancez l'outil pour générer un rapport preflight."
+pages = "Pages"
+processing = "Contrôles preflight en cours..."
+results = "Résultats"
+submit = "Lancer le preflight"
+
+[printPreflight.category]
+COLOR = "Couleur"
+CONTENT = "Contenu"
+DOCUMENT = "Document"
+FONTS = "Polices"
+GEOMETRY = "Géométrie"
+IMAGES = "Images"
+
+[printPreflight.checkBleedCoverage]
+desc = "Rend chaque page pour vérifier que la zone de fond perdu est réellement couverte par du contenu, pas seulement déclarée."
+label = "Vérifier que le fond perdu est peint"
+
+[printPreflight.error]
+noReport = "Aucun rapport renvoyé."
+partial = "Certains fichiers n'ont pas pu être analysés."
+unexpected = "Erreur inattendue pendant le preflight."
+
+[printPreflight.facts]
+boxes = "Boîtes de page"
+colors = "Espaces colorimétriques"
+fonts = "Polices"
+images = "Images"
+lowRes = "{{count}} sous le seuil"
+pageCount = "Pages"
+title = "Caractéristiques du document"
+type3 = "Type 3"
+
+[printPreflight.hairlineThresholdPt]
+help = "Les traits plus fins que ce seuil sont signalés — ils risquent de disparaître à l'impression."
+label = "Seuil des filets (pt)"
+
+[printPreflight.minImageDpi]
+help = "Les images placées sous cette résolution effective sont signalées. 300 est idéal pour l'offset ; 150 est un minimum courant."
+label = "Résolution minimale des images (dpi)"
+
+[printPreflight.options]
+stepTitle = "Seuils de contrôle"
+
+[printPreflight.requiredBleedMm]
+help = "Largeur de fond perdu attendue de chaque côté au-delà du format fini. 3 mm est la norme en Europe."
+label = "Fond perdu requis (mm)"
+
+[printPreflight.severity]
+ERROR = "Erreur"
+INFO = "Info"
+WARNING = "Avertissement"
+
+[printPreflight.status]
+complete = "Preflight terminé"
+
+[printPreflight.verdict]
+clean = "Prêt pour l'impression"
+errors = "{{errors}} problème(s) bloquant(s) détecté(s)"
+warnings = "Imprimable avec {{warnings}} avertissement(s)"
 
 [processingFolders.setup]
 addFolder = "Ajouter un dossier"
@@ -11241,16 +11414,46 @@ boxFormatError = "Quatre nombres attendus : x,y,largeur,hauteur"
 copyMissingFromMediaBox = "Copier MediaBox dans les boîtes non définies"
 cropBox = "CropBox"
 help = "Définit les boîtes de page en points au format x,y,largeur,hauteur. Laissez un champ vide pour conserver la boîte existante."
+inheritedHint = "* boîte absente de la page — valeur héritée affichée"
 mediaBox = "MediaBox"
+preview = "Boîtes de page résultantes"
 submit = "Définir les boîtes de page"
 trimBox = "TrimBox"
 trimMarginMm = "Marge de rognage (mm, réduit MediaBox dans TrimBox)"
-preview = "Boîtes de page résultantes"
-inheritedHint = "* boîte absente de la page — valeur héritée affichée"
 
+[setPageBoxes.cropMarks]
+enable = "Tracer des traits de coupe aux coins de la TrimBox"
+length = "Longueur (mm)"
+offset = "Décalage (mm)"
+section = "Traits de coupe"
+weight = "Épaisseur (pt)"
+
+[setPageBoxes.deriveFromCropMarks]
+desc = "Détecte les traits de coupe peints pour placer la TrimBox. Utilisé seulement si aucune TrimBox ni marge de rognage n'est fournie ; échoue sur les pages sans marques nettes."
+label = "Dériver la TrimBox des traits de coupe"
 
 [setPageBoxes.error]
 failed = "Une erreur est survenue lors de la définition des boîtes de page."
+
+[setPageBoxes.generateBleed]
+bleedBottomMm = "Bas (mm)"
+bleedLeftMm = "Gauche (mm)"
+bleedRightMm = "Droite (mm)"
+bleedTopMm = "Haut (mm)"
+corners = "Générer aussi le fond perdu dans les coins"
+dpi = "DPI de rendu"
+enable = "Peindre du contenu de fond perdu entre TrimBox et BleedBox"
+hint = "Une BleedBox seule n'est que de la géométrie. Cette option peint du contenu supplémentaire au-delà du format fini (comme Add Bleed de PitStop) pour éviter tout liseré blanc à la coupe."
+inset = "Retrait source (mm, ignore la marge intérieure)"
+method = "Méthode de fond perdu"
+section = "Générer le fond perdu"
+sideFallback = "bleedMm"
+
+[setPageBoxes.generateBleed.methods]
+MIRROR = "Miroir des bords (vectoriel)"
+MIRROR_IMAGE = "Miroir des bords (image)"
+PIXEL_REPEAT = "Répéter le dernier pixel"
+UPSCALE = "Agrandir le contenu de la page"
 
 [setPageBoxes.results]
 title = "Résultats"
@@ -12458,8 +12661,8 @@ documentReview = "Révision de document"
 documentSecurity = "Sécurité du document"
 extraction = "Extraction"
 general = "Général"
-prepress = "Prépresse"
 pageFormatting = "Mise en page"
+prepress = "Prépresse"
 removal = "Suppression"
 signing = "Signature"
 verification = "Vérification"
@@ -12869,6 +13072,7 @@ enableSepiaFilter = "Activer le filtre sépia"
 engineLoadError = "Échec de l’initialisation du moteur de visualisation PDF"
 engineSlowWarning = "L’initialisation du moteur PDF prend plus de temps que prévu. Veuillez vérifier les paramètres WebAssembly et Worker de votre navigateur, ou recharger la page."
 firstPage = "Première page"
+hidePageBoxes = "Masquer les boîtes de page"
 lastPage = "Dernière page"
 loadingEngine = "Chargement du moteur PDF..."
 moreOptions = "Plus"
@@ -12878,14 +13082,13 @@ pageNavigation = "Navigation dans les pages"
 previousPage = "Page précédente"
 saveChangesErrorBody = "Le document n’a pas pu être enregistré. Réessayez."
 saveChangesErrorTitle = "Impossible d’enregistrer les modifications"
+showPageBoxes = "Afficher les boîtes de page"
 singlePageView = "Vue page unique"
 unknownFile = "Fichier inconnu"
 view = "Affichage"
 zoom = "Zoom"
 zoomIn = "Zoom avant"
 zoomOut = "Zoom arrière"
-hidePageBoxes = "Masquer les boîtes de page"
-showPageBoxes = "Afficher les boîtes de page"
 
 [viewer.attachments]
 addAttachment = "Ajouter une pièce jointe"
@@ -13259,139 +13462,3 @@ confirm = "Extraire"
 message_one = "This ZIP contains {{count}} file. Extract anyway?"
 message_other = "This ZIP contains {{count}} files. Extract anyway?"
 title = "Fichier ZIP volumineux"
-
-[home.printPreflight]
-desc = "Vérifie un PDF pour la production print : polices non incorporées, couleurs RVB/tons directs, images basse résolution, fond perdu absent ou non peint, filets, transparence."
-tags = "preflight,prépresse,prepress,print,impression,contrôle,rapport,polices,incorporées,RVB,CMJN,fond perdu,traits,coupe,dpi,résolution,surimpression,transparence,pdfx"
-title = "Preflight d'impression"
-
-[onboarding.checklist.setDefaultApp]
-description = "Ouvrir les fichiers PDF dans Stirling PDF"
-title = "Définir Stirling comme application par défaut"
-
-[printPreflight]
-areasTruncated = "Emplacements supplémentaires omis de l'aperçu"
-counts = "{{errors}} erreurs · {{warnings}} avertissements · {{infos}} infos"
-downloadAnnotated = "PDF annoté"
-downloadJson = "Télécharger le rapport (JSON)"
-locate = "Voir sur le document"
-locatedHint = "Les problèmes localisés sont encadrés sur le document — le bouton cible permet d'en isoler un."
-noResults = "Lancez l'outil pour générer un rapport preflight."
-pages = "Pages"
-processing = "Contrôles preflight en cours..."
-results = "Résultats"
-submit = "Lancer le preflight"
-
-[printPreflight.category]
-COLOR = "Couleur"
-CONTENT = "Contenu"
-DOCUMENT = "Document"
-FONTS = "Polices"
-GEOMETRY = "Géométrie"
-IMAGES = "Images"
-
-[printPreflight.checkBleedCoverage]
-desc = "Rend chaque page pour vérifier que la zone de fond perdu est réellement couverte par du contenu, pas seulement déclarée."
-label = "Vérifier que le fond perdu est peint"
-
-[printPreflight.error]
-noReport = "Aucun rapport renvoyé."
-partial = "Certains fichiers n'ont pas pu être analysés."
-unexpected = "Erreur inattendue pendant le preflight."
-
-[printPreflight.facts]
-boxes = "Boîtes de page"
-colors = "Espaces colorimétriques"
-fonts = "Polices"
-images = "Images"
-lowRes = "{{count}} sous le seuil"
-pageCount = "Pages"
-title = "Caractéristiques du document"
-type3 = "Type 3"
-
-[printPreflight.hairlineThresholdPt]
-help = "Les traits plus fins que ce seuil sont signalés — ils risquent de disparaître à l'impression."
-label = "Seuil des filets (pt)"
-
-[printPreflight.minImageDpi]
-help = "Les images placées sous cette résolution effective sont signalées. 300 est idéal pour l'offset ; 150 est un minimum courant."
-label = "Résolution minimale des images (dpi)"
-
-[printPreflight.options]
-stepTitle = "Seuils de contrôle"
-
-[printPreflight.requiredBleedMm]
-help = "Largeur de fond perdu attendue de chaque côté au-delà du format fini. 3 mm est la norme en Europe."
-label = "Fond perdu requis (mm)"
-
-[printPreflight.severity]
-ERROR = "Erreur"
-INFO = "Info"
-WARNING = "Avertissement"
-
-[printPreflight.status]
-complete = "Preflight terminé"
-
-[printPreflight.verdict]
-clean = "Prêt pour l'impression"
-errors = "{{errors}} problème(s) bloquant(s) détecté(s)"
-warnings = "Imprimable avec {{warnings}} avertissement(s)"
-
-[setPageBoxes.cropMarks]
-enable = "Tracer des traits de coupe aux coins de la TrimBox"
-length = "Longueur (mm)"
-offset = "Décalage (mm)"
-section = "Traits de coupe"
-weight = "Épaisseur (pt)"
-
-[setPageBoxes.deriveFromCropMarks]
-desc = "Détecte les traits de coupe peints pour placer la TrimBox. Utilisé seulement si aucune TrimBox ni marge de rognage n'est fournie ; échoue sur les pages sans marques nettes."
-label = "Dériver la TrimBox des traits de coupe"
-
-[setPageBoxes.generateBleed]
-bleedBottomMm = "Bas (mm)"
-bleedLeftMm = "Gauche (mm)"
-bleedRightMm = "Droite (mm)"
-bleedTopMm = "Haut (mm)"
-corners = "Générer aussi le fond perdu dans les coins"
-dpi = "DPI de rendu"
-enable = "Peindre du contenu de fond perdu entre TrimBox et BleedBox"
-hint = "Une BleedBox seule n'est que de la géométrie. Cette option peint du contenu supplémentaire au-delà du format fini (comme Add Bleed de PitStop) pour éviter tout liseré blanc à la coupe."
-inset = "Retrait source (mm, ignore la marge intérieure)"
-method = "Méthode de fond perdu"
-section = "Générer le fond perdu"
-sideFallback = "bleedMm"
-
-[setPageBoxes.generateBleed.methods]
-MIRROR = "Miroir des bords (vectoriel)"
-MIRROR_IMAGE = "Miroir des bords (image)"
-PIXEL_REPEAT = "Répéter le dernier pixel"
-UPSCALE = "Agrandir le contenu de la page"
-
-[policyOption]
-pdfa-1 = "PDF/A-1b"
-pdfa-2b = "PDF/A-2b"
-pdfa-3b = "PDF/A-3b"
-
-[portal.pipelines.builder.diagnostic]
-fan-in = "Combine tous les fichiers entrants"
-fan-out = "S'exécute une fois par fichier entrant"
-format-mismatch = "Envoie {{produced}}, attend {{accepts}}"
-output-uncertain = "Peut ne pas s'exécuter : la sortie dépend de la configuration"
-source-mismatch = "L'entrée est {{produced}}, attend {{accepts}}"
-undeclared-operation = "Impossible de vérifier ce que cette étape accepte"
-
-[portal.settings.sections]
-account-link = "Connexion du compte"
-
-[payment.addCapacity]
-
-[portal.billing.prepaid.deploy]
-
-[portal.billing.prepaid.pipelines]
-
-[portal.billing.prepaid.posture]
-
-[portal.billing.prepaid.size]
-
-[portal.billing.spendLimitModal]

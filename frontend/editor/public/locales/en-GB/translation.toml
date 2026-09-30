@@ -4130,8 +4130,8 @@ title = "What it does"
 title = "About PDF Portfolios"
 
 [crop]
-cropToBox = "Crop to a named page box"
 autoCrop = "Auto-crop whitespace"
+cropToBox = "Crop to a named page box"
 noFileSelected = "Add a PDF file to begin cropping"
 reset = "Reset to full PDF"
 submit = "Apply Crop"
@@ -4178,6 +4178,69 @@ drag = "Drag the overlay to move the crop area"
 precision = "Use coordinate inputs for precise positioning"
 resize = "Drag the corner and edge handles to resize"
 title = "How to Crop PDFs"
+
+[cutContour]
+aiModelId = "AI model id"
+aiModelIdHint = "Catalog model for matting; empty uses the default (u2net)"
+aiThreshold = "AI confidence"
+alphaThreshold = "Alpha threshold"
+alphaThresholdHint = "Pixels more transparent than this count as background"
+backgroundTolerance = "Background tolerance"
+backgroundToleranceHint = "Colour distance from the page edge still counted as background"
+bleedMm = "Bleed beyond cut line (mm)"
+bleedMmHint = "Repeats edge pixels past the contour so trimming never shows a white edge"
+clipArtwork = "Clip page content to the cut contour"
+dpi = "Detection resolution (dpi)"
+extractionMode = "Subject detection"
+help = "Traces the silhouette of the artwork on each page and writes a closed cut path as a CutContour spot colour on a dedicated layer — ready for RIPs, plotters and die cutters."
+keepHoles = "Keep inner holes as cut contours (e.g. the counter of an 'o')"
+layerName = "Layer name (optional)"
+mergeGapMm = "Merge gaps up to (mm)"
+mergeGapMmHint = "Elements closer than this merge under a single outline; 0 keeps pieces separate"
+minAreaMm2 = "Minimum area (mm²)"
+minAreaMm2Hint = "Smaller disconnected parts are dropped as noise"
+offsetMm = "Cut line offset (mm)"
+offsetMmHint = "Moves the cut path outward; negative moves it inside the silhouette"
+processingSteps = "Tag layer as ISO 19593-1 cutting step (non-printing)"
+smoothness = "Smoothing (0–100)"
+spotName = "Spot colour name"
+spotNameError = "Spot name is required"
+spotNameHint = "Case-sensitive; RIPs key on 'CutContour'"
+strokeWidthPt = "Stroke width (pt)"
+submit = "Create Cut Contour"
+trimToContour = "Set TrimBox to the contour bounding box"
+
+[cutContour.cutLine]
+section = "Cut line"
+
+[cutContour.error]
+failed = "An error occurred while creating the cut contour."
+
+[cutContour.modes]
+AI = "AI matting (complex backgrounds)"
+ALPHA = "Transparency (vector/alpha artwork)"
+AUTO = "Automatic (try every source)"
+BACKGROUND = "Uniform background colour"
+
+[cutContour.output]
+section = "Output"
+
+[cutContour.preview]
+loading = "Tracing contour…"
+mode = "Detection used:"
+toggle = "Preview cut contour on the document"
+
+[cutContour.results]
+title = "Cut Contour Results"
+
+[cutContour.roi]
+active = "Perimeter set — the ring inside it defines the background colour"
+clear = "Clear"
+draw = "Draw perimeter"
+drawing = "Draw the perimeter on the document…"
+
+[cutContour.steps]
+configure = "Cut Contour Settings"
 
 [database]
 backupCreated = "Database backup successful"
@@ -5402,6 +5465,11 @@ desc = "Crop a PDF to reduce its size (maintains text!)"
 tags = "trim,cut,resize,crop,crop PDF,trim PDF,trim margins,remove margins,cut edges,trim borders,remove white space,crop pages,trim pages,reduce margins,set margins"
 title = "Crop PDF"
 
+[home.cutContour]
+desc = "Trace the artwork's silhouette and write a production cut line (CutContour spot colour) with optional clipping and bleed."
+tags = "prepress,cut contour,cutcontour,cut line,die cut,die-cut,sticker,kiss cut,dieline,plotter,detour,silhouette,contour,decoupe,rip"
+title = "Cut Contour"
+
 [home.devAirgapped]
 desc = "Link to air-gapped setup guide"
 tags = "air-gapped,offline,isolated,no internet,disconnected,secure,network isolation,standalone"
@@ -5508,6 +5576,11 @@ title = "PDF Text Editor"
 desc = "Merges all PDF pages into one large single page"
 tags = "combine,merge,single,single page,one page,merge to single,combine all,stitch pages,concatenate vertical,long page,poster"
 title = "PDF to Single Large Page"
+
+[home.printPreflight]
+desc = "Check a PDF for print production issues: unembedded fonts, RGB/spot colors, low-resolution images, missing or unpainted bleed, hairlines, transparency."
+tags = "preflight,prepress,print,check,report,fonts,embedded,RGB,CMYK,bleed,fond perdu,trim,marks,hairline,dpi,resolution,overprint,transparency,pdfx,pdf/x"
+title = "Print Preflight"
 
 [home.read]
 desc = "View and annotate PDFs. Highlight text, draw, or insert comments for review and collaboration."
@@ -6125,6 +6198,10 @@ title = "Download Stirling for Desktop"
 description = "Collaborate with your team"
 title = "Invite team members"
 
+[onboarding.checklist.setDefaultApp]
+description = "Open PDF files in Stirling PDF"
+title = "Make Stirling your default"
+
 [onboarding.checklist.takeTour]
 description = "See how Stirling works in a quick walkthrough"
 title = "Take the tour"
@@ -6280,15 +6357,15 @@ text = "Foreground places the overlay on top of the page. Background places it b
 title = "Overlay Position"
 
 [pageBox]
-label = "Page box"
 diagram = "Page box diagram"
+label = "Page box"
 
 [pageBox.options]
-MEDIA_BOX = "MediaBox"
-CROP_BOX = "CropBox"
-TRIM_BOX = "TrimBox"
-BLEED_BOX = "BleedBox"
 ART_BOX = "ArtBox"
+BLEED_BOX = "BleedBox"
+CROP_BOX = "CropBox"
+MEDIA_BOX = "MediaBox"
+TRIM_BOX = "TrimBox"
 
 [pageEdit]
 deselectAll = "None"
@@ -6731,6 +6808,8 @@ upgradeCompleteMessage = "Your subscription has been upgraded successfully. Your
 upgradeSuccess = "Payment successful! Your subscription has been upgraded. The licence has been updated on your server. You will receive a confirmation email shortly."
 upgradeTitle = "Upgrade to {{planName}}"
 yearly = "Yearly"
+
+[payment.addCapacity]
 
 [payment.adjustTeam]
 title = "Adjust Team plan"
@@ -7444,6 +7523,11 @@ recoveryTechnicalDetails = "Technical details"
 recoveryTitle = "Policy enforcement failed"
 viewAnyway = "View file (policy still enforcing)"
 
+[policyOption]
+pdfa-1 = "PDF/A-1b"
+pdfa-2b = "PDF/A-2b"
+pdfa-3b = "PDF/A-3b"
+
 [portal.accountLink.card]
 billingNote = "Unattended processing bills against your org wallet."
 connectDescription = "Connect this server to use your team’s processing allowance in Stirling Cloud."
@@ -7858,6 +7942,8 @@ rateUnknown = "We'll show the exact price at checkout."
 [portal.billing.prepaid.consent]
 label = "I understand that when my prepaid capacity is used up or expires after 12 months, processing automatically continues at the standard metered pay-as-you-go rate (up to my spend limit) unless I cancel, and that I can cancel anytime from the billing portal."
 
+[portal.billing.prepaid.deploy]
+
 [portal.billing.prepaid.offer]
 title = "Get 12 months for the price of 10"
 
@@ -7871,9 +7957,15 @@ payOnline = "Pay online"
 poNumber = "PO number (optional)"
 poNumberPlaceholder = "e.g. PO-2026-0142"
 
+[portal.billing.prepaid.pipelines]
+
+[portal.billing.prepaid.posture]
+
 [portal.billing.prepaid.review]
 download = "Download quote (PDF)"
 downloading = "Preparing…"
+
+[portal.billing.prepaid.size]
 
 [portal.billing.processor]
 activate = "Switch on the Processor"
@@ -7969,6 +8061,8 @@ useSuggested = "Use suggested · {{amount}} / month"
 body_one = "At {{rate}}/day you reach the cap in ~{{count}} day (~{{monthEnd}} month-end). Suggested limit ~{{suggested}}."
 body_other = "At {{rate}}/day you reach the cap in ~{{count}} days (~{{monthEnd}} month-end). Suggested limit ~{{suggested}}."
 label = "Projected to exceed."
+
+[portal.billing.spendLimitModal]
 
 [portal.billing.subscribedPlan.capWarn]
 approachingBody = "Raise it now so automated processing never pauses."
@@ -9197,6 +9291,14 @@ schedule = "Set how often it runs"
 setup = "Finish setting up: {{tools}}"
 source = "Choose an input source"
 
+[portal.pipelines.builder.diagnostic]
+fan-in = "Combines every incoming file"
+fan-out = "Runs once per incoming file"
+format-mismatch = "Sends {{produced}}, needs {{accepts}}"
+output-uncertain = "May not run: output depends on setup"
+source-mismatch = "Input is {{produced}}, needs {{accepts}}"
+undeclared-operation = "Can't check what this step accepts"
+
 [portal.pipelines.builder.icon]
 label = "Change icon"
 
@@ -10129,6 +10231,9 @@ title = "Enterprise trial"
 subtitle = "Anything from your policy runs and your team's editors that needs your attention."
 title = "Review"
 
+[portal.settings.sections]
+account-link = "Account connection"
+
 [portal.shell.sidebar]
 appEditor = "Editor"
 appProcessor = "Processor"
@@ -10422,6 +10527,74 @@ unlimited = "{{used}} · Unlimited"
 
 [printFile]
 title = "Print File"
+
+[printPreflight]
+areasTruncated = "Additional locations omitted from the preview"
+counts = "{{errors}} errors · {{warnings}} warnings · {{infos}} info"
+downloadAnnotated = "Annotated PDF"
+downloadJson = "Download report (JSON)"
+locate = "Show on document"
+locatedHint = "Located issues are framed on the document — use the target button to isolate one."
+noResults = "Run the tool to generate a preflight report."
+pages = "Pages"
+processing = "Running preflight checks..."
+results = "Results"
+submit = "Run preflight"
+
+[printPreflight.category]
+COLOR = "Color"
+CONTENT = "Content"
+DOCUMENT = "Document"
+FONTS = "Fonts"
+GEOMETRY = "Geometry"
+IMAGES = "Images"
+
+[printPreflight.checkBleedCoverage]
+desc = "Render each page to verify the bleed area is actually covered by content, not just declared."
+label = "Check bleed is painted"
+
+[printPreflight.error]
+noReport = "No report returned."
+partial = "Some files could not be analyzed."
+unexpected = "Unexpected error during preflight."
+
+[printPreflight.facts]
+boxes = "Page boxes"
+colors = "Color spaces"
+fonts = "Fonts"
+images = "Images"
+lowRes = "{{count}} below threshold"
+pageCount = "Pages"
+title = "Document facts"
+type3 = "Type 3"
+
+[printPreflight.hairlineThresholdPt]
+help = "Strokes thinner than this are flagged — they may drop out on press."
+label = "Hairline threshold (pt)"
+
+[printPreflight.minImageDpi]
+help = "Images placed below this effective resolution are flagged. 300 is ideal for offset; 150 is a common minimum."
+label = "Minimum image resolution (dpi)"
+
+[printPreflight.options]
+stepTitle = "Check thresholds"
+
+[printPreflight.requiredBleedMm]
+help = "Bleed width expected on every side past the trim. 3 mm is standard in Europe."
+label = "Required bleed (mm)"
+
+[printPreflight.severity]
+ERROR = "Error"
+INFO = "Info"
+WARNING = "Warning"
+
+[printPreflight.status]
+complete = "Preflight complete"
+
+[printPreflight.verdict]
+clean = "Ready for print"
+errors = "{{errors}} blocking issue(s) found"
+warnings = "Printable with {{warnings}} warning(s)"
 
 [processingFolders.setup]
 addFolder = "Add folder"
@@ -11241,16 +11414,46 @@ boxFormatError = "Expected four numbers: x,y,width,height"
 copyMissingFromMediaBox = "Copy MediaBox into boxes left unset"
 cropBox = "CropBox"
 help = "Set page boxes in points as x,y,width,height. Leave a field empty to keep the existing box."
+inheritedHint = "* box absent from the page — shown value is inherited"
 mediaBox = "MediaBox"
+preview = "Resulting page boxes"
 submit = "Set Page Boxes"
 trimBox = "TrimBox"
 trimMarginMm = "Trim margin (mm, shrink MediaBox into TrimBox)"
-preview = "Resulting page boxes"
-inheritedHint = "* box absent from the page — shown value is inherited"
 
+[setPageBoxes.cropMarks]
+enable = "Draw crop marks at the TrimBox corners"
+length = "Length (mm)"
+offset = "Offset (mm)"
+section = "Crop marks"
+weight = "Stroke (pt)"
+
+[setPageBoxes.deriveFromCropMarks]
+desc = "Detect painted cut marks to place the TrimBox. Used only when no TrimBox or trim margin is given; fails on pages without clear marks."
+label = "Derive TrimBox from crop marks"
 
 [setPageBoxes.error]
 failed = "An error occurred while setting page boxes."
+
+[setPageBoxes.generateBleed]
+bleedBottomMm = "Bottom (mm)"
+bleedLeftMm = "Left (mm)"
+bleedRightMm = "Right (mm)"
+bleedTopMm = "Top (mm)"
+corners = "Generate bleed in the corners too"
+dpi = "Render DPI"
+enable = "Paint bleed content between TrimBox and BleedBox"
+hint = "A BleedBox alone is only geometry. This paints extra content past the trim edge (like PitStop's Add Bleed) so trimming never shows a white edge."
+inset = "Source inset (mm, skip inner margin)"
+method = "Bleed method"
+section = "Generate bleed"
+sideFallback = "bleedMm"
+
+[setPageBoxes.generateBleed.methods]
+MIRROR = "Mirror edges (vector)"
+MIRROR_IMAGE = "Mirror edges (image)"
+PIXEL_REPEAT = "Repeat last pixel"
+UPSCALE = "Upscale page content"
 
 [setPageBoxes.results]
 title = "Set Page Boxes Results"
@@ -12458,8 +12661,8 @@ documentReview = "Document Review"
 documentSecurity = "Document Security"
 extraction = "Extraction"
 general = "General"
-prepress = "Prepress"
 pageFormatting = "Page Formatting"
+prepress = "Prepress"
 removal = "Removal"
 signing = "Signing"
 verification = "Verification"
@@ -12869,6 +13072,7 @@ enableSepiaFilter = "Enable Sepia Filter"
 engineLoadError = "Failed to initialise PDF viewer engine"
 engineSlowWarning = "PDF engine initialisation is taking longer than expected. Please check your browser WebAssembly and Worker settings, or reload the page."
 firstPage = "First Page"
+hidePageBoxes = "Hide page boxes"
 lastPage = "Last Page"
 loadingEngine = "Loading PDF Engine..."
 moreOptions = "More"
@@ -12878,14 +13082,13 @@ pageNavigation = "Page navigation"
 previousPage = "Previous Page"
 saveChangesErrorBody = "The document could not be saved. Try again."
 saveChangesErrorTitle = "Could not save changes"
+showPageBoxes = "Show page boxes"
 singlePageView = "Single Page View"
 unknownFile = "Unknown file"
 view = "View"
 zoom = "Zoom"
 zoomIn = "Zoom In"
 zoomOut = "Zoom Out"
-hidePageBoxes = "Hide page boxes"
-showPageBoxes = "Show page boxes"
 
 [viewer.attachments]
 addAttachment = "Add attachment"
@@ -13259,139 +13462,3 @@ confirm = "Extract"
 message_one = "This ZIP contains {{count}} file. Extract anyway?"
 message_other = "This ZIP contains {{count}} files. Extract anyway?"
 title = "Large ZIP File"
-
-[home.printPreflight]
-desc = "Check a PDF for print production issues: unembedded fonts, RGB/spot colors, low-resolution images, missing or unpainted bleed, hairlines, transparency."
-tags = "preflight,prepress,print,check,report,fonts,embedded,RGB,CMYK,bleed,fond perdu,trim,marks,hairline,dpi,resolution,overprint,transparency,pdfx,pdf/x"
-title = "Print Preflight"
-
-[onboarding.checklist.setDefaultApp]
-description = "Open PDF files in Stirling PDF"
-title = "Make Stirling your default"
-
-[printPreflight]
-areasTruncated = "Additional locations omitted from the preview"
-counts = "{{errors}} errors · {{warnings}} warnings · {{infos}} info"
-downloadAnnotated = "Annotated PDF"
-downloadJson = "Download report (JSON)"
-locate = "Show on document"
-locatedHint = "Located issues are framed on the document — use the target button to isolate one."
-noResults = "Run the tool to generate a preflight report."
-pages = "Pages"
-processing = "Running preflight checks..."
-results = "Results"
-submit = "Run preflight"
-
-[printPreflight.category]
-COLOR = "Color"
-CONTENT = "Content"
-DOCUMENT = "Document"
-FONTS = "Fonts"
-GEOMETRY = "Geometry"
-IMAGES = "Images"
-
-[printPreflight.checkBleedCoverage]
-desc = "Render each page to verify the bleed area is actually covered by content, not just declared."
-label = "Check bleed is painted"
-
-[printPreflight.error]
-noReport = "No report returned."
-partial = "Some files could not be analyzed."
-unexpected = "Unexpected error during preflight."
-
-[printPreflight.facts]
-boxes = "Page boxes"
-colors = "Color spaces"
-fonts = "Fonts"
-images = "Images"
-lowRes = "{{count}} below threshold"
-pageCount = "Pages"
-title = "Document facts"
-type3 = "Type 3"
-
-[printPreflight.hairlineThresholdPt]
-help = "Strokes thinner than this are flagged — they may drop out on press."
-label = "Hairline threshold (pt)"
-
-[printPreflight.minImageDpi]
-help = "Images placed below this effective resolution are flagged. 300 is ideal for offset; 150 is a common minimum."
-label = "Minimum image resolution (dpi)"
-
-[printPreflight.options]
-stepTitle = "Check thresholds"
-
-[printPreflight.requiredBleedMm]
-help = "Bleed width expected on every side past the trim. 3 mm is standard in Europe."
-label = "Required bleed (mm)"
-
-[printPreflight.severity]
-ERROR = "Error"
-INFO = "Info"
-WARNING = "Warning"
-
-[printPreflight.status]
-complete = "Preflight complete"
-
-[printPreflight.verdict]
-clean = "Ready for print"
-errors = "{{errors}} blocking issue(s) found"
-warnings = "Printable with {{warnings}} warning(s)"
-
-[setPageBoxes.cropMarks]
-enable = "Draw crop marks at the TrimBox corners"
-length = "Length (mm)"
-offset = "Offset (mm)"
-section = "Crop marks"
-weight = "Stroke (pt)"
-
-[setPageBoxes.deriveFromCropMarks]
-desc = "Detect painted cut marks to place the TrimBox. Used only when no TrimBox or trim margin is given; fails on pages without clear marks."
-label = "Derive TrimBox from crop marks"
-
-[setPageBoxes.generateBleed]
-bleedBottomMm = "Bottom (mm)"
-bleedLeftMm = "Left (mm)"
-bleedRightMm = "Right (mm)"
-bleedTopMm = "Top (mm)"
-corners = "Generate bleed in the corners too"
-dpi = "Render DPI"
-enable = "Paint bleed content between TrimBox and BleedBox"
-hint = "A BleedBox alone is only geometry. This paints extra content past the trim edge (like PitStop's Add Bleed) so trimming never shows a white edge."
-inset = "Source inset (mm, skip inner margin)"
-method = "Bleed method"
-section = "Generate bleed"
-sideFallback = "bleedMm"
-
-[setPageBoxes.generateBleed.methods]
-MIRROR = "Mirror edges (vector)"
-MIRROR_IMAGE = "Mirror edges (image)"
-PIXEL_REPEAT = "Repeat last pixel"
-UPSCALE = "Upscale page content"
-
-[policyOption]
-pdfa-1 = "PDF/A-1b"
-pdfa-2b = "PDF/A-2b"
-pdfa-3b = "PDF/A-3b"
-
-[portal.pipelines.builder.diagnostic]
-fan-in = "Combines every incoming file"
-fan-out = "Runs once per incoming file"
-format-mismatch = "Sends {{produced}}, needs {{accepts}}"
-output-uncertain = "May not run: output depends on setup"
-source-mismatch = "Input is {{produced}}, needs {{accepts}}"
-undeclared-operation = "Can't check what this step accepts"
-
-[portal.settings.sections]
-account-link = "Account connection"
-
-[payment.addCapacity]
-
-[portal.billing.prepaid.deploy]
-
-[portal.billing.prepaid.pipelines]
-
-[portal.billing.prepaid.posture]
-
-[portal.billing.prepaid.size]
-
-[portal.billing.spendLimitModal]

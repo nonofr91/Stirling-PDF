@@ -442,6 +442,16 @@ export const TOOL_IO: ToolIOTable = {
     arity: "SISO",
   },
   "/api/v1/general/crop": { accepts: ["PDF"], produces: "PDF", arity: "SISO" },
+  "/api/v1/general/cut-contour": {
+    accepts: ["PDF"],
+    produces: "PDF",
+    arity: "SISO",
+  },
+  "/api/v1/general/cut-contour-preview": {
+    accepts: ["PDF"],
+    produces: "JSON",
+    arity: "SISO",
+  },
   "/api/v1/general/edit-table-of-contents": {
     accepts: ["PDF"],
     produces: "PDF",

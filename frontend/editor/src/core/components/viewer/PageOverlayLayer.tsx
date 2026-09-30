@@ -1,9 +1,10 @@
-import { memo, useMemo } from "react";
+import { memo, useMemo, useRef, useState } from "react";
 import { useDocumentState } from "@embedpdf/core/react";
 import {
   usePageOverlayState,
   usePageBoxesVisibility,
   PageOverlayRect,
+  PageOverlayPath,
 } from "@app/contexts/PageOverlayContext";
 import {
   pdfRectToPageFractions,
@@ -46,13 +47,29 @@ export const PageOverlayLayer = memo(function PageOverlayLayer({
     [page],
   );
 
+  const paths = useMemo<PageOverlayPath[]>(() => {
+    if (!overlay || !documentKey || overlay.documentKey !== documentKey) {
+      return [];
+    }
+    return overlay.pathsPerPage
+      ? (overlay.pathsPerPage[pageIndex] ?? [])
+      : (overlay.paths ?? []);
+  }, [overlay, documentKey, pageIndex]);
+
+  const drawRequest =
+    overlay && documentKey && overlay.documentKey === documentKey
+      ? overlay.drawRequest
+      : undefined;
+  const [draft, setDraft] = useState<number[] | null>(null);
+  const capturingRef = useRef(false);
+
   const rects = useMemo<PageOverlayRect[]>(() => {
     const out: PageOverlayRect[] = [];
     const toolRects =
       overlay && documentKey && overlay.documentKey === documentKey
-        ? (overlay.rectsPerPage
-            ? (overlay.rectsPerPage[pageIndex] ?? [])
-            : overlay.rects)
+        ? overlay.rectsPerPage
+          ? (overlay.rectsPerPage[pageIndex] ?? [])
+          : overlay.rects
         : [];
     const toolPublishesBoxes = toolRects.some((r) => r.kind === "box");
 
@@ -92,7 +109,7 @@ export const PageOverlayLayer = memo(function PageOverlayLayer({
     return out;
   }, [pageBoxesVisible, snapshot, overlay, documentKey, pageIndex]);
 
-  if (rects.length === 0) {
+  if (!drawRequest && rects.length === 0 && paths.length === 0) {
     return null;
   }
 
@@ -105,6 +122,94 @@ export const PageOverlayLayer = memo(function PageOverlayLayer({
         zIndex: Z_INDEX_SIGNATURE_OVERLAY,
       }}
     >
+      {/* icon-lint-disable -- runtime geometry overlay, not a UI icon */}
+      {(paths.length > 0 || drawRequest) && (
+        <svg
+          viewBox="0 0 1 1"
+          preserveAspectRatio="none"
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+          }}
+        >
+          {paths.map((path, i) => (
+            <polygon
+              key={i}
+              points={path.points.join(" ")}
+              fill="none"
+              stroke={path.color}
+              strokeWidth={1.5}
+              strokeDasharray={path.dashed || path.hole ? "4 3" : undefined}
+              vectorEffect="non-scaling-stroke"
+            />
+          ))}
+          {draft && draft.length >= 4 && (
+            <polyline
+              points={draft.join(" ")}
+              fill="none"
+              stroke={drawRequest?.color}
+              strokeWidth={1.5}
+              strokeDasharray="5 4"
+              vectorEffect="non-scaling-stroke"
+            />
+          )}
+        </svg>
+      )}
+      {drawRequest && (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            // The overlay container is pointer-events:none so it stays
+            // click-through; the capture layer opts back in while armed.
+            pointerEvents: "auto",
+            cursor: "crosshair",
+            touchAction: "none",
+          }}
+          onPointerDown={(e) => {
+            // keep the gesture off the page pan/scroll handlers
+            e.stopPropagation();
+            const r = e.currentTarget.getBoundingClientRect();
+            capturingRef.current = true;
+            e.currentTarget.setPointerCapture(e.pointerId);
+            setDraft([
+              (e.clientX - r.left) / r.width,
+              (e.clientY - r.top) / r.height,
+            ]);
+          }}
+          onPointerMove={(e) => {
+            if (!capturingRef.current) return;
+            e.stopPropagation();
+            const r = e.currentTarget.getBoundingClientRect();
+            const x = (e.clientX - r.left) / r.width;
+            const y = (e.clientY - r.top) / r.height;
+            setDraft((d) => {
+              if (!d) return [x, y];
+              const lx = d[d.length - 2];
+              const ly = d[d.length - 1];
+              // pixel-space distance so the simplification tracks zoom
+              if (Math.hypot(x - lx, y - ly) * r.width < 6) return d;
+              return [...d, x, y];
+            });
+          }}
+          onPointerUp={(e) => {
+            e.stopPropagation();
+            capturingRef.current = false;
+            setDraft((d) => {
+              if (d && d.length >= 6) {
+                drawRequest.onComplete(pageIndex, d);
+              }
+              return null;
+            });
+          }}
+          onPointerCancel={() => {
+            capturingRef.current = false;
+            setDraft(null);
+          }}
+        />
+      )}
       {rects.map((rect, i) => {
         const inset = rect.insetPx ?? 0;
         return (

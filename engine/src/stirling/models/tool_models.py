@@ -465,6 +465,177 @@ class CropParams(ApiModel):
     y: float | None = Field(None, description="The y-coordinate of the top-left corner of the crop area")
 
 
+class ExtractionMode(StrEnum):
+    """
+    How the subject silhouette is extracted. ALPHA uses existing transparency, BACKGROUND flood-fills a uniform background from the page edges, AI runs subject matting (ONNX model required), AUTO tries the sources in autoOrder
+    """
+
+    alpha = "ALPHA"
+    background = "BACKGROUND"
+    ai = "AI"
+    auto = "AUTO"
+
+
+class CutContourParams(ApiModel):
+    """
+    Extracts the subject silhouette of each page (transparency, uniform background or AI matting), then writes a closed vector cut path in a spot colour (default CutContour) on a dedicated ISO 19593-1 cutting layer. Optionally clips the artwork to the contour, extends it with bleed beyond the cut line and updates TrimBox/BleedBox. Input:PDF Output:PDF Type:SISO
+    """
+
+    ai_model_id: str | None = Field(
+        None, description="Matting model id for AI mode; blank selects the catalog default (u2net)"
+    )
+    ai_threshold: float = Field(0.4, description="Confidence threshold applied to AI masks, 0..1", ge=0.0, le=1.0)
+    alpha_threshold: int = Field(
+        16, description="Alpha threshold 0-255; pixels more transparent than this are background", ge=0, le=255
+    )
+    auto_order: str = Field(
+        "ALPHA,BACKGROUND,AI", description="Comma-separated sources AUTO tries in order (subset of ALPHA,BACKGROUND,AI)"
+    )
+    background_tolerance: int = Field(
+        24,
+        description="BACKGROUND mode: per-channel RGB distance from the page-edge colour that still counts as background",
+        ge=0,
+        le=255,
+    )
+    bleed_mm: float = Field(
+        0,
+        description="Millimetres of bleed painted beyond the cut line by repeating edge pixels (irregular-contour bleed); 0 disables",
+        ge=0.0,
+        le=50.0,
+    )
+    clip_artwork: bool = Field(
+        False,
+        description="Replace page content with the artwork clipped to the cut path. When false (default) the original PDF content stays untouched and only the CutContour layer is added",
+    )
+    dpi: int = Field(
+        150, description="Mask render resolution in dpi; large pages are clamped to a memory budget", ge=72, le=600
+    )
+    extraction_mode: ExtractionMode = Field(
+        ExtractionMode.auto,
+        description="How the subject silhouette is extracted. ALPHA uses existing transparency, BACKGROUND flood-fills a uniform background from the page edges, AI runs subject matting (ONNX model required), AUTO tries the sources in autoOrder",
+    )
+    keep_holes: bool = Field(
+        True, description="Keep fully enclosed holes (the counter of an 'o') as inner cut contours"
+    )
+    layer_name: str | None = Field(None, description="Optional-content layer name; blank defaults to the spot name")
+    merge_gap_mm: float = Field(
+        8,
+        description="Artwork elements separated by less than this gap (mm) merge under a single outer cut contour; 0 keeps every piece separate",
+        ge=0.0,
+    )
+    min_area_mm2: float = Field(
+        1, description="Connected components smaller than this area (mm²) are dropped as noise", ge=0.0
+    )
+    offset_mm: float = Field(
+        0,
+        description="Distance the cut path is moved outward from the silhouette in millimetres (negative moves it inside)",
+    )
+    processing_steps: bool = Field(
+        True,
+        description="Tag the cut layer with ISO 19593-1 processing-step metadata (Structural/Cutting) and suppress it in print output",
+    )
+    roi: str | None = Field(
+        None,
+        description='Optional rough perimeter drawn by the user, as flat x,y pairs in page fractions (top-left origin), e.g. "0.1,0.2,0.9,0.2,0.9,0.9,0.1,0.9". The ring inside the polygon provides the background reference and the cut stays bounded by it',
+    )
+    roi_page: int = Field(0, description="1-based page the roi applies to; 0 or unset applies it to every page", ge=0)
+    smoothness: float = Field(
+        20,
+        description="0..100: higher values simplify harder and apply more smoothing passes to the traced contour",
+        ge=0.0,
+        le=100.0,
+    )
+    spot_name: str = Field(
+        "CutContour",
+        description="Spot colour name the RIP keys on. Case-sensitive; keep 'CutContour' unless the shop specifies a different colourant",
+    )
+    stroke_width_pt: float = Field(0.25, description="Cut stroke width in points", ge=0.0)
+    trim_to_contour: bool = Field(
+        False,
+        description="Set TrimBox to the contour bounding box (BleedBox follows the bleed when bleedMm is positive)",
+    )
+
+
+class CutContourPreviewParams(ApiModel):
+    """
+    Same extraction as cut-contour but returns the traced paths as JSON (page coordinates in points) without modifying the PDF, so the UI can draw the contour over the document. Input:PDF Output:JSON Type:SISO
+    """
+
+    ai_model_id: str | None = Field(
+        None, description="Matting model id for AI mode; blank selects the catalog default (u2net)"
+    )
+    ai_threshold: float = Field(0.4, description="Confidence threshold applied to AI masks, 0..1", ge=0.0, le=1.0)
+    alpha_threshold: int = Field(
+        16, description="Alpha threshold 0-255; pixels more transparent than this are background", ge=0, le=255
+    )
+    auto_order: str = Field(
+        "ALPHA,BACKGROUND,AI", description="Comma-separated sources AUTO tries in order (subset of ALPHA,BACKGROUND,AI)"
+    )
+    background_tolerance: int = Field(
+        24,
+        description="BACKGROUND mode: per-channel RGB distance from the page-edge colour that still counts as background",
+        ge=0,
+        le=255,
+    )
+    bleed_mm: float = Field(
+        0,
+        description="Millimetres of bleed painted beyond the cut line by repeating edge pixels (irregular-contour bleed); 0 disables",
+        ge=0.0,
+        le=50.0,
+    )
+    clip_artwork: bool = Field(
+        False,
+        description="Replace page content with the artwork clipped to the cut path. When false (default) the original PDF content stays untouched and only the CutContour layer is added",
+    )
+    dpi: int = Field(
+        150, description="Mask render resolution in dpi; large pages are clamped to a memory budget", ge=72, le=600
+    )
+    extraction_mode: ExtractionMode = Field(
+        ExtractionMode.auto,
+        description="How the subject silhouette is extracted. ALPHA uses existing transparency, BACKGROUND flood-fills a uniform background from the page edges, AI runs subject matting (ONNX model required), AUTO tries the sources in autoOrder",
+    )
+    keep_holes: bool = Field(
+        True, description="Keep fully enclosed holes (the counter of an 'o') as inner cut contours"
+    )
+    layer_name: str | None = Field(None, description="Optional-content layer name; blank defaults to the spot name")
+    merge_gap_mm: float = Field(
+        8,
+        description="Artwork elements separated by less than this gap (mm) merge under a single outer cut contour; 0 keeps every piece separate",
+        ge=0.0,
+    )
+    min_area_mm2: float = Field(
+        1, description="Connected components smaller than this area (mm²) are dropped as noise", ge=0.0
+    )
+    offset_mm: float = Field(
+        0,
+        description="Distance the cut path is moved outward from the silhouette in millimetres (negative moves it inside)",
+    )
+    processing_steps: bool = Field(
+        True,
+        description="Tag the cut layer with ISO 19593-1 processing-step metadata (Structural/Cutting) and suppress it in print output",
+    )
+    roi: str | None = Field(
+        None,
+        description='Optional rough perimeter drawn by the user, as flat x,y pairs in page fractions (top-left origin), e.g. "0.1,0.2,0.9,0.2,0.9,0.9,0.1,0.9". The ring inside the polygon provides the background reference and the cut stays bounded by it',
+    )
+    roi_page: int = Field(0, description="1-based page the roi applies to; 0 or unset applies it to every page", ge=0)
+    smoothness: float = Field(
+        20,
+        description="0..100: higher values simplify harder and apply more smoothing passes to the traced contour",
+        ge=0.0,
+        le=100.0,
+    )
+    spot_name: str = Field(
+        "CutContour",
+        description="Spot colour name the RIP keys on. Case-sensitive; keep 'CutContour' unless the shop specifies a different colourant",
+    )
+    stroke_width_pt: float = Field(0.25, description="Cut stroke width in points", ge=0.0)
+    trim_to_contour: bool = Field(
+        False,
+        description="Set TrimBox to the contour bounding box (BleedBox follows the bleed when bleedMm is positive)",
+    )
+
+
 class DeleteAttachmentParams(ApiModel):
     """
     This endpoint deletes an embedded attachment from a PDF. Input:PDF Output:PDF Type:SISO
@@ -2008,6 +2179,8 @@ class Model(
         | VectorToPdfParams
         | BookletImpositionParams
         | CropParams
+        | CutContourParams
+        | CutContourPreviewParams
         | EditTableOfContentsParams
         | EditTextParams
         | MergePdfsParams
@@ -2091,6 +2264,8 @@ class Model(
         | VectorToPdfParams
         | BookletImpositionParams
         | CropParams
+        | CutContourParams
+        | CutContourPreviewParams
         | EditTableOfContentsParams
         | EditTextParams
         | MergePdfsParams
@@ -2175,6 +2350,8 @@ type ParamToolModel = (
     | VectorToPdfParams
     | BookletImpositionParams
     | CropParams
+    | CutContourParams
+    | CutContourPreviewParams
     | EditTableOfContentsParams
     | EditTextParams
     | MergePdfsParams
@@ -2260,6 +2437,8 @@ class ToolEndpoint(StrEnum):
     VECTOR_TO_PDF = "/api/v1/convert/vector/pdf"
     BOOKLET_IMPOSITION = "/api/v1/general/booklet-imposition"
     CROP = "/api/v1/general/crop"
+    CUT_CONTOUR = "/api/v1/general/cut-contour"
+    CUT_CONTOUR_PREVIEW = "/api/v1/general/cut-contour-preview"
     EDIT_TABLE_OF_CONTENTS = "/api/v1/general/edit-table-of-contents"
     EDIT_TEXT = "/api/v1/general/edit-text"
     MERGE_PDFS = "/api/v1/general/merge-pdfs"
@@ -2343,6 +2522,8 @@ OPERATIONS: dict[ToolEndpoint, ParamToolModelType] = {
     ToolEndpoint.VECTOR_TO_PDF: VectorToPdfParams,
     ToolEndpoint.BOOKLET_IMPOSITION: BookletImpositionParams,
     ToolEndpoint.CROP: CropParams,
+    ToolEndpoint.CUT_CONTOUR: CutContourParams,
+    ToolEndpoint.CUT_CONTOUR_PREVIEW: CutContourPreviewParams,
     ToolEndpoint.EDIT_TABLE_OF_CONTENTS: EditTableOfContentsParams,
     ToolEndpoint.EDIT_TEXT: EditTextParams,
     ToolEndpoint.MERGE_PDFS: MergePdfsParams,

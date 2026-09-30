@@ -72,6 +72,7 @@ const TOOL_IDS = [
   "pdfTextEditor",
   "formFill",
   "setPageBoxes",
+  "cutContour",
   "textToOutlines",
   "printPreflight",
   // Super tools

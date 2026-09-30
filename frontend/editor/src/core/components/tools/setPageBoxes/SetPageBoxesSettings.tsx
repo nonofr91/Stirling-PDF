@@ -38,9 +38,9 @@ const SetPageBoxesSettings = ({
   const { t } = useTranslation();
   const [selectedFile = null] = useViewScopedFiles();
   const [selectedStub = null] = useViewScopedFileStubs();
-  const [snapshots, setSnapshots] = useState<
-    (PageBoxSnapshot | null)[] | null
-  >(null);
+  const [snapshots, setSnapshots] = useState<(PageBoxSnapshot | null)[] | null>(
+    null,
+  );
   const setOverlay = useSetPageOverlay();
   // The diagram and placeholders show the first page; the published overlay
   // resolves every page against its own boxes.

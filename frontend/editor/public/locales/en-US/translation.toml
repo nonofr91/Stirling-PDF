@@ -4179,6 +4179,69 @@ precision = "Use coordinate inputs for precise positioning"
 resize = "Drag the corner and edge handles to resize"
 title = "How to Crop PDFs"
 
+[cutContour]
+aiModelId = "AI model id"
+aiModelIdHint = "Catalog model for matting; empty uses the default (u2net)"
+aiThreshold = "AI confidence"
+alphaThreshold = "Alpha threshold"
+alphaThresholdHint = "Pixels more transparent than this count as background"
+backgroundTolerance = "Background tolerance"
+backgroundToleranceHint = "Colour distance from the page edge still counted as background"
+bleedMm = "Bleed beyond cut line (mm)"
+bleedMmHint = "Repeats edge pixels past the contour so trimming never shows a white edge"
+clipArtwork = "Clip page content to the cut contour"
+dpi = "Detection resolution (dpi)"
+extractionMode = "Subject detection"
+help = "Traces the silhouette of the artwork on each page and writes a closed cut path as a CutContour spot colour on a dedicated layer — ready for RIPs, plotters and die cutters."
+keepHoles = "Keep inner holes as cut contours (e.g. the counter of an 'o')"
+layerName = "Layer name (optional)"
+mergeGapMm = "Merge gaps up to (mm)"
+mergeGapMmHint = "Elements closer than this merge under a single outline; 0 keeps pieces separate"
+minAreaMm2 = "Minimum area (mm²)"
+minAreaMm2Hint = "Smaller disconnected parts are dropped as noise"
+offsetMm = "Cut line offset (mm)"
+offsetMmHint = "Moves the cut path outward; negative moves it inside the silhouette"
+processingSteps = "Tag layer as ISO 19593-1 cutting step (non-printing)"
+smoothness = "Smoothing (0–100)"
+spotName = "Spot colour name"
+spotNameError = "Spot name is required"
+spotNameHint = "Case-sensitive; RIPs key on 'CutContour'"
+strokeWidthPt = "Stroke width (pt)"
+submit = "Create Cut Contour"
+trimToContour = "Set TrimBox to the contour bounding box"
+
+[cutContour.cutLine]
+section = "Cut line"
+
+[cutContour.error]
+failed = "An error occurred while creating the cut contour."
+
+[cutContour.modes]
+AI = "AI matting (complex backgrounds)"
+ALPHA = "Transparency (vector/alpha artwork)"
+AUTO = "Automatic (try every source)"
+BACKGROUND = "Uniform background colour"
+
+[cutContour.output]
+section = "Output"
+
+[cutContour.preview]
+loading = "Tracing contour…"
+mode = "Detection used:"
+toggle = "Preview cut contour on the document"
+
+[cutContour.results]
+title = "Cut Contour Results"
+
+[cutContour.roi]
+active = "Perimeter set — the ring inside it defines the background colour"
+clear = "Clear"
+draw = "Draw perimeter"
+drawing = "Draw the perimeter on the document…"
+
+[cutContour.steps]
+configure = "Cut Contour Settings"
+
 [database]
 backupCreated = "Database backup successful"
 fileName = "File Name"
@@ -5402,6 +5465,11 @@ desc = "Crop a PDF to reduce its size (maintains text!)"
 tags = "trim,cut,resize,crop,crop PDF,trim PDF,trim margins,remove margins,cut edges,trim borders,remove white space,crop pages,trim pages,reduce margins,set margins"
 title = "Crop PDF"
 
+[home.cutContour]
+desc = "Trace the artwork's silhouette and write a production cut line (CutContour spot colour) with optional clipping and bleed."
+tags = "prepress,cut contour,cutcontour,cut line,die cut,die-cut,sticker,kiss cut,dieline,plotter,detour,silhouette,contour,decoupe,rip"
+title = "Cut Contour"
+
 [home.devAirgapped]
 desc = "Link to air-gapped setup guide"
 tags = "air-gapped,offline,isolated,no internet,disconnected,secure,network isolation,standalone"
@@ -5625,15 +5693,15 @@ title = "Split PDF by Sections"
 tags = "API,documentation,test,swagger,API docs,REST API,endpoints,developer,API reference,API testing,OpenAPI,integration,developer docs"
 title = "API Documentation"
 
-[home.timestampPdf]
-desc = "Add an RFC 3161 document timestamp to prove when your PDF existed"
-tags = "timestamp,RFC 3161,TSA,time stamp authority,document timestamp,proof of existence,timestamp token,trusted timestamp,sign timestamp,notarize"
-title = "Timestamp PDF"
-
 [home.textToOutlines]
 desc = "Convert all text to vector outlines so no fonts are needed for printing."
 tags = "text to outlines,outlines,vectorize text,fonts to curves,prepress,print production,outline fonts"
 title = "Text to Outlines"
+
+[home.timestampPdf]
+desc = "Add an RFC 3161 document timestamp to prove when your PDF existed"
+tags = "timestamp,RFC 3161,TSA,time stamp authority,document timestamp,proof of existence,timestamp token,trusted timestamp,sign timestamp,notarize"
+title = "Timestamp PDF"
 
 [home.unlockPDFForms]
 desc = "Remove read-only property of form fields in a PDF document."
@@ -6288,6 +6356,17 @@ title = "Overlay Files"
 text = "Foreground places the overlay on top of the page. Background places it behind."
 title = "Overlay Position"
 
+[pageBox]
+diagram = "Page box diagram"
+label = "Page box"
+
+[pageBox.options]
+ART_BOX = "ArtBox"
+BLEED_BOX = "BleedBox"
+CROP_BOX = "CropBox"
+MEDIA_BOX = "MediaBox"
+TRIM_BOX = "TrimBox"
+
 [pageEdit]
 deselectAll = "None"
 selectAll = "Check All"
@@ -6424,17 +6503,6 @@ title = "Pages per Sheet (Default Mode)"
 [pageLayout.tooltip.rowsCols]
 text = "Set exact grid dimensions. Total pages per sheet = rows × columns."
 title = "Rows & Columns (Custom Mode)"
-
-[pageBox]
-diagram = "Page box diagram"
-label = "Page box"
-
-[pageBox.options]
-MEDIA_BOX = "MediaBox"
-CROP_BOX = "CropBox"
-TRIM_BOX = "TrimBox"
-BLEED_BOX = "BleedBox"
-ART_BOX = "ArtBox"
 
 [pageRemover]
 title = "Page Remover"
@@ -11364,6 +11432,9 @@ weight = "Stroke (pt)"
 desc = "Detect painted cut marks to place the TrimBox. Used only when no TrimBox or trim margin is given; fails on pages without clear marks."
 label = "Derive TrimBox from crop marks"
 
+[setPageBoxes.error]
+failed = "An error occurred while setting page boxes."
+
 [setPageBoxes.generateBleed]
 bleedBottomMm = "Bottom (mm)"
 bleedLeftMm = "Left (mm)"
@@ -11383,9 +11454,6 @@ MIRROR = "Mirror edges (vector)"
 MIRROR_IMAGE = "Mirror edges (image)"
 PIXEL_REPEAT = "Repeat last pixel"
 UPSCALE = "Upscale page content"
-
-[setPageBoxes.error]
-failed = "An error occurred while setting page boxes."
 
 [setPageBoxes.results]
 title = "Set Page Boxes Results"

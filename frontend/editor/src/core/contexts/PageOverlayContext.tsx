@@ -20,6 +20,24 @@ export interface PageOverlayRect {
   kind?: "box";
 }
 
+export interface PageOverlayPath {
+  /** Flattened x,y pairs as fractions (0–1) of the rendered page, CSS space
+      (top-left origin). Each path is a closed ring. */
+  points: number[];
+  color: string;
+  dashed?: boolean;
+  /** Interior ring of a compound shape (e.g. the counter of an "o"). */
+  hole?: boolean;
+}
+
+export interface PageOverlayDrawRequest {
+  /** Stroke colour for the in-progress outline. */
+  color: string;
+  /** Called with the closed polygon as flat x,y page-fraction pairs (top-left
+      origin) once the user finishes the rough trace on this page. */
+  onComplete: (pageIndex: number, points: number[]) => void;
+}
+
 export interface PageOverlayState {
   /** getFormFillFileId() of the document the rects apply to: the overlay is
       drawn only while the viewer still shows those bytes. */
@@ -29,6 +47,12 @@ export interface PageOverlayState {
       a page beyond the array draws nothing — documents whose pages differ in
       size or box insets must not reuse the first page's geometry. */
   rectsPerPage?: PageOverlayRect[][];
+  /** Closed-vector previews (cut contour) — same indexing rules as rects. */
+  paths?: PageOverlayPath[];
+  pathsPerPage?: PageOverlayPath[][];
+  /** When set, each page layer captures a freehand polygon instead of staying
+      click-through — used by tools that need a rough perimeter from the user. */
+  drawRequest?: PageOverlayDrawRequest;
 }
 
 interface PageOverlayContextValue {

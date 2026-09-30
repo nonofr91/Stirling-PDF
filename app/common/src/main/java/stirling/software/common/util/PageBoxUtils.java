@@ -80,7 +80,8 @@ public class PageBoxUtils {
         }
     }
 
-    private PDRectangle union(PDRectangle a, PDRectangle b) {
+    /** Smallest rectangle containing both {@code a} and {@code b}. */
+    public PDRectangle union(PDRectangle a, PDRectangle b) {
         float llx = Math.min(a.getLowerLeftX(), b.getLowerLeftX());
         float lly = Math.min(a.getLowerLeftY(), b.getLowerLeftY());
         return new PDRectangle(

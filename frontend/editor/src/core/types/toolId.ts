@@ -41,6 +41,7 @@ export const CORE_REGULAR_TOOL_IDS = [
   "adjustContrast",
   "crop",
   "setPageBoxes",
+  "cutContour",
   "textToOutlines",
   "printPreflight",
   "pdfToSinglePage",
