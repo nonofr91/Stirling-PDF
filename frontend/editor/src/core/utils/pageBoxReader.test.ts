@@ -1,92 +1,76 @@
 import { describe, expect, it } from "vitest";
-import { PDFDocument } from "@cantoo/pdf-lib";
+import type { PdfPageBoxes } from "@embedpdf/models";
 import {
-  readPageBoxSnapshot,
   pdfRectToPageFractions,
+  snapshotFromEmbedPdfPage,
 } from "@app/utils/pageBoxReader";
 
-const makePdfFile = async (
-  boxes: Partial<
-    Record<"trim" | "bleed" | "art" | "crop", [number, number, number, number]>
-  > = {},
-): Promise<File> => {
-  const doc = await PDFDocument.create();
-  const page = doc.addPage([595, 842]);
-  if (boxes.crop) page.setCropBox(...boxes.crop);
-  if (boxes.trim) page.setTrimBox(...boxes.trim);
-  if (boxes.bleed) page.setBleedBox(...boxes.bleed);
-  if (boxes.art) page.setArtBox(...boxes.art);
-  const bytes = await doc.save();
-  const ab = bytes.buffer.slice(
-    bytes.byteOffset,
-    bytes.byteOffset + bytes.byteLength,
-  ) as ArrayBuffer;
-  // The test env's File.arrayBuffer() does not preserve the blob bytes;
-  // readPageBoxSnapshot only needs arrayBuffer(), so provide it directly.
-  return { arrayBuffer: async () => ab } as File;
-};
+const box = (
+  left: number,
+  bottom: number,
+  right: number,
+  top: number,
+): PdfPageBoxes["media"] => ({ left, top, right, bottom });
 
-describe("readPageBoxSnapshot", () => {
-  it("detects explicit boxes and inherits the rest per PDF spec", async () => {
-    const file = await makePdfFile({
-      trim: [20, 30, 400, 600],
-      bleed: [10, 15, 420, 630],
-    });
-    const snap = await readPageBoxSnapshot(file);
-    expect(snap).not.toBeNull();
-    expect(snap!.explicit.has("MEDIA_BOX")).toBe(true);
-    expect(snap!.explicit.has("TRIM_BOX")).toBe(true);
-    expect(snap!.explicit.has("BLEED_BOX")).toBe(true);
-    expect(snap!.explicit.has("CROP_BOX")).toBe(false);
-    expect(snap!.explicit.has("ART_BOX")).toBe(false);
-    expect(snap!.boxes.TRIM_BOX).toEqual({
+describe("snapshotFromEmbedPdfPage", () => {
+  it("returns null when the page carries no boxes", () => {
+    expect(snapshotFromEmbedPdfPage(undefined)).toBeNull();
+  });
+
+  it("maps embedpdf boxes to rects and marks declared boxes explicit", () => {
+    const snap = snapshotFromEmbedPdfPage({
+      media: box(0, 0, 595, 842),
+      crop: box(0, 0, 595, 842),
+      trim: box(20, 30, 420, 630),
+      bleed: box(10, 15, 430, 645),
+    })!;
+
+    expect(snap.boxes.TRIM_BOX).toEqual({
       x: 20,
       y: 30,
       width: 400,
       height: 600,
     });
-    // boxes absent from the dict still report the spec fallback value
-    expect(snap!.boxes.CROP_BOX).toEqual(snap!.boxes.MEDIA_BOX);
-    expect(snap!.boxes.ART_BOX).toEqual(snap!.boxes.CROP_BOX);
+    expect(snap.explicit.has("MEDIA_BOX")).toBe(true);
+    expect(snap.explicit.has("TRIM_BOX")).toBe(true);
+    expect(snap.explicit.has("BLEED_BOX")).toBe(true);
+    expect(snap.explicit.has("ART_BOX")).toBe(false);
   });
 
-  it("returns null for an unparseable file", async () => {
-    const garbage = new TextEncoder().encode("not a pdf").buffer as ArrayBuffer;
-    const file = { arrayBuffer: async () => garbage } as File;
-    expect(await readPageBoxSnapshot(file)).toBeNull();
+  it("falls back to the MediaBox for absent named boxes, like the backend", () => {
+    const snap = snapshotFromEmbedPdfPage({
+      media: box(0, 0, 595, 842),
+      crop: box(10, 10, 585, 832),
+    })!;
+
+    // PageBoxUtils.resolvePageBox resolves a missing named box to the
+    // MediaBox — not to the CropBox the PDF spec would inherit.
+    expect(snap.boxes.TRIM_BOX).toEqual(snap.boxes.MEDIA_BOX);
+    expect(snap.boxes.BLEED_BOX).toEqual(snap.boxes.MEDIA_BOX);
+    expect(snap.boxes.ART_BOX).toEqual(snap.boxes.MEDIA_BOX);
+    expect(snap.boxes.TRIM_BOX).not.toEqual(snap.boxes.CROP_BOX);
   });
 
-  it("reads the boxes of a specific page index", async () => {
-    const doc = await PDFDocument.create();
-    doc.addPage([595, 842]);
-    const second = doc.addPage([300, 400]);
-    second.setTrimBox(10, 10, 200, 300);
-    const bytes = await doc.save();
-    const ab = bytes.buffer.slice(
-      bytes.byteOffset,
-      bytes.byteOffset + bytes.byteLength,
-    ) as ArrayBuffer;
-    const file = { arrayBuffer: async () => ab } as File;
+  it("converts the Rotation enum (quarters of a turn) to degrees", () => {
+    const boxes: PdfPageBoxes = {
+      media: box(0, 0, 100, 200),
+      crop: box(0, 0, 100, 200),
+    };
+    expect(snapshotFromEmbedPdfPage(boxes, 0)!.rotation).toBe(0);
+    expect(snapshotFromEmbedPdfPage(boxes, 2)!.rotation).toBe(180);
+  });
 
-    const page2 = await readPageBoxSnapshot(file, 1);
-    expect(page2!.explicit.has("TRIM_BOX")).toBe(true);
-    expect(page2!.boxes.TRIM_BOX).toEqual({
-      x: 10,
-      y: 10,
-      width: 200,
-      height: 300,
-    });
-
-    const page1 = await readPageBoxSnapshot(file, 0);
-    expect(page1!.boxes.MEDIA_BOX).toEqual({
+  it("normalizes rects given in a flipped corner order", () => {
+    const snap = snapshotFromEmbedPdfPage({
+      media: { left: 0, top: 0, right: 595, bottom: 842 },
+      crop: { left: 0, top: 0, right: 595, bottom: 842 },
+    })!;
+    expect(snap.boxes.MEDIA_BOX).toEqual({
       x: 0,
       y: 0,
       width: 595,
       height: 842,
     });
-    expect(page1!.explicit.has("TRIM_BOX")).toBe(false);
-
-    expect(await readPageBoxSnapshot(file, 5)).toBeNull();
   });
 });
 

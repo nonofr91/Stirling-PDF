@@ -505,4 +505,86 @@ class SetPageBoxesControllerTest {
         request.setBleedMm(Float.POSITIVE_INFINITY);
         assertThrows(IllegalArgumentException.class, () -> controller.setPageBoxes(request));
     }
+
+    @Test
+    void testBleedBoxOutsideMediaGrowsMediaAndCrop() throws Exception {
+        // A BleedBox sticking out of the MediaBox is dead geometry for viewers and
+        // printers — MediaBox and CropBox must grow to cover it.
+        SetPageBoxesRequest request = request(createPdf(null));
+        request.setTrimBox("20,20,400,600");
+        request.setBleedBox("-10,-10,440,640");
+
+        ResponseEntity<Resource> response = controller.setPageBoxes(request);
+
+        assertEquals(200, response.getStatusCode().value());
+        try (PDDocument result = Loader.loadPDF(drainBody(response))) {
+            PDPage page = result.getPage(0);
+            assertEquals(-10, page.getMediaBox().getLowerLeftX(), 0.01);
+            assertEquals(-10, page.getMediaBox().getLowerLeftY(), 0.01);
+            assertEquals(PDRectangle.A4.getWidth() + 10, page.getMediaBox().getWidth(), 0.01);
+            assertEquals(PDRectangle.A4.getHeight() + 10, page.getMediaBox().getHeight(), 0.01);
+            assertRectEquals(
+                    page.getMediaBox().getLowerLeftX(),
+                    page.getMediaBox().getLowerLeftY(),
+                    page.getMediaBox().getWidth(),
+                    page.getMediaBox().getHeight(),
+                    page.getCropBox());
+        }
+    }
+
+    @Test
+    void testBleedMmAloneGrowsMediaAndCrop() throws Exception {
+        // bleedMm without generated content still grows MediaBox/CropBox so the new
+        // BleedBox stays inside the page.
+        SetPageBoxesRequest request = request(createPdf(null));
+        request.setBleedMm(5);
+
+        ResponseEntity<Resource> response = controller.setPageBoxes(request);
+
+        assertEquals(200, response.getStatusCode().value());
+        try (PDDocument result = Loader.loadPDF(drainBody(response))) {
+            PDRectangle media = result.getPage(0).getMediaBox();
+            PDRectangle crop = result.getPage(0).getCropBox();
+            PDRectangle bleed = result.getPage(0).getBleedBox();
+            assertEquals(-5 * MM, media.getLowerLeftX(), 0.01);
+            assertEquals(PDRectangle.A4.getWidth() + 10 * MM, media.getWidth(), 0.01);
+            assertRectEquals(
+                    media.getLowerLeftX(),
+                    media.getLowerLeftY(),
+                    media.getWidth(),
+                    media.getHeight(),
+                    crop);
+            assertRectEquals(
+                    media.getLowerLeftX(),
+                    media.getLowerLeftY(),
+                    media.getWidth(),
+                    media.getHeight(),
+                    bleed);
+        }
+    }
+
+    @Test
+    void testOversizedBleedBandRejectedBeforeRender() throws Exception {
+        // A large-format page at 600 DPI would raster to a gigabyte-scale image; the
+        // band bound must reject the request instead of attempting the render.
+        Path pdfPath = tempDir.resolve("huge.pdf");
+        try (PDDocument doc = new PDDocument()) {
+            doc.addPage(new PDPage(new PDRectangle(0, 0, 200_000, 200_000)));
+            doc.save(pdfPath.toFile());
+        }
+        MockMultipartFile file =
+                new MockMultipartFile(
+                        "fileInput",
+                        "huge.pdf",
+                        MediaType.APPLICATION_PDF_VALUE,
+                        Files.readAllBytes(pdfPath));
+
+        SetPageBoxesRequest request = request(file);
+        request.setGenerateBleed(true);
+        request.setBleedMm(10);
+        request.setBleedDpi(600);
+        request.setBleedMethod("MIRROR_IMAGE");
+
+        assertThrows(IllegalArgumentException.class, () -> controller.setPageBoxes(request));
+    }
 }

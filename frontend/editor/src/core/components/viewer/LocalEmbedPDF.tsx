@@ -1490,11 +1490,11 @@ export function LocalEmbedPDF({
 
                                 {/* Active tool's live geometry preview (crop, page boxes) */}
                                 <PageOverlayLayer
+                                  documentId={documentId}
                                   pageIndex={pageIndex}
                                   pageWidth={width}
                                   pageHeight={height}
                                   documentKey={fileId ?? null}
-                                  file={file}
                                 />
                               </ViewerPageContainer>
                             </ViewerPagePointerProvider>

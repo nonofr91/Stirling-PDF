@@ -293,4 +293,30 @@ describe("computeResultingBoxes", () => {
     expect(r.MEDIA_BOX.rect.x).toBeCloseTo(-expected);
     expect(r.CROP_BOX.rect.x).toBeCloseTo(-expected);
   });
+
+  test("a BleedBox past the page edge grows MediaBox and CropBox", () => {
+    // A BleedBox beyond the MediaBox is dead geometry — the backend grows the
+    // visible page to cover it, so the preview must show the same growth.
+    const r = computeResultingBoxes(
+      { ...defaultParameters, trimMarginMm: 5, bleedMm: 10 },
+      bareSnapshot,
+      parseBoxString,
+    );
+    // 10mm bleed around a 5mm-inset trim reaches 5mm past the page edge.
+    const expected = (10 - 5) * (72 / 25.4);
+    expect(r.MEDIA_BOX.rect.x).toBeCloseTo(-expected);
+    expect(r.CROP_BOX.rect.x).toBeCloseTo(-expected);
+    expect(r.BLEED_BOX.rect.x).toBeCloseTo(-expected);
+  });
+
+  test("an explicit bleedBox contributes to the growth", () => {
+    const bleed = `0,0,${595 + 30},${842 + 30}`;
+    const r = computeResultingBoxes(
+      { ...defaultParameters, bleedBox: bleed },
+      bareSnapshot,
+      parseBoxString,
+    );
+    expect(r.MEDIA_BOX.rect.width).toBeCloseTo(595 + 30);
+    expect(r.CROP_BOX.rect.width).toBeCloseTo(595 + 30);
+  });
 });

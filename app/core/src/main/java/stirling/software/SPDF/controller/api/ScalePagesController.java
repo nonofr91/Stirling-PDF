@@ -153,7 +153,22 @@ public class ScalePagesController {
                     contentStream.transform(Matrix.getTranslateInstance(x, y));
                     contentStream.transform(Matrix.getScaleInstance(scale, scale));
 
-                    PDFormXObject form = layerUtility.importPageAsForm(sourceDocument, i);
+                    // Bound the form to the selected source box: one larger than the
+                    // CropBox would otherwise lose the artwork outside it.
+                    PDFormXObject form =
+                            PageBoxUtils.importPageAsFormCovering(
+                                    layerUtility, sourceDocument, sourcePage, sourceSize);
+
+                    // Each cm is innermost (CTM × M), so emit the compensation last:
+                    // it cancels the form's /Matrix translation and keeps the
+                    // placement identical to the old CropBox-only form. Rotated
+                    // pages carry rotation in /Matrix — leave them untouched.
+                    if (sourcePage.getRotation() % 360 == 0) {
+                        Matrix formMatrix = form.getMatrix();
+                        contentStream.transform(
+                                Matrix.getTranslateInstance(
+                                        -formMatrix.getTranslateX(), -formMatrix.getTranslateY()));
+                    }
                     contentStream.drawForm(form);
 
                     contentStream.restoreGraphicsState();

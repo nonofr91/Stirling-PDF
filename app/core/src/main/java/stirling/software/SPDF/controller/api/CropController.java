@@ -12,6 +12,7 @@ import org.apache.pdfbox.pdmodel.PDPageContentStream.AppendMode;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
 import org.apache.pdfbox.rendering.PDFRenderer;
+import org.apache.pdfbox.util.Matrix;
 import org.springframework.core.io.Resource;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -235,9 +236,12 @@ public class CropController {
                     try (PDPageContentStream contentStream =
                             new PDPageContentStream(
                                     newDocument, newPage, AppendMode.OVERWRITE, true, true)) {
-                        // Import the source page as a form XObject
+                        // Import the source page as a form XObject, bounded to cover the
+                        // target crop area: a named box larger than the CropBox would
+                        // otherwise lose the artwork outside it.
                         PDFormXObject formXObject =
-                                layerUtility.importPageAsForm(sourceDocument, i);
+                                PageBoxUtils.importPageAsFormCovering(
+                                        layerUtility, sourceDocument, sourcePage, cropArea);
 
                         contentStream.saveGraphicsState();
 
@@ -248,6 +252,19 @@ public class CropController {
                                 cropArea.getWidth(),
                                 cropArea.getHeight());
                         contentStream.clip();
+
+                        // The form's /Matrix normalizes the viewBox origin; undo
+                        // its translation so artwork lands at its page
+                        // coordinates and the clip keeps exactly the selected
+                        // crop area. Rotated pages carry rotation in the matrix —
+                        // leave their convention untouched.
+                        if (sourcePage.getRotation() % 360 == 0) {
+                            Matrix formMatrix = formXObject.getMatrix();
+                            contentStream.transform(
+                                    Matrix.getTranslateInstance(
+                                            -formMatrix.getTranslateX(),
+                                            -formMatrix.getTranslateY()));
+                        }
 
                         // Draw the entire formXObject
                         contentStream.drawForm(formXObject);

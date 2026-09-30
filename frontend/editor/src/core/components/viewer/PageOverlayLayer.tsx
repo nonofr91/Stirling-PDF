@@ -1,64 +1,58 @@
-import { memo, useEffect, useMemo, useState } from "react";
+import { memo, useMemo } from "react";
+import { useDocumentState } from "@embedpdf/core/react";
 import {
   usePageOverlayState,
   usePageBoxesVisibility,
   PageOverlayRect,
 } from "@app/contexts/PageOverlayContext";
 import {
-  PageBoxSnapshot,
   pdfRectToPageFractions,
-  readPageBoxSnapshot,
+  snapshotFromEmbedPdfPage,
 } from "@app/utils/pageBoxReader";
 import { PAGE_BOXES, PAGE_BOX_COLORS } from "@app/constants/pageBoxConstants";
 import { Z_INDEX_SIGNATURE_OVERLAY } from "@app/styles/zIndex";
 
 export interface PageOverlayLayerProps {
+  /** EmbedPDF document this page layer renders — its document state already
+      carries the page boxes, so no second parse of the file is needed. */
+  documentId: string;
   pageIndex: number;
   pageWidth: number;
   pageHeight: number;
   /** getFormFillFileId() of the rendered document. */
   documentKey: string | null;
-  /** The bytes the viewer is rendering — source of the persistent box overlay. */
-  file?: File | Blob | null;
 }
 
 /**
  * Draws geometry on top of the rendered page: the toolbar's persistent page
- * boxes (read per page from `file`) plus the active tool's live preview. Rects
- * are fractions of the page, so the layer tracks zoom for free, and it sits
- * inside the page's rotation transform, so it tracks rotation for free as
- * well. Purely visual: pointer events pass through.
+ * boxes plus the active tool's live preview. Rects are fractions of the page,
+ * so the layer tracks zoom for free, and it sits inside the page's rotation
+ * transform, so it tracks rotation for free as well. Purely visual: pointer
+ * events pass through.
  */
 export const PageOverlayLayer = memo(function PageOverlayLayer({
+  documentId,
   pageIndex,
   pageWidth,
   pageHeight,
   documentKey,
-  file,
 }: PageOverlayLayerProps) {
   const overlay = usePageOverlayState();
   const [pageBoxesVisible] = usePageBoxesVisibility();
-  const [snapshot, setSnapshot] = useState<PageBoxSnapshot | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    if (!pageBoxesVisible || !file) {
-      setSnapshot(null);
-      return;
-    }
-    readPageBoxSnapshot(file, pageIndex).then((s) => {
-      if (!cancelled) setSnapshot(s);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [file, pageIndex, pageBoxesVisible]);
+  const documentState = useDocumentState(documentId);
+  const page = documentState?.document?.pages?.[pageIndex];
+  const snapshot = useMemo(
+    () => snapshotFromEmbedPdfPage(page?.boxes, page?.rotation),
+    [page],
+  );
 
   const rects = useMemo<PageOverlayRect[]>(() => {
     const out: PageOverlayRect[] = [];
     const toolRects =
       overlay && documentKey && overlay.documentKey === documentKey
-        ? overlay.rects
+        ? (overlay.rectsPerPage
+            ? (overlay.rectsPerPage[pageIndex] ?? [])
+            : overlay.rects)
         : [];
     const toolPublishesBoxes = toolRects.some((r) => r.kind === "box");
 
@@ -96,7 +90,7 @@ export const PageOverlayLayer = memo(function PageOverlayLayer({
       r.insetPx = rank * 4;
     }
     return out;
-  }, [pageBoxesVisible, snapshot, overlay, documentKey]);
+  }, [pageBoxesVisible, snapshot, overlay, documentKey, pageIndex]);
 
   if (rects.length === 0) {
     return null;

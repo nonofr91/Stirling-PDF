@@ -25,6 +25,10 @@ export interface PageOverlayState {
       drawn only while the viewer still shows those bytes. */
   documentKey: string;
   rects: PageOverlayRect[];
+  /** Per-page rects, indexed by page index. When set, this is authoritative:
+      a page beyond the array draws nothing — documents whose pages differ in
+      size or box insets must not reuse the first page's geometry. */
+  rectsPerPage?: PageOverlayRect[][];
 }
 
 interface PageOverlayContextValue {

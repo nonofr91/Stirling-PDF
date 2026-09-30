@@ -1,6 +1,7 @@
 package stirling.software.common.util;
 
 import java.awt.Graphics2D;
+import java.awt.geom.Point2D;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -8,6 +9,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 
 import org.apache.pdfbox.cos.COSArray;
+import org.apache.pdfbox.cos.COSBase;
+import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSFloat;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.cos.COSStream;
@@ -39,6 +42,9 @@ import lombok.extern.slf4j.Slf4j;
  */
 @Slf4j
 public final class PageBleedGenerator {
+
+    /** ~100 MPx RGB (~400 MB) — hard bound on any single bleed band render. */
+    private static final long MAX_BLEED_BAND_PIXELS = 100_000_000L;
 
     private PageBleedGenerator() {}
 
@@ -241,7 +247,15 @@ public final class PageBleedGenerator {
         stream.saveGraphicsState();
         stream.addRect(x, y, width, height);
         stream.clip();
+        // The imported form's /Matrix normalizes the viewBox origin — undo its
+        // translation so artwork lands at its unrotated page coordinates before
+        // the reflection applies. Each cm is innermost (CTM × M), so the
+        // compensation goes last.
+        Matrix formMatrix = form.getMatrix();
         stream.transform(reflection);
+        stream.transform(
+                Matrix.getTranslateInstance(
+                        -formMatrix.getTranslateX(), -formMatrix.getTranslateY()));
         stream.drawForm(form);
         stream.restoreGraphicsState();
     }
@@ -265,9 +279,10 @@ public final class PageBleedGenerator {
     }
 
     /**
-     * Scales the page content about the trim center until it covers every requested bleed edge —
-     * pdfToolbox's "generate bleed by upscaling". The trimmed piece ends up a slightly zoomed crop
-     * of the original artwork.
+     * Scales the page content until it covers every requested bleed edge — pdfToolbox's "generate
+     * bleed by upscaling". The page's content stream is replaced by the scaled form: painting it
+     * beneath the original would leave the unscaled artwork on top inside the trim, so the piece is
+     * printed as a slightly zoomed crop of the original.
      */
     private static void upscale(
             PDDocument document, PDPage page, PDRectangle trim, BleedEdges edges)
@@ -281,23 +296,41 @@ public final class PageBleedGenerator {
         }
         PDFormXObject form = importUnrotated(document, page);
 
-        float centerX = trim.getLowerLeftX() + trim.getWidth() / 2;
-        float centerY = trim.getLowerLeftY() + trim.getHeight() / 2;
+        // Each trim edge is anchored so it gains its own requested bleed: scaling about the
+        // center would hand a one-sided bleed only half the growth. Surplus on the axis that
+        // did not set the scale stays centered on the trim.
+        float surplusX = scale * trim.getWidth() - trim.getWidth() - edges.left() - edges.right();
+        float surplusY = scale * trim.getHeight() - trim.getHeight() - edges.bottom() - edges.top();
+        float targetLeft = trim.getLowerLeftX() - edges.left() - surplusX / 2;
+        float targetBottom = trim.getLowerLeftY() - edges.bottom() - surplusY / 2;
+
+        // The form's /Matrix already positions its content, so the trim box anchors where the
+        // form actually displays it, not where the page dictionary lists it.
+        Matrix formMatrix = form.getMatrix();
+        Point2D.Float dispLL =
+                formMatrix.transformPoint(trim.getLowerLeftX(), trim.getLowerLeftY());
+        Point2D.Float dispUR =
+                formMatrix.transformPoint(trim.getUpperRightX(), trim.getUpperRightY());
+        float dispLeft = Math.min(dispLL.x, dispUR.x);
+        float dispBottom = Math.min(dispLL.y, dispUR.y);
+
         try (PDPageContentStream stream =
-                new PDPageContentStream(document, page, AppendMode.PREPEND, true, false)) {
+                new PDPageContentStream(document, page, AppendMode.OVERWRITE, true, false)) {
             stream.saveGraphicsState();
-            stream.transform(Matrix.getTranslateInstance(centerX, centerY));
+            stream.transform(Matrix.getTranslateInstance(targetLeft, targetBottom));
             stream.transform(Matrix.getScaleInstance(scale, scale));
-            stream.transform(Matrix.getTranslateInstance(-centerX, -centerY));
+            stream.transform(Matrix.getTranslateInstance(-dispLeft, -dispBottom));
             stream.drawForm(form);
             stream.restoreGraphicsState();
         }
     }
 
     /**
-     * Raster bleed: renders the page once, then stretches (PIXEL_REPEAT) or mirrors (MIRROR_IMAGE)
-     * the outermost pixels into each bleed strip. The page rotation is zeroed for the render so
-     * image space matches the page's unrotated user space.
+     * Raster bleed: renders only the trim-adjacent band each edge samples, then stretches
+     * (PIXEL_REPEAT) or mirrors (MIRROR_IMAGE) it into the bleed strip. A full-page raster is
+     * avoided on purpose: a large format at 600 DPI would need a gigabyte-scale image before the
+     * strips were even cut. The page rotation is zeroed for the render so image space matches the
+     * page's unrotated user space.
      */
     private static void raster(
             PDDocument document,
@@ -309,115 +342,119 @@ public final class PageBleedGenerator {
             int dpi,
             boolean mirrorImage)
             throws IOException {
-        int rotation = page.getRotation();
-        BufferedImage image;
-        try {
-            page.setRotation(0);
-            image = new PDFRenderer(document).renderImageWithDPI(pageIndex, dpi, ImageType.RGB);
-        } finally {
-            page.setRotation(rotation);
-        }
-
-        PDRectangle crop = page.getCropBox();
-        float pxPerPt = dpi / 72f;
-        int trimX0 =
-                clamp((trim.getLowerLeftX() - crop.getLowerLeftX()) * pxPerPt, image.getWidth());
-        int trimX1 =
-                clamp((trim.getUpperRightX() - crop.getLowerLeftX()) * pxPerPt, image.getWidth());
-        // Image rows are top-down: row 0 is the crop box's upper edge.
-        int trimYTop =
-                clamp(
-                        image.getHeight()
-                                - (trim.getUpperRightY() - crop.getLowerLeftY()) * pxPerPt,
-                        image.getHeight());
-        int trimYBottom =
-                clamp(
-                        image.getHeight() - (trim.getLowerLeftY() - crop.getLowerLeftY()) * pxPerPt,
-                        image.getHeight());
-        int trimWpx = trimX1 - trimX0;
-        int trimHpx = trimYBottom - trimYTop;
-        if (trimWpx < 2 || trimHpx < 2) {
-            log.warn("TrimBox collapses to nothing in rendered page {}; bleed skipped", pageIndex);
+        if (trim.getWidth() < 1 || trim.getHeight() < 1) {
+            log.warn("TrimBox collapses to nothing on page {}; bleed skipped", pageIndex + 1);
             return;
         }
-
+        float pxPerPt = dpi / 72f;
         float left = trim.getLowerLeftX();
         float bottom = trim.getLowerLeftY();
         float right = trim.getUpperRightX();
         float top = trim.getUpperRightY();
+        float trimW = trim.getWidth();
+        float trimH = trim.getHeight();
+
+        int rotation = page.getRotation();
+        BufferedImage leftStrip = null;
+        BufferedImage rightStrip = null;
+        BufferedImage bottomStrip = null;
+        BufferedImage topStrip = null;
+        try {
+            page.setRotation(0);
+            PDFRenderer renderer = new PDFRenderer(document);
+            if (edges.left() > 0) {
+                float w = sourceBand(edges.left(), trimW, pxPerPt, mirrorImage);
+                leftStrip = renderBand(renderer, page, pageIndex, dpi, left, bottom, w, trimH);
+            }
+            if (edges.right() > 0) {
+                float w = sourceBand(edges.right(), trimW, pxPerPt, mirrorImage);
+                rightStrip =
+                        renderBand(renderer, page, pageIndex, dpi, right - w, bottom, w, trimH);
+            }
+            if (edges.bottom() > 0) {
+                float h = sourceBand(edges.bottom(), trimH, pxPerPt, mirrorImage);
+                bottomStrip = renderBand(renderer, page, pageIndex, dpi, left, bottom, trimW, h);
+            }
+            if (edges.top() > 0) {
+                float h = sourceBand(edges.top(), trimH, pxPerPt, mirrorImage);
+                topStrip = renderBand(renderer, page, pageIndex, dpi, left, top - h, trimW, h);
+            }
+        } finally {
+            page.setRotation(rotation);
+        }
 
         try (PDPageContentStream stream =
                 new PDPageContentStream(document, page, AppendMode.PREPEND, true, false)) {
-            if (edges.left() > 0) {
-                int band = mirrorImage ? px(edges.left(), pxPerPt) : 1;
+            if (leftStrip != null) {
+                // Band runs along the trim edge: column 0 is the trim edge itself, so the
+                // horizontal flip lands the edge pixel against the trim.
                 drawImageStrip(
                         stream,
                         document,
-                        image,
-                        trimX0,
-                        trimYTop,
-                        band,
-                        trimHpx,
+                        leftStrip,
+                        0,
+                        0,
+                        mirrorImage ? leftStrip.getWidth() : 1,
+                        leftStrip.getHeight(),
                         true,
                         false,
                         pxPerPt,
                         left - edges.left(),
                         bottom,
                         edges.left(),
-                        trim.getHeight());
+                        trimH);
             }
-            if (edges.right() > 0) {
-                int band = mirrorImage ? px(edges.right(), pxPerPt) : 1;
+            if (rightStrip != null) {
+                int w = rightStrip.getWidth();
                 drawImageStrip(
                         stream,
                         document,
-                        image,
-                        trimX1 - band,
-                        trimYTop,
-                        band,
-                        trimHpx,
+                        rightStrip,
+                        mirrorImage ? w - px(edges.right(), pxPerPt) : w - 1,
+                        0,
+                        mirrorImage ? px(edges.right(), pxPerPt) : 1,
+                        rightStrip.getHeight(),
                         true,
                         false,
                         pxPerPt,
                         right,
                         bottom,
                         edges.right(),
-                        trim.getHeight());
+                        trimH);
             }
-            if (edges.bottom() > 0) {
-                int band = mirrorImage ? px(edges.bottom(), pxPerPt) : 1;
+            if (bottomStrip != null) {
+                int h = bottomStrip.getHeight();
                 drawImageStrip(
                         stream,
                         document,
-                        image,
-                        trimX0,
-                        trimYBottom - band,
-                        trimWpx,
-                        band,
+                        bottomStrip,
+                        0,
+                        mirrorImage ? h - px(edges.bottom(), pxPerPt) : h - 1,
+                        bottomStrip.getWidth(),
+                        mirrorImage ? px(edges.bottom(), pxPerPt) : 1,
                         false,
                         true,
                         pxPerPt,
                         left,
                         bottom - edges.bottom(),
-                        trim.getWidth(),
+                        trimW,
                         edges.bottom());
             }
-            if (edges.top() > 0) {
-                int band = mirrorImage ? px(edges.top(), pxPerPt) : 1;
+            if (topStrip != null) {
                 drawImageStrip(
                         stream,
                         document,
-                        image,
-                        trimX0,
-                        trimYTop,
-                        trimWpx,
-                        band,
+                        topStrip,
+                        0,
+                        0,
+                        topStrip.getWidth(),
+                        mirrorImage ? px(edges.top(), pxPerPt) : 1,
                         false,
                         true,
                         pxPerPt,
                         left,
                         top,
-                        trim.getWidth(),
+                        trimW,
                         edges.top());
             }
             if (corners) {
@@ -425,65 +462,117 @@ public final class PageBleedGenerator {
                 int rw = px(edges.right(), pxPerPt);
                 int bh = px(edges.bottom(), pxPerPt);
                 int th = px(edges.top(), pxPerPt);
-                // Mirror samples the trim-adjacent block; repeat samples the corner pixel.
-                int rightSrcX = mirrorImage ? trimX1 - rw : trimX1 - 1;
-                int bottomSrcY = mirrorImage ? trimYBottom - bh : trimYBottom - 1;
-                drawImageCorner(
-                        stream,
-                        document,
-                        image,
-                        trimX0,
-                        trimYTop,
-                        lw,
-                        th,
-                        mirrorImage,
-                        pxPerPt,
-                        left - edges.left(),
-                        top,
-                        edges.left(),
-                        edges.top());
-                drawImageCorner(
-                        stream,
-                        document,
-                        image,
-                        rightSrcX,
-                        trimYTop,
-                        rw,
-                        th,
-                        mirrorImage,
-                        pxPerPt,
-                        right,
-                        top,
-                        edges.right(),
-                        edges.top());
-                drawImageCorner(
-                        stream,
-                        document,
-                        image,
-                        trimX0,
-                        bottomSrcY,
-                        lw,
-                        bh,
-                        mirrorImage,
-                        pxPerPt,
-                        left - edges.left(),
-                        bottom - edges.bottom(),
-                        edges.left(),
-                        edges.bottom());
-                drawImageCorner(
-                        stream,
-                        document,
-                        image,
-                        rightSrcX,
-                        bottomSrcY,
-                        rw,
-                        bh,
-                        mirrorImage,
-                        pxPerPt,
-                        right,
-                        bottom - edges.bottom(),
-                        edges.right(),
-                        edges.bottom());
+                // Mirror samples the trim-adjacent block at the band's end; repeat samples the
+                // corner pixel. drawImageCorner returns early when the corner has no extent.
+                if (leftStrip != null) {
+                    drawImageCorner(
+                            stream,
+                            document,
+                            leftStrip,
+                            0,
+                            0,
+                            lw,
+                            th,
+                            mirrorImage,
+                            pxPerPt,
+                            left - edges.left(),
+                            top,
+                            edges.left(),
+                            edges.top());
+                    drawImageCorner(
+                            stream,
+                            document,
+                            leftStrip,
+                            0,
+                            mirrorImage ? leftStrip.getHeight() - bh : leftStrip.getHeight() - 1,
+                            lw,
+                            bh,
+                            mirrorImage,
+                            pxPerPt,
+                            left - edges.left(),
+                            bottom - edges.bottom(),
+                            edges.left(),
+                            edges.bottom());
+                }
+                if (rightStrip != null) {
+                    drawImageCorner(
+                            stream,
+                            document,
+                            rightStrip,
+                            mirrorImage ? rightStrip.getWidth() - rw : rightStrip.getWidth() - 1,
+                            0,
+                            rw,
+                            th,
+                            mirrorImage,
+                            pxPerPt,
+                            right,
+                            top,
+                            edges.right(),
+                            edges.top());
+                    drawImageCorner(
+                            stream,
+                            document,
+                            rightStrip,
+                            mirrorImage ? rightStrip.getWidth() - rw : rightStrip.getWidth() - 1,
+                            mirrorImage ? rightStrip.getHeight() - bh : rightStrip.getHeight() - 1,
+                            rw,
+                            bh,
+                            mirrorImage,
+                            pxPerPt,
+                            right,
+                            bottom - edges.bottom(),
+                            edges.right(),
+                            edges.bottom());
+                }
+            }
+        }
+    }
+
+    /**
+     * Depth of the band to rasterize for one edge, in points: the bleed depth for a mirror, a
+     * single pixel for a repeat, never deeper than the trim span that supplies it.
+     */
+    private static float sourceBand(
+            float bleedPt, float trimSpanPt, float pxPerPt, boolean mirror) {
+        return mirror ? Math.min(bleedPt, trimSpanPt) : 1f / pxPerPt;
+    }
+
+    /**
+     * Renders a thin page region by temporarily shrinking the CropBox around it. Band pixels are
+     * bounded by {@link #MAX_BLEED_BAND_PIXELS}; a larger request is rejected rather than risking
+     * the heap.
+     */
+    private static BufferedImage renderBand(
+            PDFRenderer renderer,
+            PDPage page,
+            int pageIndex,
+            int dpi,
+            float x,
+            float y,
+            float w,
+            float h)
+            throws IOException {
+        long pixels = Math.round(w * dpi / 72f) * Math.round(h * dpi / 72f);
+        if (pixels > MAX_BLEED_BAND_PIXELS) {
+            throw new IllegalArgumentException(
+                    "Bleed band on page "
+                            + (pageIndex + 1)
+                            + " needs "
+                            + pixels
+                            + " pixels at "
+                            + dpi
+                            + " DPI; lower bleedDpi or the bleed depth");
+        }
+        COSDictionary dict = page.getCOSObject();
+        COSBase original = dict.getItem(COSName.CROP_BOX);
+        try {
+            page.setCropBox(new PDRectangle(x, y, w, h));
+            return renderer.renderImageWithDPI(pageIndex, dpi, ImageType.RGB);
+        } finally {
+            if (original != null) {
+                dict.setItem(COSName.CROP_BOX, original);
+            } else {
+                dict.removeItem(COSName.CROP_BOX);
             }
         }
     }
@@ -491,25 +580,31 @@ public final class PageBleedGenerator {
     /**
      * Imports the page as a form XObject with /Rotate neutralized: bleed geometry is computed in
      * the page's unrotated user space, so the imported content must not carry the display rotation
-     * that importPageAsForm would otherwise bake into the form matrix.
+     * that importPageAsForm would otherwise bake into the form matrix. The CropBox is grown to the
+     * MediaBox for the duration of the import — the form's /BBox would otherwise clip content drawn
+     * between them, which UPSCALE needs since it replaces the whole page.
      */
     private static PDFormXObject importUnrotated(PDDocument document, PDPage page)
             throws IOException {
         int rotation = page.getRotation();
+        COSDictionary dict = page.getCOSObject();
+        COSBase originalCrop = dict.getItem(COSName.CROP_BOX);
         try {
             page.setRotation(0);
+            page.setCropBox(page.getMediaBox());
             return new LayerUtility(document).importPageAsForm(document, page);
         } finally {
             page.setRotation(rotation);
+            if (originalCrop != null) {
+                dict.setItem(COSName.CROP_BOX, originalCrop);
+            } else {
+                dict.removeItem(COSName.CROP_BOX);
+            }
         }
     }
 
     private static int px(float points, float pxPerPt) {
         return Math.max(1, Math.round(points * pxPerPt));
-    }
-
-    private static int clamp(float value, int max) {
-        return Math.min(Math.max(Math.round(value), 0), Math.max(max, 1));
     }
 
     /**

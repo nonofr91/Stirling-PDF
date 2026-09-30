@@ -1,10 +1,17 @@
 package stirling.software.common.util;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import org.apache.pdfbox.cos.COSName;
+import org.apache.pdfbox.multipdf.LayerUtility;
+import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
+import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -78,5 +85,44 @@ class PageBoxUtilsTest {
         assertThrows(
                 IllegalArgumentException.class,
                 () -> PageBoxUtils.resolvePageBox(page, "NOT_A_BOX"));
+    }
+
+    @Test
+    @DisplayName("importPageAsFormCovering bounds the form to the requested area")
+    void importCoveringGrowsFormBounds() throws Exception {
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = new PDPage(PDRectangle.A4);
+            page.setCropBox(new PDRectangle(10, 10, 300, 400));
+            doc.addPage(page);
+            PDRectangle cover = new PDRectangle(0, 0, 500, 700);
+
+            PDFormXObject form =
+                    PageBoxUtils.importPageAsFormCovering(new LayerUtility(doc), doc, page, cover);
+
+            PDRectangle bbox = form.getBBox();
+            assertNotNull(bbox);
+            assertTrue(
+                    bbox.getLowerLeftX() <= cover.getLowerLeftX()
+                            && bbox.getLowerLeftY() <= cover.getLowerLeftY()
+                            && bbox.getUpperRightX() >= cover.getUpperRightX()
+                            && bbox.getUpperRightY() >= cover.getUpperRightY(),
+                    "form BBox must cover " + cover + ", got " + bbox);
+            // The page's own CropBox entry is restored to its original value.
+            assertRectEquals(new PDRectangle(10, 10, 300, 400), page.getCropBox());
+        }
+    }
+
+    @Test
+    @DisplayName("importPageAsFormCovering without cover leaves the CropBox untouched")
+    void importCoveringNullCoverKeepsCropBox() throws Exception {
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = new PDPage(PDRectangle.A4);
+            doc.addPage(page);
+
+            PageBoxUtils.importPageAsFormCovering(new LayerUtility(doc), doc, page, null);
+
+            // A page with no explicit CropBox must not gain a materialized one.
+            assertNull(page.getCOSObject().getItem(COSName.CROP_BOX));
+        }
     }
 }

@@ -1,4 +1,10 @@
-import { PAGE_BOXES, PageBox } from "@app/constants/pageBoxConstants";
+import { PageBox } from "@app/constants/pageBoxConstants";
+import type { PdfPageBoxes } from "@embedpdf/models";
+import {
+  getPdfiumModule,
+  openRawDocumentSafe,
+  closeDocAndFreeBuffer,
+} from "@app/services/pdfiumService";
 
 export interface BoxRect {
   x: number;
@@ -8,7 +14,9 @@ export interface BoxRect {
 }
 
 export interface PageBoxSnapshot {
-  /** Effective rects (spec fallback applied, e.g. TrimBox falls back to CropBox). */
+  /** Effective rects — a named box absent from the page resolves to the
+      MediaBox, matching PageBoxUtils.resolvePageBox on the backend (pdf-lib
+      getters fall back to CropBox instead, which previewed the wrong crop). */
   boxes: Record<PageBox, BoxRect>;
   /** Boxes explicitly present in the page dictionary. */
   explicit: Set<PageBox>;
@@ -17,69 +25,153 @@ export interface PageBoxSnapshot {
   rotation: number;
 }
 
-const BOX_PDF_NAMES: Record<PageBox, string> = {
-  MEDIA_BOX: "MediaBox",
-  CROP_BOX: "CropBox",
-  TRIM_BOX: "TrimBox",
-  BLEED_BOX: "BleedBox",
-  ART_BOX: "ArtBox",
-};
+const NAMED_BOXES = ["BLEED_BOX", "TRIM_BOX", "ART_BOX"] as const;
 
-type PdfLib = typeof import("@cantoo/pdf-lib");
+type NamedBoxRects = Partial<Record<(typeof NAMED_BOXES)[number], BoxRect>>;
 
-interface LoadedPdf {
-  pdfLib: PdfLib;
-  doc: import("@cantoo/pdf-lib").PDFDocument;
-}
+const toRect = (b: {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}): BoxRect => ({
+  x: Math.min(b.left, b.right),
+  y: Math.min(b.top, b.bottom),
+  width: Math.abs(b.right - b.left),
+  height: Math.abs(b.top - b.bottom),
+});
 
-// One pdf-lib parse per file, shared by every page-indexed read.
-const docCache = new WeakMap<Blob, Promise<LoadedPdf | null>>();
-
-function loadPdf(file: Blob): Promise<LoadedPdf | null> {
-  let cached = docCache.get(file);
-  if (!cached) {
-    cached = import("@cantoo/pdf-lib")
-      .then(async (pdfLib) => ({
-        pdfLib,
-        doc: await pdfLib.PDFDocument.load(await file.arrayBuffer(), {
-          ignoreEncryption: true,
-        }),
-      }))
-      .catch(() => null);
-    docCache.set(file, cached);
+function snapshotFromRects(
+  media: BoxRect,
+  crop: BoxRect,
+  named: NamedBoxRects,
+  rotation: number,
+): PageBoxSnapshot {
+  // PDFium reports CropBox already resolved (media when absent), so explicit
+  // presence is only known for the named boxes; media/crop are always marked.
+  const explicit = new Set<PageBox>(["MEDIA_BOX", "CROP_BOX"]);
+  const boxes: Record<PageBox, BoxRect> = {
+    MEDIA_BOX: media,
+    CROP_BOX: crop,
+    BLEED_BOX: media,
+    TRIM_BOX: media,
+    ART_BOX: media,
+  };
+  for (const name of NAMED_BOXES) {
+    const rect = named[name];
+    if (rect) {
+      boxes[name] = rect;
+      explicit.add(name);
+    }
   }
-  return cached;
+  return { boxes, explicit, rotation };
 }
 
 /**
- * Reads the five page boxes of `pageIndex` (default: first page). Returns null
- * when the file cannot be parsed or the page is out of range — callers should
- * render nothing rather than an empty frame.
+ * Builds a snapshot from the boxes the EmbedPDF viewer already resolved for a
+ * page (`documentState.document.pages[i].boxes`) — no second parse of the file.
+ * `rotation` is the page's Rotation enum (quarters of a turn), as the engine
+ * reports it.
  */
-export async function readPageBoxSnapshot(
-  file: Blob,
-  pageIndex = 0,
-): Promise<PageBoxSnapshot | null> {
-  const loaded = await loadPdf(file);
-  if (!loaded || pageIndex < 0 || pageIndex >= loaded.doc.getPageCount()) {
+export function snapshotFromEmbedPdfPage(
+  boxes: PdfPageBoxes | undefined,
+  rotation = 0,
+): PageBoxSnapshot | null {
+  if (!boxes?.media) {
     return null;
   }
-  const { pdfLib } = loaded;
-  const page = loaded.doc.getPage(pageIndex);
-  const boxes = {
-    MEDIA_BOX: page.getMediaBox(),
-    CROP_BOX: page.getCropBox(),
-    TRIM_BOX: page.getTrimBox(),
-    BLEED_BOX: page.getBleedBox(),
-    ART_BOX: page.getArtBox(),
-  };
-  const explicit = new Set<PageBox>();
-  for (const box of PAGE_BOXES) {
-    if (page.node.get(pdfLib.PDFName.of(BOX_PDF_NAMES[box]))) {
-      explicit.add(box);
+  const media = toRect(boxes.media);
+  const crop = boxes.crop ? toRect(boxes.crop) : media;
+  return snapshotFromRects(
+    media,
+    crop,
+    {
+      BLEED_BOX: boxes.bleed && toRect(boxes.bleed),
+      TRIM_BOX: boxes.trim && toRect(boxes.trim),
+      ART_BOX: boxes.art && toRect(boxes.art),
+    },
+    rotation * 90,
+  );
+}
+
+// EPDF_GetPageBoxByIndex slot order — mirrors the engine's readPageBoxes.
+const PDFIUM_BOX_SLOTS: Record<PageBox, number> = {
+  MEDIA_BOX: 0,
+  CROP_BOX: 1,
+  BLEED_BOX: 2,
+  TRIM_BOX: 3,
+  ART_BOX: 4,
+};
+
+/**
+ * Box snapshots of every page, read through the shared PDFium engine. The
+ * previous reader ran a second full pdf-lib parse of the file and kept the
+ * document cached — on a large PDF that duplicated the viewer's memory. Page
+ * boxes come straight from the page dictionaries here, without loading pages.
+ * Entries are null where PDFium cannot resolve a page's boxes; the whole
+ * result is null when the file cannot be opened at all.
+ */
+export async function readPageBoxSnapshots(
+  file: Blob,
+): Promise<(PageBoxSnapshot | null)[] | null> {
+  try {
+    const m = await getPdfiumModule();
+    const docPtr = await openRawDocumentSafe(await file.arrayBuffer());
+    const buf = m.pdfium.wasmExports.malloc(16);
+    try {
+      const readBox = (pageIndex: number, slot: number): BoxRect | null => {
+        if (!m.EPDF_GetPageBoxByIndex(docPtr, pageIndex, slot, buf)) {
+          return null;
+        }
+        const left = m.pdfium.getValue(buf, "float");
+        const top = m.pdfium.getValue(buf + 4, "float");
+        const right = m.pdfium.getValue(buf + 8, "float");
+        const bottom = m.pdfium.getValue(buf + 12, "float");
+        const width = Math.abs(right - left);
+        const height = Math.abs(top - bottom);
+        if (width < 0.01 || height < 0.01) {
+          return null;
+        }
+        return {
+          x: Math.min(left, right),
+          y: Math.min(top, bottom),
+          width,
+          height,
+        };
+      };
+
+      const snapshots: (PageBoxSnapshot | null)[] = [];
+      const pageCount = m.FPDF_GetPageCount(docPtr);
+      for (let i = 0; i < pageCount; i++) {
+        const media = readBox(i, PDFIUM_BOX_SLOTS.MEDIA_BOX);
+        const crop = readBox(i, PDFIUM_BOX_SLOTS.CROP_BOX) ?? media;
+        if (!media || !crop) {
+          snapshots.push(null);
+          continue;
+        }
+        const rotation =
+          (m.EPDF_GetPageRotationByIndex?.(docPtr, i) ?? 0) * 90;
+        snapshots.push(
+          snapshotFromRects(
+            media,
+            crop,
+            {
+              BLEED_BOX: readBox(i, PDFIUM_BOX_SLOTS.BLEED_BOX) ?? undefined,
+              TRIM_BOX: readBox(i, PDFIUM_BOX_SLOTS.TRIM_BOX) ?? undefined,
+              ART_BOX: readBox(i, PDFIUM_BOX_SLOTS.ART_BOX) ?? undefined,
+            },
+            rotation,
+          ),
+        );
+      }
+      return snapshots;
+    } finally {
+      m.pdfium.wasmExports.free(buf);
+      closeDocAndFreeBuffer(m, docPtr);
     }
+  } catch {
+    return null;
   }
-  return { boxes, explicit, rotation: page.getRotation().angle };
 }
 
 /**
@@ -227,6 +319,7 @@ export function computeResultingBoxes(
   setFrom("CROP_BOX", parse(params.cropBox));
   setFrom("ART_BOX", parse(params.artBox));
 
+  let growTo: BoxRect | null = null;
   if (params.generateBleed || params.addCropMarks) {
     const marksMm = params.addCropMarks
       ? (params.cropMarkOffsetMm ?? 3) + (params.cropMarkLengthMm ?? 5)
@@ -234,19 +327,27 @@ export function computeResultingBoxes(
     const marksArea = expand(result.TRIM_BOX.rect, marksMm);
     // With generateBleed the bleed rect is the generated target and already
     // covers the trim; without it the existing bleed box is left as is.
-    const required = params.generateBleed
+    growTo = params.generateBleed
       ? union(result.BLEED_BOX.rect, marksArea)
       : marksArea;
+    // The controller materializes the TrimBox it painted bleed around.
+    result.TRIM_BOX = { rect: result.TRIM_BOX.rect, inherited: false };
+  }
+  // A BleedBox past the page edge is dead geometry (renderers clip to the
+  // MediaBox): the backend grows MediaBox/CropBox to cover the param-set
+  // bleed as well. An inherited page BleedBox does not trigger growth.
+  if (bleedRect) {
+    growTo = growTo ? union(growTo, bleedRect) : bleedRect;
+  }
+  if (growTo) {
     result.MEDIA_BOX = {
-      rect: union(result.MEDIA_BOX.rect, required),
+      rect: union(result.MEDIA_BOX.rect, growTo),
       inherited: false,
     };
     result.CROP_BOX = {
-      rect: union(result.CROP_BOX.rect, required),
+      rect: union(result.CROP_BOX.rect, growTo),
       inherited: false,
     };
-    // The controller materializes the TrimBox it painted bleed around.
-    result.TRIM_BOX = { rect: result.TRIM_BOX.rect, inherited: false };
   }
 
   if (params.copyMissingFromMediaBox) {

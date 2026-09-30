@@ -1,10 +1,16 @@
 package stirling.software.common.util;
 
+import java.io.IOException;
 import java.util.Locale;
 
+import org.apache.pdfbox.cos.COSBase;
+import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
+import org.apache.pdfbox.multipdf.LayerUtility;
+import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
+import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
 
 import lombok.experimental.UtilityClass;
 import lombok.extern.slf4j.Slf4j;
@@ -46,5 +52,41 @@ public class PageBoxUtils {
             return page.getMediaBox();
         }
         return box;
+    }
+
+    /**
+     * Imports {@code page} as a form XObject whose bounds cover {@code cover}. {@link
+     * LayerUtility#importPageAsForm} bounds the form to the page's CropBox, so content drawn
+     * between the CropBox and a larger target region would be clipped away; the CropBox is grown
+     * for the duration of the import and the original dictionary entry restored afterwards (a page
+     * with no explicit CropBox gets it removed again, not materialized).
+     */
+    public PDFormXObject importPageAsFormCovering(
+            LayerUtility layerUtility, PDDocument sourceDoc, PDPage page, PDRectangle cover)
+            throws IOException {
+        COSDictionary dict = page.getCOSObject();
+        COSBase original = dict.getItem(COSName.CROP_BOX);
+        try {
+            if (cover != null) {
+                page.setCropBox(union(page.getCropBox(), cover));
+            }
+            return layerUtility.importPageAsForm(sourceDoc, page);
+        } finally {
+            if (original != null) {
+                dict.setItem(COSName.CROP_BOX, original);
+            } else {
+                dict.removeItem(COSName.CROP_BOX);
+            }
+        }
+    }
+
+    private PDRectangle union(PDRectangle a, PDRectangle b) {
+        float llx = Math.min(a.getLowerLeftX(), b.getLowerLeftX());
+        float lly = Math.min(a.getLowerLeftY(), b.getLowerLeftY());
+        return new PDRectangle(
+                llx,
+                lly,
+                Math.max(a.getUpperRightX(), b.getUpperRightX()) - llx,
+                Math.max(a.getUpperRightY(), b.getUpperRightY()) - lly);
     }
 }

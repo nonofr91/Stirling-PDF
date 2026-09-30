@@ -14,7 +14,7 @@ import SetPageBoxesFields from "@app/components/tools/setPageBoxes/SetPageBoxesF
 import {
   computeResultingBoxes,
   pdfRectToPageFractions,
-  readPageBoxSnapshot,
+  readPageBoxSnapshots,
   PageBoxSnapshot,
 } from "@app/utils/pageBoxReader";
 import { PAGE_BOXES, PAGE_BOX_COLORS } from "@app/constants/pageBoxConstants";
@@ -38,44 +38,59 @@ const SetPageBoxesSettings = ({
   const { t } = useTranslation();
   const [selectedFile = null] = useViewScopedFiles();
   const [selectedStub = null] = useViewScopedFileStubs();
-  const [snapshot, setSnapshot] = useState<PageBoxSnapshot | null>(null);
+  const [snapshots, setSnapshots] = useState<
+    (PageBoxSnapshot | null)[] | null
+  >(null);
   const setOverlay = useSetPageOverlay();
+  // The diagram and placeholders show the first page; the published overlay
+  // resolves every page against its own boxes.
+  const snapshot = snapshots?.[0] ?? null;
 
   useEffect(() => {
     let cancelled = false;
     if (!selectedFile) {
-      setSnapshot(null);
+      setSnapshots(null);
       return;
     }
-    readPageBoxSnapshot(selectedFile).then((s) => {
-      if (!cancelled) setSnapshot(s);
+    readPageBoxSnapshots(selectedFile).then((s) => {
+      if (!cancelled) setSnapshots(s);
     });
     return () => {
       cancelled = true;
     };
   }, [selectedFile]);
 
-  // Preview the resulting boxes on the viewer's pages, mapped against the
-  // CropBox the viewer currently renders (the file is not modified yet).
+  // Preview the resulting boxes on the viewer's pages, each page resolved
+  // against its own CropBox (the file is not modified yet).
   useEffect(() => {
     const documentKey = selectedFile ? getFormFillFileId(selectedFile) : null;
-    if (!documentKey || !snapshot) {
+    if (!documentKey || !snapshots) {
       setOverlay(null);
       return;
     }
-    const result = computeResultingBoxes(parameters, snapshot, parseBoxString);
-    const visible = snapshot.boxes.CROP_BOX;
     setOverlay({
       documentKey,
-      rects: PAGE_BOXES.map((name) => ({
-        ...pdfRectToPageFractions(result[name].rect, visible),
-        color: PAGE_BOX_COLORS[name],
-        dashed: result[name].inherited,
-        label: name.replace("_BOX", ""),
-        kind: "box",
-      })),
+      rects: [],
+      rectsPerPage: snapshots.map((pageSnapshot) => {
+        if (!pageSnapshot) return [];
+        const result = computeResultingBoxes(
+          parameters,
+          pageSnapshot,
+          parseBoxString,
+        );
+        return PAGE_BOXES.map((name) => ({
+          ...pdfRectToPageFractions(
+            result[name].rect,
+            pageSnapshot.boxes.CROP_BOX,
+          ),
+          color: PAGE_BOX_COLORS[name],
+          dashed: result[name].inherited,
+          label: name.replace("_BOX", ""),
+          kind: "box",
+        }));
+      }),
     });
-  }, [selectedFile, snapshot, parameters, setOverlay]);
+  }, [selectedFile, snapshots, parameters, setOverlay]);
 
   useEffect(() => () => setOverlay(null), [setOverlay]);
 

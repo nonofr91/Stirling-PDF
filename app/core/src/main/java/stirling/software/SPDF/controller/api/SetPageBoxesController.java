@@ -214,12 +214,22 @@ public class SetPageBoxesController {
                                 .unionWith(workTrim, true, markOffsetPt, markLengthPt);
             }
         }
-        // MediaBox/CropBox grow to cover whatever content was generated outside them.
-        if (required != null) {
-            page.setMediaBox(union(effectiveMedia, required));
+        if (bleed == null && request.getBleedMm() > 0 && !generate) {
+            // Explicit margin without generation: grow only the box, no content is painted.
+            bleed = expand(workTrim, request.getBleedMm());
+        }
+        // The generated area must become visible, and a BleedBox outside the MediaBox is dead
+        // geometry (viewers and printers clip to the page): grow the MediaBox and the visible
+        // CropBox to cover whichever region reaches furthest.
+        PDRectangle growTo = required;
+        if (bleed != null) {
+            growTo = growTo == null ? bleed : union(growTo, bleed);
+        }
+        if (growTo != null) {
+            page.setMediaBox(union(effectiveMedia, growTo));
             PDRectangle effectiveCrop = crop != null ? crop : page.getCropBox();
-            page.setCropBox(union(effectiveCrop, required));
-            if (trim == null) {
+            page.setCropBox(union(effectiveCrop, growTo));
+            if (trim == null && required != null) {
                 // The bleed was painted relative to this box; materialize it so viewers and
                 // downstream tools see the same geometry the generator used.
                 page.setTrimBox(workTrim);
@@ -230,13 +240,10 @@ public class SetPageBoxesController {
         if (trim != null) {
             page.setTrimBox(trim);
         }
-        if (bleed == null && request.getBleedMm() > 0 && !generate) {
-            bleed = expand(workTrim, request.getBleedMm());
-        }
         if (bleed != null) {
             page.setBleedBox(bleed);
         }
-        if (crop != null && required == null) {
+        if (crop != null && growTo == null) {
             page.setCropBox(crop);
         }
         if (art != null) {

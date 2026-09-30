@@ -14,7 +14,7 @@ import PageBoxSelect from "@app/components/tools/shared/PageBoxSelect";
 import PageBoxDiagram from "@app/components/tools/shared/PageBoxDiagram";
 import { PageBox, PAGE_BOXES } from "@app/constants/pageBoxConstants";
 import {
-  readPageBoxSnapshot,
+  readPageBoxSnapshots,
   pdfRectToPageFractions,
   PageBoxSnapshot,
 } from "@app/utils/pageBoxReader";
@@ -47,18 +47,24 @@ const CropSettings = ({ parameters, disabled = false }: CropSettingsProps) => {
 
   const [pdfBounds, setPdfBounds] = useState<PDFBounds | null>(null);
   const [pageRotation, setPageRotation] = useState(0);
-  const [boxSnapshot, setBoxSnapshot] = useState<PageBoxSnapshot | null>(null);
+  const [boxSnapshots, setBoxSnapshots] = useState<
+    (PageBoxSnapshot | null)[] | null
+  >(null);
   const setOverlay = useSetPageOverlay();
+  // The diagram and placeholders show the first page; the published overlay
+  // uses every page's own boxes.
+  const boxSnapshot = boxSnapshots?.[0] ?? null;
 
-  // Named-box cropping shows the effective boxes of the selected page.
+  // Named-box cropping needs every page's effective boxes — pages of a
+  // heterogeneous document do not share geometry.
   useEffect(() => {
     let cancelled = false;
     if (!selectedFile || !parameters.parameters.cropToBox) {
-      setBoxSnapshot(null);
+      setBoxSnapshots(null);
       return;
     }
-    readPageBoxSnapshot(selectedFile).then((s) => {
-      if (!cancelled) setBoxSnapshot(s);
+    readPageBoxSnapshots(selectedFile).then((s) => {
+      if (!cancelled) setBoxSnapshots(s);
     });
     return () => {
       cancelled = true;
@@ -159,21 +165,28 @@ const CropSettings = ({ parameters, disabled = false }: CropSettingsProps) => {
       return;
     }
     if (cropToBox) {
-      if (!boxSnapshot) {
+      if (!boxSnapshots) {
         setOverlay(null);
         return;
       }
-      const visible = boxSnapshot.boxes.CROP_BOX;
       setOverlay({
         documentKey,
-        rects: PAGE_BOXES.map((name) => ({
-          ...pdfRectToPageFractions(boxSnapshot.boxes[name], visible),
-          color: PAGE_BOX_COLORS[name],
-          dashed: !boxSnapshot.explicit.has(name),
-          emphasized: name === pageBox,
-          label: name.replace("_BOX", ""),
-          kind: "box",
-        })),
+        rects: [],
+        rectsPerPage: boxSnapshots.map((pageSnapshot) =>
+          pageSnapshot
+            ? PAGE_BOXES.map((name) => ({
+                ...pdfRectToPageFractions(
+                  pageSnapshot.boxes[name],
+                  pageSnapshot.boxes.CROP_BOX,
+                ),
+                color: PAGE_BOX_COLORS[name],
+                dashed: !pageSnapshot.explicit.has(name),
+                emphasized: name === pageBox,
+                label: name.replace("_BOX", ""),
+                kind: "box",
+              }))
+            : [],
+        ),
       });
     } else if (
       !autoCrop &&
@@ -206,7 +219,7 @@ const CropSettings = ({ parameters, disabled = false }: CropSettingsProps) => {
     cropToBox,
     autoCrop,
     pageBox,
-    boxSnapshot,
+    boxSnapshots,
     pdfBounds,
     pageRotation,
     cropArea,
