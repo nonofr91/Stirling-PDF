@@ -789,7 +789,7 @@ class PrintPreflightControllerTest {
         PDDocument doc = new PDDocument();
         PDPage page = new PDPage(PDRectangle.A4);
         doc.addPage(page);
-        org.apache.pdfbox.pdmodel.graphics.optionalcontent.PDOptionalContentGroup ocg =
+        org.apache.pdfbox.pdmodel.documentinterchange.markedcontent.PDPropertyList ocg =
                 printOffOcg(doc, page, "Cut");
         org.apache.pdfbox.pdmodel.graphics.optionalcontent.PDOptionalContentMembershipDictionary
                 ocmd =

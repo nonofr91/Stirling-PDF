@@ -292,14 +292,8 @@ final class PreflightGraphicsEngine extends PDFGraphicsStreamEngine {
             // The image unit square under the CTM is the quad painted on the page.
             bounds = matrixBounds(ctm);
         }
-        boolean technical = isTechnicalContext();
         boolean smasked = pdImage instanceof PDImageXObject xo && xo.getSoftMask() != null;
-        if (smasked) {
-            if (!technical) {
-                transparencyUsed = true;
-            }
-            recordAlpha(bounds, "soft-masked image", technical);
-        }
+        boolean technical = isTechnicalContext();
         String label = null;
         try {
             PDColorSpace cs = pdImage.getColorSpace();
@@ -311,6 +305,12 @@ final class PreflightGraphicsEngine extends PDFGraphicsStreamEngine {
             }
         } catch (IOException ignored) {
             // unresolvable image color space is surfaced through other checks
+        }
+        if (smasked) {
+            if (!technical) {
+                transparencyUsed = true;
+            }
+            recordAlpha(bounds, "soft-masked image", technical);
         }
         images.add(new ImageUse(dpi, smasked, label, bounds, technical));
         checkTransparency(bounds, technical);
