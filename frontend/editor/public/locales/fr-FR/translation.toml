@@ -4185,16 +4185,11 @@ fileName = "Nom du Fichier"
 title = "Import/Export de la Base de Données"
 
 [defaultApp]
-setDefault = "Définir par défaut"
 title = "Définir comme application PDF par défaut"
 
 [defaultApp.error]
 message = "Échec de la définition du gestionnaire PDF par défaut"
 title = "Erreur"
-
-[defaultApp.prompt]
-dontRemind = "Ne plus me le rappeler"
-message = "Définissez Stirling PDF comme application par défaut pour ouvrir les fichiers PDF."
 
 [defaultApp.settingsOpened]
 message = "Veuillez sélectionner Stirling PDF dans vos paramètres système"
@@ -6130,10 +6125,6 @@ title = "Télécharger Stirling pour ordinateur"
 description = "Collaborez avec votre équipe"
 title = "Inviter des membres de l’équipe"
 
-[onboarding.checklist.shareAnalytics]
-description = "Aidez à améliorer Stirling"
-title = "Partager des données d’utilisation anonymes"
-
 [onboarding.checklist.takeTour]
 description = "Découvrez le fonctionnement de Stirling avec une visite rapide"
 title = "Faire la visite guidée"
@@ -7452,11 +7443,6 @@ recoverySummary_other = "{{count}} fichiers affectés."
 recoveryTechnicalDetails = "Détails techniques"
 recoveryTitle = "Échec de l’application de la politique"
 viewAnyway = "Voir le fichier (politique toujours en cours d’application)"
-
-[policyOption]
-pdfa-1 = "PDF/A-1b"
-pdfa-2b = "PDF/A-2b"
-pdfa-3b = "PDF/A-3b"
 
 [portal.accountLink.card]
 billingNote = "Le traitement sans surveillance est facturé sur le portefeuille de votre organisation."
@@ -9211,14 +9197,6 @@ schedule = "Set how often it runs"
 setup = "Finish setting up: {{tools}}"
 source = "Choose an input source"
 
-[portal.pipelines.builder.diagnostic]
-fan-in = "Combine tous les fichiers de l’étape précédente"
-fan-out = "S’exécute une fois par fichier de l’étape précédente"
-format-mismatch = "Nécessite {{accepts}}, mais l’étape précédente produit {{produced}}"
-output-uncertain = "Peut ne pas s’exécuter : la sortie de l’étape précédente dépend de sa configuration"
-source-mismatch = "Nécessite {{accepts}}, mais l’entrée de ce pipeline est {{produced}}"
-undeclared-operation = "Impossible de vérifier ce que cette étape accepte"
-
 [portal.pipelines.builder.icon]
 label = "Changer l’icône"
 
@@ -10151,9 +10129,6 @@ title = "Essai Enterprise"
 subtitle = "Tout ce qui provient des exécutions de vos politiques et des éditeurs de votre équipe et nécessite votre attention."
 title = "Révision"
 
-[portal.settings.sections]
-account-link = "Lien du compte"
-
 [portal.shell.sidebar]
 appEditor = "Éditeur"
 appProcessor = "Processor"
@@ -10447,31 +10422,6 @@ unlimited = "{{used}} · Illimité"
 
 [printFile]
 title = "Imprimer le fichier"
-
-[processingFolders.downloads]
-approve = "Traiter mes Téléchargements"
-cancelSweep = "Annuler"
-capped = "Vous avez {{found}} PDFs ; les {{limit}} premiers sont traités maintenant et le reste suivra."
-close = "Terminé"
-explain_one = "Stirling peut classer le {{count}} PDF déjà présent dans votre dossier Téléchargements et ouvrir les résultats ici."
-explain_other = "Stirling peut classer les {{count}} PDFs déjà présents dans votre dossier Téléchargements et ouvrir les résultats ici."
-failed = "Impossible de configurer cela. Vos fichiers n’ont pas été modifiés."
-finished_one = "{{count}} fichier classé et {{opened}} ouvert ici, prêt à être utilisé."
-finished_other = "{{count}} fichiers classés et {{opened}} ouverts ici, prêts à être utilisés."
-nothingNew_one = "Rien de nouveau à traiter : ce {{count}} fichier a déjà été traité."
-nothingNew_other = "Rien de nouveau à traiter : ces {{count}} fichiers ont déjà été traités."
-notModified = "Vos fichiers dans Téléchargements ne sont pas modifiés : Stirling les lit et les ouvre ici."
-notNow = "Pas maintenant"
-progressCounts = "sur {{total}} traités"
-someFailed_one = "{{count}} n’a pas pu être traité et a été laissé intact."
-someFailed_other = "{{count}} n’ont pas pu être traités et ont été laissés intacts."
-stillRunning = "Certains fichiers sont encore en cours de traitement en arrière-plan."
-title = "Organiser vos Téléchargements ?"
-trigger_one = "Traiter {{count}} PDF dans Téléchargements"
-trigger_other = "Traiter {{count}} PDFs dans Téléchargements"
-typesFound_one = "{{count}} type de document trouvé"
-typesFound_other = "{{count}} types de documents trouvés"
-working = "Traitement..."
 
 [processingFolders.setup]
 addFolder = "Ajouter un dossier"
@@ -11396,8 +11346,6 @@ defaultPdfEditor = "Éditeur PDF par défaut"
 defaultPdfEditorActive = "Stirling PDF est votre éditeur PDF par défaut"
 defaultPdfEditorChecking = "Vérification…"
 defaultPdfEditorInactive = "Une autre application est définie par défaut"
-defaultPdfEditorRemind = "Me rappeler de définir par défaut"
-defaultPdfEditorRemindDescription = "Afficher une bannière lorsque Stirling PDF n’est pas votre application PDF par défaut."
 defaultPdfEditorSet = "Déjà par défaut"
 defaultStartupView = "Vue par défaut au démarrage"
 defaultStartupViewDescription = "Choisissez quel onglet est actif dans la colonne de gauche au démarrage de l'application"
@@ -12936,6 +12884,8 @@ view = "Affichage"
 zoom = "Zoom"
 zoomIn = "Zoom avant"
 zoomOut = "Zoom arrière"
+hidePageBoxes = "Masquer les boîtes de page"
+showPageBoxes = "Afficher les boîtes de page"
 
 [viewer.attachments]
 addAttachment = "Ajouter une pièce jointe"
@@ -13069,169 +13019,6 @@ title = "Afficher/modifier un PDF"
 
 [warning]
 tooltipTitle = "Avertissement"
-
-[watchedFolders]
-alreadyInFolder = "Already in this folder"
-defaultFolderWarning = "This is a default folder and will be recreated on next reload."
-deleteConfirmBody = "This will remove the folder and its run history. Files already downloaded are not affected."
-deleteConfirmTitle = "Delete folder?"
-folderNotFound = "Folder not found"
-newFolder = "New folder"
-noFolders = "No watched folders yet"
-sidebarTitle = "Watched Folders"
-title = "Watched Folders"
-
-[watchedFolders.actions]
-back = "Back"
-collapse = "Collapse"
-dismiss = "Dismiss"
-download = "Download"
-downloadInput = "Download input"
-downloadOutput = "Download output"
-expand = "Expand"
-retry = "Retry"
-
-[watchedFolders.card]
-delete = "Delete folder"
-edit = "Edit folder"
-
-[watchedFolders.home]
-addAnother = "Add another Watched Folder"
-addAnotherDesc = "Automatically process files with a new pipeline"
-create = "Create your first Watched Folder"
-deleteFolder = "Delete folder"
-editFolder = "Edit folder"
-empty = "No watched folders yet"
-emptyDesc = "Set up a Watched Folder once. Drop PDFs in and they're automatically compressed, OCR'd, split, merged — whatever your pipeline does."
-emptyTitle = "Automate your PDF workflows"
-file = "file"
-files = "files"
-pause = "Pause"
-resume = "Resume"
-
-[watchedFolders.howItWorks]
-step1Desc = "Drag PDFs onto any Watched Folder card — or send them from your file list"
-step1Title = "Drop files"
-step2Desc = "Your configured tools process each file automatically"
-step2Title = "Pipeline runs"
-step3Desc = "Download processed files from inside the folder"
-step3Title = "Output ready"
-title = "How Watched Folders work"
-
-[watchedFolders.modal]
-advanced = "Advanced"
-automation = "Automation"
-automationNameFallback = "Watched Folder automation"
-automationRequired = "Add at least one configured step before saving."
-autoNumber = "Auto-number"
-autoNumberExample = "e.g. document.pdf → document (1).pdf"
-autoScanHelp = "New PDF files in this folder are processed automatically every 10 seconds."
-changeFolder = "Change"
-chooseFolder = "Choose"
-clearFolder = "Clear"
-color = "Accent color"
-createFolder = "Create Folder"
-createTitle = "New Watched Folder"
-editTitle = "Edit Watched Folder"
-inputFolder = "Input folder"
-inputFolderNotChosen = "No folder chosen — required for auto-scan"
-inputSource = "Input source"
-inputSourceBrowser = "Browser — drop files here"
-inputSourceLocal = "Local folder (auto-scan)"
-inputSourceLocalUnsupported = "Local folder (auto-scan) — Chrome/Edge only"
-localOutputFolder = "Local output folder"
-maxRetries = "Max retries"
-name = "Folder name"
-namePlaceholder = "My Watched Folder"
-nameRequired = "Folder name is required"
-nameTooLong = "Folder name must be 50 characters or less"
-outputFolderNotSet = "Not set — outputs stay in app"
-outputFolderUnsupported = "Not supported in this browser"
-outputModeNewDesc = "Output is saved as a new separate file"
-outputModeVersion = "Replace original?"
-outputModeVersionDesc = "Output becomes a new version of the input file rather than a separate file"
-outputName = "Output filename prefix"
-outputNamePrefix = "Filename prefix"
-outputNameSuffix = "Suffix"
-positionPrefix = "Prefix"
-positionSuffix = "Suffix"
-replaceOriginal = "Replace original file"
-retryDelay = "Delay (minutes)"
-saveChanges = "Save Changes"
-saveFailed = "Failed to save folder. Please try again."
-sectionFolder = "Folder"
-sectionSourceOutput = "Source & Output"
-sectionSteps = "Steps"
-
-[watchedFolders.status]
-active = "Active"
-done = "Done"
-paused = "Paused"
-processing = "Processing"
-
-[watchedFolders.time]
-daysAgo = "{{count}}d ago"
-hoursAgo = "{{count}}h ago"
-justNow = "just now"
-minutesAgo = "{{count}}m ago"
-
-[watchedFolders.workbench]
-activity = "Activity"
-addFiles = "Add files"
-allTime = "All time"
-cancel = "Cancel"
-chartTooltipComplete = "{{count}} complete"
-chartTooltipFailed = "{{count}} failed"
-clearSelection = "Clear selection"
-countProcessing = "{{count}} processing"
-countQueued = "{{count}} queued"
-countSelected = "{{count}} selected"
-dataSaved = "Saved"
-dayRunning = "day running"
-daysRunning = "days running"
-delete = "Delete"
-deleteConfirmBody = "Remove notifications only clears the activity log. Delete outputs also removes the processed files from storage. Your original input files are never touched."
-deleteOutputs = "Delete outputs"
-directionIn = "in"
-directionOut = "out"
-dropToProcess = "Drop to process"
-export = "Export"
-exportSeparately = "Export separately"
-exportZip = "Export zip"
-failed = "Failed"
-filesProcessedOverTime = "Files processed over time"
-filterAll = "All"
-filterPending = "Pending"
-inputs = "Inputs"
-inputSize = "Input size"
-legendComplete = "Complete"
-noActivity = "No activity yet — drop a PDF to start"
-noActivityMatch = "No matching activity"
-noInputFolder = "No input folder — edit to configure"
-outputs = "Outputs"
-pause = "Pause"
-preview = "Preview"
-previewInput = "Preview input"
-previewLoadFailed = "Could not load file preview."
-previewOutput = "Preview output"
-queued = "Queued"
-queuedWaiting = "Queued — waiting to run"
-removeEntries = "Remove {{count}} entries"
-removeEntry = "Remove entry"
-removeNotificationsOnly = "Remove notifications only"
-resume = "Resume"
-retryAll = "Retry all"
-retryIn = "retry in {{count}}m"
-retryingSoon = "retrying…"
-retryMixedConfirm = "Some selected files have already completed and will be skipped. Only failed files will be retried. Continue?"
-running = "Running"
-search = "Search…"
-selectAll = "Select all {{count}}"
-sortNameAsc = "A → Z"
-sortNameDesc = "Z → A"
-sortNewest = "Newest"
-sortOldest = "Oldest"
-watching = "Watching: {{name}}"
 
 [watermark]
 desc = "Ajouter des filigranes texte ou image aux fichiers PDF"
@@ -13472,3 +13259,131 @@ confirm = "Extraire"
 message_one = "This ZIP contains {{count}} file. Extract anyway?"
 message_other = "This ZIP contains {{count}} files. Extract anyway?"
 title = "Fichier ZIP volumineux"
+
+[home.printPreflight]
+desc = "Vérifie un PDF pour la production print : polices non incorporées, couleurs RVB/tons directs, images basse résolution, fond perdu absent ou non peint, filets, transparence."
+tags = "preflight,prépresse,prepress,print,impression,contrôle,rapport,polices,incorporées,RVB,CMJN,fond perdu,traits,coupe,dpi,résolution,surimpression,transparence,pdfx"
+title = "Preflight d'impression"
+
+[onboarding.checklist.setDefaultApp]
+description = "Ouvrir les fichiers PDF dans Stirling PDF"
+title = "Définir Stirling comme application par défaut"
+
+[printPreflight]
+counts = "{{errors}} erreurs · {{warnings}} avertissements · {{infos}} infos"
+downloadJson = "Télécharger le rapport (JSON)"
+noResults = "Lancez l'outil pour générer un rapport preflight."
+pages = "Pages"
+processing = "Contrôles preflight en cours..."
+results = "Résultats"
+submit = "Lancer le preflight"
+
+[printPreflight.category]
+COLOR = "Couleur"
+CONTENT = "Contenu"
+DOCUMENT = "Document"
+FONTS = "Polices"
+GEOMETRY = "Géométrie"
+IMAGES = "Images"
+
+[printPreflight.checkBleedCoverage]
+desc = "Rend chaque page pour vérifier que la zone de fond perdu est réellement couverte par du contenu, pas seulement déclarée."
+label = "Vérifier que le fond perdu est peint"
+
+[printPreflight.error]
+noReport = "Aucun rapport renvoyé."
+partial = "Certains fichiers n'ont pas pu être analysés."
+unexpected = "Erreur inattendue pendant le preflight."
+
+[printPreflight.facts]
+boxes = "Boîtes de page"
+colors = "Espaces colorimétriques"
+fonts = "Polices"
+images = "Images"
+lowRes = "{{count}} sous le seuil"
+pageCount = "Pages"
+title = "Caractéristiques du document"
+type3 = "Type 3"
+
+[printPreflight.hairlineThresholdPt]
+help = "Les traits plus fins que ce seuil sont signalés — ils risquent de disparaître à l'impression."
+label = "Seuil des filets (pt)"
+
+[printPreflight.minImageDpi]
+help = "Les images placées sous cette résolution effective sont signalées. 300 est idéal pour l'offset ; 150 est un minimum courant."
+label = "Résolution minimale des images (dpi)"
+
+[printPreflight.options]
+stepTitle = "Seuils de contrôle"
+
+[printPreflight.requiredBleedMm]
+help = "Largeur de fond perdu attendue de chaque côté au-delà du format fini. 3 mm est la norme en Europe."
+label = "Fond perdu requis (mm)"
+
+[printPreflight.severity]
+ERROR = "Erreur"
+INFO = "Info"
+WARNING = "Avertissement"
+
+[printPreflight.status]
+complete = "Preflight terminé"
+
+[printPreflight.verdict]
+clean = "Prêt pour l'impression"
+errors = "{{errors}} problème(s) bloquant(s) détecté(s)"
+warnings = "Imprimable avec {{warnings}} avertissement(s)"
+
+[setPageBoxes.cropMarks]
+enable = "Tracer des traits de coupe aux coins de la TrimBox"
+length = "Longueur (mm)"
+offset = "Décalage (mm)"
+section = "Traits de coupe"
+weight = "Épaisseur (pt)"
+
+[setPageBoxes.generateBleed]
+bleedBottomMm = "Bas (mm)"
+bleedLeftMm = "Gauche (mm)"
+bleedRightMm = "Droite (mm)"
+bleedTopMm = "Haut (mm)"
+corners = "Générer aussi le fond perdu dans les coins"
+dpi = "DPI de rendu"
+enable = "Peindre du contenu de fond perdu entre TrimBox et BleedBox"
+hint = "Une BleedBox seule n'est que de la géométrie. Cette option peint du contenu supplémentaire au-delà du format fini (comme Add Bleed de PitStop) pour éviter tout liseré blanc à la coupe."
+inset = "Retrait source (mm, ignore la marge intérieure)"
+method = "Méthode de fond perdu"
+section = "Générer le fond perdu"
+sideFallback = "bleedMm"
+
+[setPageBoxes.generateBleed.methods]
+MIRROR = "Miroir des bords (vectoriel)"
+MIRROR_IMAGE = "Miroir des bords (image)"
+PIXEL_REPEAT = "Répéter le dernier pixel"
+UPSCALE = "Agrandir le contenu de la page"
+
+[policyOption]
+pdfa-1 = "PDF/A-1b"
+pdfa-2b = "PDF/A-2b"
+pdfa-3b = "PDF/A-3b"
+
+[portal.pipelines.builder.diagnostic]
+fan-in = "Combine tous les fichiers entrants"
+fan-out = "S'exécute une fois par fichier entrant"
+format-mismatch = "Envoie {{produced}}, attend {{accepts}}"
+output-uncertain = "Peut ne pas s'exécuter : la sortie dépend de la configuration"
+source-mismatch = "L'entrée est {{produced}}, attend {{accepts}}"
+undeclared-operation = "Impossible de vérifier ce que cette étape accepte"
+
+[portal.settings.sections]
+account-link = "Connexion du compte"
+
+[payment.addCapacity]
+
+[portal.billing.prepaid.deploy]
+
+[portal.billing.prepaid.pipelines]
+
+[portal.billing.prepaid.posture]
+
+[portal.billing.prepaid.size]
+
+[portal.billing.spendLimitModal]

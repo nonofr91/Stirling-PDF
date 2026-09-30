@@ -5591,6 +5591,7 @@ title = "Detect & Split Scanned Photos"
 
 [home.setPageBoxes]
 desc = "Define MediaBox, CropBox, TrimBox, BleedBox and ArtBox on every page for prepress workflows."
+tags = "prepress,page boxes,mediabox,cropbox,trimbox,bleedbox,artbox,print production,bleed,trim marks"
 title = "Set Page Boxes"
 
 [home.sharedSign]
@@ -5631,6 +5632,7 @@ title = "Timestamp PDF"
 
 [home.textToOutlines]
 desc = "Convert all text to vector outlines so no fonts are needed for printing."
+tags = "text to outlines,outlines,vectorize text,fonts to curves,prepress,print production,outline fonts"
 title = "Text to Outlines"
 
 [home.unlockPDFForms]
@@ -6426,6 +6428,13 @@ title = "Rows & Columns (Custom Mode)"
 [pageBox]
 diagram = "Page box diagram"
 label = "Page box"
+
+[pageBox.options]
+MEDIA_BOX = "MediaBox"
+CROP_BOX = "CropBox"
+TRIM_BOX = "TrimBox"
+BLEED_BOX = "BleedBox"
+ART_BOX = "ArtBox"
 
 [pageRemover]
 title = "Page Remover"
@@ -12577,6 +12586,7 @@ documentSecurity = "Document Security"
 extraction = "Extraction"
 general = "General"
 pageFormatting = "Page Formatting"
+prepress = "Prepress"
 removal = "Removal"
 signing = "Signing"
 verification = "Verification"
