@@ -6,7 +6,9 @@ name: Prepress Build & Deploy
 #
 # Required repository configuration:
 #   secrets.DOCKERHUB_USERNAME / DOCKERHUB_TOKEN  — push rights on pubgen/stirling-pdf
+#     (stored on the `prepress-prod` environment, not the repository)
 #   secrets.COOLIFY_API_TOKEN                     — API token on the Coolify instance
+#     (also on the `prepress-prod` environment)
 #   vars.COOLIFY_BASE_URL                         — e.g. https://int.cubixmedia.fr
 #   vars.COOLIFY_SERVICE_UUID                     — service uuid (stirling-pdf)
 #   vars.PREPRESS_DEPLOY_ENABLED = 'true'         — flag guarding the pipeline until
@@ -32,6 +34,8 @@ jobs:
   build-push-deploy:
     if: ${{ vars.PREPRESS_DEPLOY_ENABLED == 'true' }}
     runs-on: ubuntu-latest
+    # Deploy credentials live in this environment only; no other job can read them.
+    environment: prepress-prod
     steps:
       - uses: actions/checkout@v4
 
