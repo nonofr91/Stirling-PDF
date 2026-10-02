@@ -65,8 +65,7 @@ export const setPageBoxesFromApiParams = (
     defaultParameters.copyMissingFromMediaBox,
   generateBleed: apiParams.generateBleed ?? defaultParameters.generateBleed,
   bleedMethod:
-    (apiParams.bleedMethod as SetPageBoxesParameters["bleedMethod"]) ??
-    defaultParameters.bleedMethod,
+    apiParams.bleedMethod ?? defaultParameters.bleedMethod,
   bleedTopMm: apiParams.bleedTopMm,
   bleedRightMm: apiParams.bleedRightMm,
   bleedBottomMm: apiParams.bleedBottomMm,

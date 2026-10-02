@@ -52,8 +52,7 @@ export const cutContourFromApiParams = (
   apiParams: CutContourApiParams,
 ): Partial<CutContourParameters> => ({
   extractionMode:
-    (apiParams.extractionMode as CutContourParameters["extractionMode"]) ??
-    defaultParameters.extractionMode,
+    apiParams.extractionMode ?? defaultParameters.extractionMode,
   dpi: apiParams.dpi,
   alphaThreshold: apiParams.alphaThreshold,
   backgroundTolerance: apiParams.backgroundTolerance,
