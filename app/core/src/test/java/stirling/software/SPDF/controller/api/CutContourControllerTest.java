@@ -179,9 +179,12 @@ class CutContourControllerTest {
             var report =
                     new PrintPreflightService()
                             .analyze(out, "out.pdf", response.getBody().contentLength(), pf);
+            // Finishing separations are kept out of print spot colors and reported
+            // as technical separations (see PreflightGraphicsEngine.TECHNICAL_TOKENS).
             assertTrue(
-                    report.getFacts().getSpotColors().contains("CutContour"),
-                    "CutContour not listed as a separation");
+                    report.getFacts().getTechnicalSeparations().contains("CutContour"),
+                    "CutContour not listed as a technical separation");
+            assertFalse(report.getFacts().getSpotColors().contains("CutContour"));
         }
     }
 
