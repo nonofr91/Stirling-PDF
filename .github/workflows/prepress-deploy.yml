@@ -18,6 +18,12 @@ on:
   push:
     branches:
       - prepress
+    # CI/docs/test-only changes don't change the runtime — skip the image rebuild.
+    paths-ignore:
+      - ".github/**"
+      - "docs/**"
+      - "testing/**"
+      - "**.md"
   workflow_dispatch:
 
 concurrency:
