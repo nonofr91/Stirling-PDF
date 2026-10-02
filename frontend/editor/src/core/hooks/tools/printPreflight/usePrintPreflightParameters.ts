@@ -10,6 +10,13 @@ export interface PrintPreflightParameters extends BaseParameters {
   minImageDpi?: number;
   hairlineThresholdPt?: number;
   checkBleedCoverage: boolean;
+  /**
+   * Automation output: "annotatedPdf" returns a PDF copy with located issues
+   * framed (keeps the pipeline chain alive), "json" returns the machine-readable
+   * report and ends the chain. Interactive mode ignores it — the tool page
+   * exposes both outputs itself.
+   */
+  reportFormat: "annotatedPdf" | "json";
 }
 
 export const defaultParameters: PrintPreflightParameters = {
@@ -17,6 +24,7 @@ export const defaultParameters: PrintPreflightParameters = {
   minImageDpi: undefined,
   hairlineThresholdPt: undefined,
   checkBleedCoverage: true,
+  reportFormat: "annotatedPdf",
 };
 
 export type PrintPreflightParametersHook =
@@ -42,6 +50,12 @@ export function validatePrintPreflightParameters(
     params.hairlineThresholdPt !== undefined &&
     (!Number.isFinite(params.hairlineThresholdPt) ||
       params.hairlineThresholdPt < 0)
+  ) {
+    return false;
+  }
+  if (
+    params.reportFormat !== "annotatedPdf" &&
+    params.reportFormat !== "json"
   ) {
     return false;
   }

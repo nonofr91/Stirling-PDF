@@ -10987,6 +10987,12 @@ label = "Minimum image resolution (dpi)"
 [printPreflight.options]
 stepTitle = "Check thresholds"
 
+[printPreflight.reportFormat]
+annotatedPdf = "Annotated PDF"
+help = "Annotated PDF keeps a PDF in the pipeline; JSON report ends the chain with the findings."
+json = "JSON report"
+label = "Report format"
+
 [printPreflight.requiredBleedMm]
 help = "Bleed width expected on every side past the trim. 3 mm is standard in Europe."
 label = "Required bleed (mm)"

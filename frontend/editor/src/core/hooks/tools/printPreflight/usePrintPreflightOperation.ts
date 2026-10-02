@@ -2,14 +2,23 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import apiClient from "@app/services/apiClient";
 import { downloadFile } from "@app/services/downloadService";
-import { ToolOperationHook } from "@app/hooks/tools/shared/useToolOperation";
+import {
+  defineCustomTool,
+  CustomProcessorResult,
+  ToolOperationHook,
+} from "@app/hooks/tools/shared/useToolOperation";
+import type { ToolEndpoint } from "@app/types/toolApiTypes";
 import type { StirlingFile } from "@app/types/fileContext";
 import { extractErrorMessage } from "@app/utils/toolErrorHandler";
 import {
   PrintPreflightReport,
   PREFLIGHT_JSON_FILENAME,
 } from "@app/types/printPreflight";
-import type { PrintPreflightParameters } from "@app/hooks/tools/printPreflight/usePrintPreflightParameters";
+import {
+  defaultParameters,
+  validatePrintPreflightParameters,
+  type PrintPreflightParameters,
+} from "@app/hooks/tools/printPreflight/usePrintPreflightParameters";
 
 export interface PrintPreflightResultEntry {
   fileId: string;
@@ -25,8 +34,13 @@ export interface PrintPreflightOperationHook extends ToolOperationHook<PrintPref
   annotatedLoading: string | null;
 }
 
+const PREFLIGHT_ENDPOINT =
+  "/api/v1/security/print-preflight" satisfies ToolEndpoint;
+const PREFLIGHT_ANNOTATED_ENDPOINT =
+  "/api/v1/security/print-preflight-annotated" satisfies ToolEndpoint;
+
 const buildFormData = (
-  file: StirlingFile,
+  file: File,
   params: PrintPreflightParameters,
 ): FormData => {
   const formData = new FormData();
@@ -43,6 +57,61 @@ const buildFormData = (
   formData.append("checkBleedCoverage", String(params.checkBleedCoverage));
   return formData;
 };
+
+/**
+ * Automation processor: each input yields one artifact — the annotated PDF copy
+ * (still a PDF, so the pipeline keeps flowing) or the JSON report when
+ * reportFormat is "json" (a terminal step: the next tool would get JSON).
+ */
+const printPreflightProcessor = async (
+  params: PrintPreflightParameters,
+  files: File[],
+): Promise<CustomProcessorResult> => {
+  const processedFiles: File[] = [];
+
+  for (const file of files) {
+    const base = file.name.replace(/\.pdf$/i, "");
+    if (params.reportFormat === "json") {
+      const response = await apiClient.post(
+        PREFLIGHT_ENDPOINT,
+        buildFormData(file, params),
+      );
+      const json = JSON.stringify(response.data ?? null, null, 2);
+      processedFiles.push(
+        new File([json], `${base}-preflight-report.json`, {
+          type: "application/json",
+        }),
+      );
+    } else {
+      const response = await apiClient.post(
+        PREFLIGHT_ANNOTATED_ENDPOINT,
+        buildFormData(file, params),
+        { responseType: "blob" },
+      );
+      const blob =
+        response.data instanceof Blob
+          ? response.data
+          : new Blob([response.data], { type: "application/pdf" });
+      processedFiles.push(
+        new File([blob], `${base}_preflight.pdf`, { type: "application/pdf" }),
+      );
+    }
+  }
+
+  return { files: processedFiles };
+};
+
+export const printPreflightOperationConfig = defineCustomTool({
+  operationType: "printPreflight",
+  validateParams: validatePrintPreflightParameters,
+  endpoint: (params: PrintPreflightParameters) =>
+    params.reportFormat === "json"
+      ? PREFLIGHT_ENDPOINT
+      : PREFLIGHT_ANNOTATED_ENDPOINT,
+  endpoints: [PREFLIGHT_ENDPOINT, PREFLIGHT_ANNOTATED_ENDPOINT],
+  customProcessor: printPreflightProcessor,
+  defaultParameters,
+});
 
 export const usePrintPreflightOperation = (): PrintPreflightOperationHook => {
   const { t } = useTranslation();
@@ -113,7 +182,7 @@ export const usePrintPreflightOperation = (): PrintPreflightOperationHook => {
 
           try {
             const response = await apiClient.post(
-              "/api/v1/security/print-preflight",
+              PREFLIGHT_ENDPOINT,
               buildFormData(file, params),
             );
             aggregated.push({
@@ -184,7 +253,7 @@ export const usePrintPreflightOperation = (): PrintPreflightOperationHook => {
       setAnnotatedLoading(fileId);
       try {
         const response = await apiClient.post(
-          "/api/v1/security/print-preflight-annotated",
+          PREFLIGHT_ANNOTATED_ENDPOINT,
           buildFormData(run.file, run.params),
           { responseType: "blob" },
         );

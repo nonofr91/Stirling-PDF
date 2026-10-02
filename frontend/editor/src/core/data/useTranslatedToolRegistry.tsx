@@ -53,6 +53,7 @@ import { signOperationConfig } from "@app/hooks/tools/sign/useSignOperation";
 import { cropOperationConfig } from "@app/hooks/tools/crop/useCropOperation";
 import { setPageBoxesOperationConfig } from "@app/hooks/tools/setPageBoxes/useSetPageBoxesOperation";
 import { cutContourOperationConfig } from "@app/hooks/tools/cutContour/useCutContourOperation";
+import { printPreflightOperationConfig } from "@app/hooks/tools/printPreflight/usePrintPreflightOperation";
 import { textToOutlinesOperationConfig } from "@app/hooks/tools/textToOutlines/useTextToOutlinesOperation";
 import { removeAnnotationsOperationConfig } from "@app/hooks/tools/removeAnnotations/useRemoveAnnotationsOperation";
 import { removeImageOperationConfig } from "@app/hooks/tools/removeImage/useRemoveImageOperation";
@@ -624,9 +625,12 @@ export function useTranslatedToolCatalog(): TranslatedToolCatalog {
         ),
         categoryId: ToolCategoryId.STANDARD_TOOLS,
         subcategoryId: SubcategoryId.PREPRESS,
-        endpoints: ["print-preflight"],
-        supportsAutomate: false,
-        automationSettings: null,
+        endpoints: ["print-preflight", "print-preflight-annotated"],
+        operationConfig: asRegistryConfig(printPreflightOperationConfig),
+        automationSettings: lazySettings(
+          () =>
+            import("@app/components/tools/printPreflight/PrintPreflightAutomationSettings"),
+        ),
         maxFiles: 1,
         synonyms: getSynonyms(t, "printPreflight"),
       },

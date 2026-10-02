@@ -13779,6 +13779,12 @@ label = "Résolution minimale des images (dpi)"
 [printPreflight.options]
 stepTitle = "Seuils de contrôle"
 
+[printPreflight.reportFormat]
+annotatedPdf = "PDF annoté"
+help = "Le PDF annoté garde un PDF dans la chaîne ; le rapport JSON termine la chaîne avec les constats."
+json = "Rapport JSON"
+label = "Format du rapport"
+
 [printPreflight.requiredBleedMm]
 help = "Largeur de fond perdu attendue de chaque côté au-delà du format fini. 3 mm est la norme en Europe."
 label = "Fond perdu requis (mm)"
