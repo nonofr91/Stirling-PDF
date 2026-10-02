@@ -14,6 +14,7 @@ import { useAllFiles } from "@app/contexts/FileContext";
 import { useAppConfig } from "@app/contexts/AppConfigContext";
 import { useSharingEnabled } from "@app/hooks/useSharingEnabled";
 import { useGoogleDrivePicker } from "@app/hooks/useGoogleDrivePicker";
+import { useNetworkSourceImport } from "@app/hooks/useNetworkSourceImport";
 import { useProcessingFolders } from "@app/hooks/useProcessingFolders";
 import { useFolderFileStates } from "@app/components/filesPage/useFolderFileStates";
 import { pendingFilePathMappings } from "@app/services/pendingFilePathMappings";
@@ -411,6 +412,16 @@ export function LibraryFilePicker({
       );
   };
 
+  // Same staging path as Drive/computer picks: remote files enter the queue as
+  // uploads and keep the user's selection count rules.
+  const networkImport = useNetworkSourceImport(stageFiles);
+
+  // While the network browser is up it owns the interaction: the Mantine picker
+  // must drop its focus trap and outside-click close, like for the Drive picker.
+  useEffect(() => {
+    onExternalPickerChange(networkImport.isOpen);
+  }, [networkImport.isOpen, onExternalPickerChange]);
+
   const pickFromComputer = async () => {
     try {
       stageFiles(
@@ -607,6 +618,17 @@ export function LibraryFilePicker({
               }}
             >
               Google Drive
+            </Button>
+          )}
+          {networkImport.enabled && (
+            <Button
+              variant="tertiary"
+              disabled={busy}
+              leftSection={<Icon name="server" />}
+              onClick={networkImport.open}
+              data-testid="network-source-button"
+            >
+              {t("filePicker.fromNetwork", "From a network server")}
             </Button>
           )}
           {config?.enableMobileScanner && !isPhone && (
@@ -965,6 +987,7 @@ export function LibraryFilePicker({
           setMobileUploadOpen(false);
         }}
       />
+      {networkImport.modal}
     </div>
   );
 }

@@ -33,6 +33,18 @@ public interface RemoteFileClient extends Closeable {
     /** Opens the file for reading; the stream stays valid until this client is closed. */
     InputStream open(String path) throws IOException;
 
+    /**
+     * Non-recursive listing of one directory for interactive browsing: files and subdirectories, in
+     * server order. Only the pipeline listing ({@link #list}) flattens directories away.
+     */
+    List<RemoteEntry> browse(String directory) throws IOException;
+
+    /**
+     * Streams {@code data} to {@code path}, replacing any existing file. The caller owns and must
+     * close {@code data}; intermediate directories are not created.
+     */
+    void write(String path, InputStream data) throws IOException;
+
     /** Removes the file; a no-op if it is already gone. */
     void delete(String path) throws IOException;
 }

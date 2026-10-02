@@ -141,6 +141,38 @@ final class FtpFileClient implements RemoteFileClient {
     }
 
     @Override
+    public List<RemoteEntry> browse(String directory) throws IOException {
+        List<RemoteEntry> entries = new ArrayList<>();
+        String root = dir(directory);
+        for (FTPFile entry : ftp.listFiles(root)) {
+            if (entry == null) {
+                continue;
+            }
+            String name = entry.getName();
+            if (name.equals(".") || name.equals("..") || name.startsWith(".")) {
+                continue;
+            }
+            if (entry.isFile() || entry.isDirectory()) {
+                entries.add(
+                        new RemoteEntry(
+                                join(root, name),
+                                name,
+                                entry.isDirectory(),
+                                entry.getSize(),
+                                lastModified(entry)));
+            }
+        }
+        return entries;
+    }
+
+    @Override
+    public void write(String path, InputStream data) throws IOException {
+        if (!ftp.storeFile(path, data)) {
+            throw new IOException("cannot write " + path + ": " + ftp.getReplyString());
+        }
+    }
+
+    @Override
     public void delete(String path) throws IOException {
         ftp.deleteFile(path);
     }

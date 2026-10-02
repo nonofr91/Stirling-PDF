@@ -15,6 +15,7 @@ import { useTranslation } from "react-i18next";
 import { useFileState, useFileActions } from "@app/contexts/file/fileHooks";
 import { useAppConfig } from "@app/contexts/AppConfigContext";
 import { useGoogleDrivePicker } from "@app/hooks/useGoogleDrivePicker";
+import { useNetworkSourceImport } from "@app/hooks/useNetworkSourceImport";
 import {
   useNavigationState,
   useNavigationActions,
@@ -86,6 +87,8 @@ export interface FileSidebarProps {
   onRegisterOpenFromComputer?: (open: (() => void) | null) => void;
   /** Override the Google Drive handler. */
   onPickGoogleDriveFiles?: (files: File[]) => void | Promise<void>;
+  /** Override the network-source handler (FTP/SFTP/SMB browser). */
+  onPickNetworkFiles?: (files: File[]) => void | Promise<void>;
   /** Action rows inserted under Open-from-computer (New folder, Refresh). A
    *  control with more than one destination renders itself instead. */
   extraActions?: Array<{
@@ -158,6 +161,7 @@ const FileSidebar = forwardRef<HTMLDivElement, FileSidebarProps>(
       onUploadFiles,
       onRegisterOpenFromComputer,
       onPickGoogleDriveFiles,
+      onPickNetworkFiles,
       extraActions,
     },
     ref,
@@ -520,6 +524,22 @@ const FileSidebar = forwardRef<HTMLDivElement, FileSidebarProps>(
       onPickGoogleDriveFiles,
     ]);
 
+    const handleNetworkFilesPicked = useCallback(
+      async (files: File[]) => {
+        if (files.length === 0) return;
+        if (onPickNetworkFiles) {
+          await onPickNetworkFiles(files);
+          return;
+        }
+        await addFiles(files);
+        if (!isMultiTool) {
+          navActions.setWorkbench(files.length === 1 ? "viewer" : "fileEditor");
+        }
+      },
+      [onPickNetworkFiles, addFiles, isMultiTool, navActions],
+    );
+    const networkImport = useNetworkSourceImport(handleNetworkFilesPicked);
+
     const handleFileClick = useCallback(
       async (fileId: FileId) => {
         const stub = allFileStubs.find((s) => s.id === fileId);
@@ -840,6 +860,19 @@ const FileSidebar = forwardRef<HTMLDivElement, FileSidebarProps>(
                   },
                 ]
               : []),
+            ...(networkImport.enabled
+              ? [
+                  {
+                    icon: <Icon name="server" />,
+                    label: t(
+                      "fileSidebar.networkSource",
+                      "Open from network server",
+                    ),
+                    onClick: networkImport.open,
+                    testId: "network-source-button",
+                  },
+                ]
+              : []),
           ]
         : []),
       ...(extraActions ?? []),
@@ -857,6 +890,21 @@ const FileSidebar = forwardRef<HTMLDivElement, FileSidebarProps>(
             data-testid="google-drive-button"
           >
             <Icon name="googledrive" size={16} />
+          </ActionIcon>
+        )}
+        {networkImport.enabled && (
+          <ActionIcon
+            variant="quiet"
+            className="file-sidebar-section-btn file-sidebar-section-btn-network"
+            onClick={networkImport.open}
+            title={t("fileSidebar.networkSource", "Open from network server")}
+            aria-label={t(
+              "fileSidebar.networkSource",
+              "Open from network server",
+            )}
+            data-testid="network-source-button"
+          >
+            <Icon name="server" size={16} />
           </ActionIcon>
         )}
         <ActionIcon
@@ -1150,6 +1198,8 @@ const FileSidebar = forwardRef<HTMLDivElement, FileSidebarProps>(
           onClose={() => setDeleteTarget(null)}
           onConfirm={handleConfirmSidebarDelete}
         />
+
+        {networkImport.modal}
 
         {/* Getting-started checklist, floating above the footer (SaaS only). */}
         <SidebarChecklistSlot />
