@@ -457,6 +457,9 @@ class CropParams(ApiModel):
         PageBox.media_box,
         description="Page box used as the crop area when cropToBox is true. Pages without that box fall back to their MediaBox",
     )
+    page_numbers: str = Field(
+        "all", description="Pages to crop (e.g. '1, 3, 5-8' or 'all'). Omit or leave blank for all pages."
+    )
     remove_data_outside_crop: bool | None = Field(
         None, description="Whether to remove text outside the crop area (keeps images)"
     )

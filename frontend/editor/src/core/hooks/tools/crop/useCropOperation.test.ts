@@ -24,6 +24,13 @@ describe("crop mappers", () => {
       label: "cropToBox on",
       overrides: { cropToBox: true, pageBox: "TRIM_BOX" },
     },
+    {
+      label: "single page selection",
+      overrides: {
+        pageNumbers: "3",
+        cropArea: { x: 5, y: 5, width: 100, height: 200 },
+      },
+    },
   ])("round-trips backend params ($label)", ({ overrides }) => {
     const api = cropToApiParams({ ...defaultParameters, ...overrides });
     const roundTripped = cropToApiParams({

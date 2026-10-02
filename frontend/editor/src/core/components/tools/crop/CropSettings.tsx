@@ -21,6 +21,7 @@ import {
 import { useSetPageOverlay } from "@app/contexts/PageOverlayContext";
 import { PAGE_BOX_COLORS } from "@app/constants/pageBoxConstants";
 import { getFormFillFileId } from "@app/types/fileContext";
+import CropPageSelection from "@app/components/tools/crop/CropPageSelection";
 import { DEFAULT_CROP_AREA } from "@app/constants/cropConstants";
 import { PAGE_SIZES } from "@app/constants/pageSizeConstants";
 import {
@@ -270,6 +271,12 @@ const CropSettings = ({ parameters, disabled = false }: CropSettingsProps) => {
 
   return (
     <Stack gap="md" data-tour="crop-settings">
+      <CropPageSelection
+        value={parameters.parameters.pageNumbers}
+        onChange={(value) => parameters.updateParameter("pageNumbers", value)}
+        disabled={disabled}
+      />
+
       {/* Auto-Crop Checkbox */}
       <Checkbox
         label={t("crop.autoCrop", "Auto-crop whitespace")}

@@ -12,6 +12,7 @@ import { Rectangle } from "@app/utils/cropCoordinates";
 import { PageBox } from "@app/constants/pageBoxConstants";
 import CropCoordinateInputs from "@app/components/tools/crop/CropCoordinateInputs";
 import PageBoxSelect from "@app/components/tools/shared/PageBoxSelect";
+import CropPageSelection from "@app/components/tools/crop/CropPageSelection";
 
 interface CropAutomationSettingsProps {
   parameters: CropParameters;
@@ -43,6 +44,11 @@ const CropAutomationSettings = ({
 
   return (
     <Stack gap="md">
+      <CropPageSelection
+        value={parameters.pageNumbers ?? "all"}
+        onChange={(value) => onParameterChange("pageNumbers", value)}
+        disabled={disabled}
+      />
       <Checkbox
         label={t("crop.cropToBox", "Crop to a named page box")}
         checked={parameters.cropToBox}

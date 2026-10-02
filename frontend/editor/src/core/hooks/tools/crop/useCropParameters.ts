@@ -15,6 +15,7 @@ import {
 } from "@app/utils/cropCoordinates";
 import { DEFAULT_CROP_AREA } from "@app/constants/cropConstants";
 import { PageBox } from "@app/constants/pageBoxConstants";
+import { validatePageNumbers } from "@app/utils/pageSelection";
 
 export interface CropParameters extends BaseParameters {
   cropArea: Rectangle;
@@ -22,6 +23,8 @@ export interface CropParameters extends BaseParameters {
   /** Crop each page to the named page box instead of a drawn rectangle. */
   cropToBox: boolean;
   pageBox: PageBox;
+  /** Pages to crop, e.g. "3", "1,3,5-8" or "all" */
+  pageNumbers: string;
 }
 
 export const defaultParameters: CropParameters = {
@@ -29,6 +32,7 @@ export const defaultParameters: CropParameters = {
   autoCrop: false,
   cropToBox: false,
   pageBox: "MEDIA_BOX",
+  pageNumbers: "all",
 };
 
 export type CropParametersHook = BaseParametersHook<CropParameters> & {
@@ -58,7 +62,13 @@ export function validateCropParameters(params: CropParameters): boolean {
   if (params.cropToBox) return true;
   const rect = params.cropArea;
   // Basic validation - coordinates and dimensions must be positive
-  return rect.x >= 0 && rect.y >= 0 && rect.width > 0 && rect.height > 0;
+  return (
+    rect.x >= 0 &&
+    rect.y >= 0 &&
+    rect.width > 0 &&
+    rect.height > 0 &&
+    validatePageNumbers(params.pageNumbers)
+  );
 }
 
 export const useCropParameters = (): CropParametersHook => {
