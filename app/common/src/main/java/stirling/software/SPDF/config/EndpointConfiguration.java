@@ -366,6 +366,8 @@ public class EndpointConfiguration {
         addEndpointToGroup("PageOps", "add-page-numbers");
         addEndpointToGroup("PageOps", "extract-pages");
         addEndpointToGroup("PageOps", "set-page-boxes");
+        addEndpointToGroup("PageOps", "cut-contour");
+        addEndpointToGroup("PageOps", "cut-contour-preview");
 
         // Adding endpoints to "Convert" group (Frontend has 15 convert endpoints)
         addEndpointToGroup("Convert", "pdf-to-img");
@@ -531,6 +533,8 @@ public class EndpointConfiguration {
         addEndpointToGroup("Java", "timestamp-pdf");
         addEndpointToGroup("Java", "crop");
         addEndpointToGroup("Java", "set-page-boxes");
+        addEndpointToGroup("Java", "cut-contour");
+        addEndpointToGroup("Java", "cut-contour-preview");
         addEndpointToGroup("Java", "get-info-on-pdf");
         addEndpointToGroup("Java", "print-preflight");
         addEndpointToGroup("Java", "print-preflight-annotated");

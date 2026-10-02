@@ -446,6 +446,92 @@ export interface CropPdfForm {
    */
   y?: number;
 }
+export interface CutContourRequest {
+  /**
+   * Matting model id for AI mode; blank selects the catalog default (u2net)
+   */
+  aiModelId?: string;
+  /**
+   * Confidence threshold applied to AI masks, 0..1
+   */
+  aiThreshold?: number;
+  /**
+   * Alpha threshold 0-255; pixels more transparent than this are background
+   */
+  alphaThreshold?: number;
+  /**
+   * Comma-separated sources AUTO tries in order (subset of ALPHA,BACKGROUND,AI)
+   */
+  autoOrder?: string;
+  /**
+   * BACKGROUND mode: per-channel RGB distance from the page-edge colour that still counts as background
+   */
+  backgroundTolerance?: number;
+  /**
+   * Millimetres of bleed painted beyond the cut line by repeating edge pixels (irregular-contour bleed); 0 disables
+   */
+  bleedMm?: number;
+  /**
+   * Replace page content with the artwork clipped to the cut path. When false (default) the original PDF content stays untouched and only the CutContour layer is added
+   */
+  clipArtwork?: boolean;
+  /**
+   * Mask render resolution in dpi; large pages are clamped to a memory budget
+   */
+  dpi?: number;
+  /**
+   * How the subject silhouette is extracted. ALPHA uses existing transparency, BACKGROUND flood-fills a uniform background from the page edges, AI runs subject matting (ONNX model required), AUTO tries the sources in autoOrder
+   */
+  extractionMode?: "ALPHA" | "BACKGROUND" | "AI" | "AUTO";
+  /**
+   * Keep fully enclosed holes (the counter of an 'o') as inner cut contours
+   */
+  keepHoles?: boolean;
+  /**
+   * Optional-content layer name; blank defaults to the spot name
+   */
+  layerName?: string;
+  /**
+   * Artwork elements separated by less than this gap (mm) merge under a single outer cut contour; 0 keeps every piece separate
+   */
+  mergeGapMm?: number;
+  /**
+   * Connected components smaller than this area (mm²) are dropped as noise
+   */
+  minAreaMm2?: number;
+  /**
+   * Distance the cut path is moved outward from the silhouette in millimetres (negative moves it inside)
+   */
+  offsetMm?: number;
+  /**
+   * Tag the cut layer with ISO 19593-1 processing-step metadata (Structural/Cutting) and suppress it in print output
+   */
+  processingSteps?: boolean;
+  /**
+   * Optional rough perimeter drawn by the user, as flat x,y pairs in page fractions (top-left origin), e.g. "0.1,0.2,0.9,0.2,0.9,0.9,0.1,0.9". The ring inside the polygon provides the background reference and the cut stays bounded by it
+   */
+  roi?: string;
+  /**
+   * 1-based page the roi applies to; 0 or unset applies it to every page
+   */
+  roiPage?: number;
+  /**
+   * 0..100: higher values simplify harder and apply more smoothing passes to the traced contour
+   */
+  smoothness?: number;
+  /**
+   * Spot colour name the RIP keys on. Case-sensitive; keep 'CutContour' unless the shop specifies a different colourant
+   */
+  spotName?: string;
+  /**
+   * Cut stroke width in points
+   */
+  strokeWidthPt?: number;
+  /**
+   * Set TrimBox to the contour bounding box (BleedBox follows the bleed when bleedMm is positive)
+   */
+  trimToContour?: boolean;
+}
 export interface DeleteAttachmentRequest {
   /**
    * The name of the attachment to delete
@@ -1711,6 +1797,8 @@ export type ToolEndpoint =
   | "/api/v1/form/form-detection/detect"
   | "/api/v1/general/booklet-imposition"
   | "/api/v1/general/crop"
+  | "/api/v1/general/cut-contour"
+  | "/api/v1/general/cut-contour-preview"
   | "/api/v1/general/edit-table-of-contents"
   | "/api/v1/general/edit-text"
   | "/api/v1/general/extract-bookmarks"
@@ -1824,6 +1912,8 @@ export interface ToolApiParams {
   "/api/v1/form/form-detection/detect": FormFormDetectionDetectRequest;
   "/api/v1/general/booklet-imposition": BookletImpositionRequest;
   "/api/v1/general/crop": CropPdfForm;
+  "/api/v1/general/cut-contour": CutContourRequest;
+  "/api/v1/general/cut-contour-preview": CutContourRequest;
   "/api/v1/general/edit-table-of-contents": EditTableOfContentsRequest;
   "/api/v1/general/edit-text": EditTextRequest;
   "/api/v1/general/extract-bookmarks": GeneralExtractBookmarksRequest;
@@ -1938,6 +2028,8 @@ export const TOOL_ENDPOINTS = [
   "/api/v1/form/form-detection/detect",
   "/api/v1/general/booklet-imposition",
   "/api/v1/general/crop",
+  "/api/v1/general/cut-contour",
+  "/api/v1/general/cut-contour-preview",
   "/api/v1/general/edit-table-of-contents",
   "/api/v1/general/edit-text",
   "/api/v1/general/extract-bookmarks",

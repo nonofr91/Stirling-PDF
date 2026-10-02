@@ -149,8 +149,7 @@ export async function readPageBoxSnapshots(
           snapshots.push(null);
           continue;
         }
-        const rotation =
-          (m.EPDF_GetPageRotationByIndex?.(docPtr, i) ?? 0) * 90;
+        const rotation = (m.EPDF_GetPageRotationByIndex?.(docPtr, i) ?? 0) * 90;
         snapshots.push(
           snapshotFromRects(
             media,

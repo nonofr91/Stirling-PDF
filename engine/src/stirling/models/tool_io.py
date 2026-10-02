@@ -172,6 +172,10 @@ TOOL_IO: dict[ToolEndpoint, ToolIOSpec] = {
         accepts=[ToolFormat.PDF], produces=ToolFormat.PDF, arity=ToolArity.SISO
     ),
     ToolEndpoint.CROP: ToolIOSpec(accepts=[ToolFormat.PDF], produces=ToolFormat.PDF, arity=ToolArity.SISO),
+    ToolEndpoint.CUT_CONTOUR: ToolIOSpec(accepts=[ToolFormat.PDF], produces=ToolFormat.PDF, arity=ToolArity.SISO),
+    ToolEndpoint.CUT_CONTOUR_PREVIEW: ToolIOSpec(
+        accepts=[ToolFormat.PDF], produces=ToolFormat.JSON, arity=ToolArity.SISO
+    ),
     ToolEndpoint.EDIT_TABLE_OF_CONTENTS: ToolIOSpec(
         accepts=[ToolFormat.PDF], produces=ToolFormat.PDF, arity=ToolArity.SISO
     ),

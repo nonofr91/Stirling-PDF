@@ -52,6 +52,7 @@ import { changeMetadataOperationConfig } from "@app/hooks/tools/changeMetadata/u
 import { signOperationConfig } from "@app/hooks/tools/sign/useSignOperation";
 import { cropOperationConfig } from "@app/hooks/tools/crop/useCropOperation";
 import { setPageBoxesOperationConfig } from "@app/hooks/tools/setPageBoxes/useSetPageBoxesOperation";
+import { cutContourOperationConfig } from "@app/hooks/tools/cutContour/useCutContourOperation";
 import { textToOutlinesOperationConfig } from "@app/hooks/tools/textToOutlines/useTextToOutlinesOperation";
 import { removeAnnotationsOperationConfig } from "@app/hooks/tools/removeAnnotations/useRemoveAnnotationsOperation";
 import { removeImageOperationConfig } from "@app/hooks/tools/removeImage/useRemoveImageOperation";
@@ -574,6 +575,25 @@ export function useTranslatedToolCatalog(): TranslatedToolCatalog {
             import("@app/components/tools/setPageBoxes/SetPageBoxesAutomationSettings"),
         ),
         synonyms: getSynonyms(t, "setPageBoxes"),
+      },
+      cutContour: {
+        icon: <Icon name="scissors" size="1.5rem" />,
+        name: t("home.cutContour.title", "Cut Contour"),
+        component: lazy(() => import("@app/tools/CutContour")),
+        description: t(
+          "home.cutContour.desc",
+          "Trace the artwork's silhouette and write a production cut line (CutContour spot colour) with optional clipping and bleed.",
+        ),
+        categoryId: ToolCategoryId.STANDARD_TOOLS,
+        subcategoryId: SubcategoryId.PREPRESS,
+        maxFiles: -1,
+        endpoints: ["cut-contour", "cut-contour-preview"],
+        operationConfig: asRegistryConfig(cutContourOperationConfig),
+        automationSettings: lazySettings(
+          () =>
+            import("@app/components/tools/cutContour/CutContourAutomationSettings"),
+        ),
+        synonyms: getSynonyms(t, "cutContour"),
       },
       textToOutlines: {
         icon: <Icon name="spline" size="1.5rem" />,

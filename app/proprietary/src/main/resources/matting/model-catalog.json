@@ -1,0 +1,41 @@
+[
+  {
+    "id": "u2net",
+    "displayName": "U-2-Net general salient object (Apache-2.0)",
+    "description": "General-purpose salient-object segmentation — the right default for arbitrary subjects (people, products, artwork). ONNX conversion distributed by the rembg project; sha256 pinned.",
+    "license": "Apache-2.0. Weights https://github.com/xuebinqin/U-2-Net (code and models Apache-2.0 per the author). ONNX artifact byte-identical to rembg release v0.0.0 u2net.onnx; see the NOTICE beside this file.",
+    "sizeBytes": 175997641,
+    "onnxUrl": "https://huggingface.co/jellybox/u2net/resolve/main/u2net_320.onnx",
+    "sha256": "8d10d2f3bb75ae3b6d527c77944fc5e7dcd94b29809d47a739a7a728a912b491",
+    "inputSize": 320,
+    "normMean": [0.485, 0.456, 0.406],
+    "normStd": [0.229, 0.224, 0.225],
+    "defaultModel": true
+  },
+  {
+    "id": "u2netp",
+    "displayName": "U-2-Net lite (Apache-2.0)",
+    "description": "Lightweight U-2-Net variant — ~40x smaller and faster on CPU, slightly coarser edges. Good for previews or low-power servers.",
+    "license": "Apache-2.0. Same upstream as u2net; ONNX byte-identical to rembg release v0.0.0 u2netp.onnx.",
+    "sizeBytes": 4574861,
+    "onnxUrl": "https://huggingface.co/JSCreatorPro/u2netp-segmentation-lite/resolve/main/u2netp.onnx",
+    "sha256": "309c8469258dda742793dce0ebea8e6dd393174f89934733ecc8b14c76f4ddd8",
+    "inputSize": 320,
+    "normMean": [0.485, 0.456, 0.406],
+    "normStd": [0.229, 0.224, 0.225],
+    "defaultModel": false
+  },
+  {
+    "id": "u2net_human_seg",
+    "displayName": "U-2-Net human segmentation (Apache-2.0)",
+    "description": "U-2-Net trained on the Supervisely person dataset — sharper on people only, worse on anything else.",
+    "license": "Apache-2.0. Same upstream as u2net; ONNX byte-identical to rembg release v0.0.0 u2net_human_seg.onnx.",
+    "sizeBytes": 175997641,
+    "onnxUrl": "https://huggingface.co/davidfant/rembg-u2net/resolve/main/u2net_human_seg.onnx",
+    "sha256": "01eb6a29a5c4d8edb30b56adad9bb3a2a0535338e480724a213e0acfd2d1c73c",
+    "inputSize": 320,
+    "normMean": [0.485, 0.456, 0.406],
+    "normStd": [0.229, 0.224, 0.225],
+    "defaultModel": false
+  }
+]
