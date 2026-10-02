@@ -1,3 +1,16 @@
+> **Downstream fork** of [Stirling-PDF](https://github.com/Stirling-Tools/Stirling-PDF), maintained by [@nonofr91](https://github.com/nonofr91) for print-production workflows.
+>
+> The `prepress` branch adds on top of upstream:
+> - **Cut Contour** — silhouette extraction (alpha / background / AI matting) into a `CutContour` spot color with overprint, optional content layer and bleed, ready for RIPs and plotters
+> - **Page boxes** — set/derive TrimBox, BleedBox & co. (from painted crop marks too), box-aware crop and scale, outlines drawn on a viewer layer
+> - **Generative bleed & crop marks**, **text-to-outlines**
+> - **Print preflight** — fonts, RGB/spot colors, bleed, hairlines, transparency; findings located on the page with an annotated copy
+> - **Network source I/O** — browse and push files over FTP, SFTP and SMB from the editor
+>
+> Images: [`pubgen/stirling-pdf`](https://hub.docker.com/r/pubgen/stirling-pdf) (`prepress-<sha>` tags). Upstream sync: [`upstream-sync.yml`](.github/workflows/upstream-sync.yml) — auto-deploy: [`prepress-deploy.yml`](.github/workflows/prepress-deploy.yml).
+>
+> Everything below is the upstream README.
+
 <p align="center">
   <img src="https://raw.githubusercontent.com/Stirling-Tools/Stirling-PDF/main/docs/stirling.png" width="80" alt="Stirling PDF logo">
 </p>
