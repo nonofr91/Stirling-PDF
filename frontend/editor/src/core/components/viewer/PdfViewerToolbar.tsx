@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { Paper, Group, Menu, NumberInput, Slider } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { useViewer } from "@app/contexts/ViewerContext";
+import { usePageBoxesVisibility } from "@app/contexts/PageOverlayContext";
 import { useIsPhone } from "@app/hooks/useIsMobile";
 import { Tooltip } from "@app/components/shared/Tooltip";
 import { ActionIcon } from "@app/ui/ActionIcon";
@@ -46,6 +47,7 @@ export function PdfViewerToolbar({
     pdfRenderMode,
     cyclePdfRenderMode,
   } = useViewer();
+  const [pageBoxesVisible, setPageBoxesVisible] = usePageBoxesVisibility();
 
   const scrollState = getScrollState();
   const zoomState = getZoomState();
@@ -332,6 +334,34 @@ export function PdfViewerToolbar({
         </Tooltip>
       )}
 
+      {/* Page Boxes Toggle */}
+      {!isPhone && (
+        <Tooltip
+          content={
+            pageBoxesVisible
+              ? t("viewer.hidePageBoxes", "Hide page boxes")
+              : t("viewer.showPageBoxes", "Show page boxes")
+          }
+          position="top"
+          arrow
+        >
+          <ActionIcon
+            variant={pageBoxesVisible ? "primary" : "tertiary"}
+            size={buttonSize}
+            className="pdf-viewer-toolbar-wide-only"
+            onClick={() => setPageBoxesVisible((v) => !v)}
+            style={{ minWidth: buttonMinWidth }}
+            aria-label={
+              pageBoxesVisible
+                ? t("viewer.hidePageBoxes", "Hide page boxes")
+                : t("viewer.showPageBoxes", "Show page boxes")
+            }
+          >
+            <Icon name="square-dashed" size={18} />
+          </ActionIcon>
+        </Tooltip>
+      )}
+
       {/* Desktop zoom controls (slider + buttons) */}
       {!isPhone && (
         <Group gap={4} align="center" wrap="nowrap" style={{ flexShrink: 0 }}>
@@ -465,6 +495,14 @@ export function PdfViewerToolbar({
                 : pdfRenderMode === "dark"
                   ? t("viewer.enableSepiaFilter", "Enable Sepia Filter")
                   : t("viewer.disableColorFilter", "Disable Color Filter")}
+            </Menu.Item>
+            <Menu.Item
+              leftSection={<Icon name="square-dashed" size={18} />}
+              onClick={() => setPageBoxesVisible((v) => !v)}
+            >
+              {pageBoxesVisible
+                ? t("viewer.hidePageBoxes", "Hide page boxes")
+                : t("viewer.showPageBoxes", "Show page boxes")}
             </Menu.Item>
           </Menu.Dropdown>
         </Menu>

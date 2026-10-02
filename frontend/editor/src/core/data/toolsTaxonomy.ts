@@ -25,6 +25,7 @@ export enum SubcategoryId {
   VERIFICATION = "verification",
   DOCUMENT_REVIEW = "documentReview",
   PAGE_FORMATTING = "pageFormatting",
+  PREPRESS = "prepress",
   EXTRACTION = "extraction",
   REMOVAL = "removal",
   AUTOMATION = "automation",
@@ -92,6 +93,7 @@ export const SUBCATEGORY_ORDER: SubcategoryId[] = [
   SubcategoryId.VERIFICATION,
   SubcategoryId.DOCUMENT_REVIEW,
   SubcategoryId.PAGE_FORMATTING,
+  SubcategoryId.PREPRESS,
   SubcategoryId.EXTRACTION,
   SubcategoryId.REMOVAL,
   SubcategoryId.AUTOMATION,
@@ -107,6 +109,7 @@ export const SUBCATEGORY_COLOR_MAP: Record<SubcategoryId, string> = {
   [SubcategoryId.VERIFICATION]: "var(--category-color-verification)", // Orange
   [SubcategoryId.DOCUMENT_REVIEW]: "var(--category-color-general)", // Blue
   [SubcategoryId.PAGE_FORMATTING]: "var(--category-color-formatting)", // Purple
+  [SubcategoryId.PREPRESS]: "var(--category-color-prepress)", // Pink
   [SubcategoryId.EXTRACTION]: "var(--category-color-extraction)", // Cyan
   [SubcategoryId.REMOVAL]: "var(--category-color-removal)", // Red
   [SubcategoryId.AUTOMATION]: "var(--category-color-automation)", // Pink
@@ -131,6 +134,8 @@ export const getSubcategoryIcon = (
       return React.createElement(Icon, { name: "message-square-text" });
     case SubcategoryId.PAGE_FORMATTING:
       return React.createElement(Icon, { name: "rows-3" });
+    case SubcategoryId.PREPRESS:
+      return React.createElement(Icon, { name: "printer" });
     case SubcategoryId.EXTRACTION:
       return React.createElement(Icon, { name: "download" });
     case SubcategoryId.REMOVAL:

@@ -442,6 +442,16 @@ export const TOOL_IO: ToolIOTable = {
     arity: "SISO",
   },
   "/api/v1/general/crop": { accepts: ["PDF"], produces: "PDF", arity: "SISO" },
+  "/api/v1/general/cut-contour": {
+    accepts: ["PDF"],
+    produces: "PDF",
+    arity: "SISO",
+  },
+  "/api/v1/general/cut-contour-preview": {
+    accepts: ["PDF"],
+    produces: "JSON",
+    arity: "SISO",
+  },
   "/api/v1/general/edit-table-of-contents": {
     accepts: ["PDF"],
     produces: "PDF",
@@ -511,6 +521,11 @@ export const TOOL_IO: ToolIOTable = {
     arity: "SISO",
   },
   "/api/v1/general/scale-pages": {
+    accepts: ["PDF"],
+    produces: "PDF",
+    arity: "SISO",
+  },
+  "/api/v1/general/set-page-boxes": {
     accepts: ["PDF"],
     produces: "PDF",
     arity: "SISO",
@@ -711,6 +726,11 @@ export const TOOL_IO: ToolIOTable = {
     produces: "JAVASCRIPT",
     arity: "SISO",
   },
+  "/api/v1/misc/text-to-outlines": {
+    accepts: ["PDF"],
+    produces: "PDF",
+    arity: "SISO",
+  },
   "/api/v1/misc/unlock-pdf-forms": {
     accepts: ["PDF"],
     produces: "PDF",
@@ -759,6 +779,16 @@ export const TOOL_IO: ToolIOTable = {
   "/api/v1/security/get-info-on-pdf": {
     accepts: ["PDF"],
     produces: "JSON",
+    arity: "SISO",
+  },
+  "/api/v1/security/print-preflight": {
+    accepts: ["PDF"],
+    produces: "JSON",
+    arity: "SISO",
+  },
+  "/api/v1/security/print-preflight-annotated": {
+    accepts: ["PDF"],
+    produces: "PDF",
     arity: "SISO",
   },
   "/api/v1/security/redact": {

@@ -3,6 +3,7 @@ package stirling.software.proprietary.policy.network;
 import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
@@ -173,6 +174,55 @@ final class SmbFileClient implements RemoteFileClient {
             };
         } catch (SMBApiException e) {
             throw new IOException("cannot read " + path + ": " + e.getMessage(), e);
+        }
+    }
+
+    @Override
+    public List<RemoteEntry> browse(String directory) throws IOException {
+        String root = smbDir(directory);
+        List<FileIdBothDirectoryInformation> entries;
+        try {
+            entries = share.list(root);
+        } catch (SMBRuntimeException e) {
+            throw new IOException("cannot list " + slashed(root) + ": " + e.getMessage(), e);
+        }
+        List<RemoteEntry> out = new ArrayList<>();
+        for (FileIdBothDirectoryInformation info : entries) {
+            String name = info.getFileName();
+            if (name.equals(".") || name.equals("..") || name.startsWith(".")) {
+                continue;
+            }
+            long attributes = info.getFileAttributes();
+            if (isSet(attributes, FileAttributes.FILE_ATTRIBUTE_HIDDEN)
+                    || isSet(attributes, FileAttributes.FILE_ATTRIBUTE_SYSTEM)) {
+                continue;
+            }
+            boolean isDir = isSet(attributes, FileAttributes.FILE_ATTRIBUTE_DIRECTORY);
+            out.add(
+                    new RemoteEntry(
+                            slashed(join(root, name)),
+                            name,
+                            isDir,
+                            isDir ? 0 : info.getEndOfFile(),
+                            info.getLastWriteTime().toEpochMillis()));
+        }
+        return out;
+    }
+
+    @Override
+    public void write(String path, InputStream data) throws IOException {
+        try (com.hierynomus.smbj.share.File file =
+                        share.openFile(
+                                smbPath(path),
+                                EnumSet.of(AccessMask.GENERIC_WRITE),
+                                null,
+                                SMB2ShareAccess.ALL,
+                                SMB2CreateDisposition.FILE_OVERWRITE_IF,
+                                null);
+                OutputStream out = file.getOutputStream()) {
+            data.transferTo(out);
+        } catch (SMBApiException e) {
+            throw new IOException("cannot write " + path + ": " + e.getMessage(), e);
         }
     }
 

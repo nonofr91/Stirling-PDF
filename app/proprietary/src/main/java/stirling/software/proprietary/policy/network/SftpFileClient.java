@@ -281,6 +281,45 @@ final class SftpFileClient implements RemoteFileClient {
         }
     }
 
+    @SuppressWarnings("unchecked")
+    @Override
+    public List<RemoteEntry> browse(String directory) throws IOException {
+        String root = dir(directory);
+        Vector<ChannelSftp.LsEntry> entries;
+        try {
+            entries = channel.ls(root);
+        } catch (SftpException e) {
+            throw new IOException("cannot list " + root + ": " + e.getMessage(), e);
+        }
+        List<RemoteEntry> out = new ArrayList<>();
+        for (ChannelSftp.LsEntry entry : entries) {
+            String name = entry.getFilename();
+            if (name.equals(".") || name.equals("..") || name.startsWith(".")) {
+                continue;
+            }
+            SftpATTRS attrs = entry.getAttrs();
+            if (attrs.isDir() || attrs.isReg()) {
+                out.add(
+                        new RemoteEntry(
+                                join(root, name),
+                                name,
+                                attrs.isDir(),
+                                attrs.getSize(),
+                                attrs.getMTime() * 1000L));
+            }
+        }
+        return out;
+    }
+
+    @Override
+    public void write(String path, InputStream data) throws IOException {
+        try {
+            channel.put(data, path);
+        } catch (SftpException e) {
+            throw new IOException("cannot write " + path + ": " + e.getMessage(), e);
+        }
+    }
+
     @Override
     public void delete(String path) throws IOException {
         try {

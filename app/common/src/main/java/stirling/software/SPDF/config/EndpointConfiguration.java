@@ -365,6 +365,9 @@ public class EndpointConfiguration {
         addEndpointToGroup("PageOps", "split-pdf-by-chapters");
         addEndpointToGroup("PageOps", "add-page-numbers");
         addEndpointToGroup("PageOps", "extract-pages");
+        addEndpointToGroup("PageOps", "set-page-boxes");
+        addEndpointToGroup("PageOps", "cut-contour");
+        addEndpointToGroup("PageOps", "cut-contour-preview");
 
         // Adding endpoints to "Convert" group (Frontend has 15 convert endpoints)
         addEndpointToGroup("Convert", "pdf-to-img");
@@ -422,6 +425,8 @@ public class EndpointConfiguration {
         addEndpointToGroup("Other", REMOVE_BLANKS);
         addEndpointToGroup("Other", "remove-annotations");
         addEndpointToGroup("Other", "get-info-on-pdf");
+        addEndpointToGroup("Other", "print-preflight");
+        addEndpointToGroup("Other", "print-preflight-annotated");
         addEndpointToGroup("Other", "add-attachments");
         addEndpointToGroup("Other", "replace-invert-pdf");
         addEndpointToGroup("Other", "edit-table-of-contents");
@@ -431,6 +436,7 @@ public class EndpointConfiguration {
         addEndpointToGroup("Other", "compare");
         addEndpointToGroup("Other", "view-pdf");
         addEndpointToGroup("Other", "multi-tool");
+        addEndpointToGroup("Other", "text-to-outlines");
         addEndpointToGroup("Other", "fields");
         addEndpointToGroup("Other", "modify-fields");
         addEndpointToGroup("Other", "delete-fields");
@@ -526,7 +532,12 @@ public class EndpointConfiguration {
         addEndpointToGroup("Java", "sanitize-pdf");
         addEndpointToGroup("Java", "timestamp-pdf");
         addEndpointToGroup("Java", "crop");
+        addEndpointToGroup("Java", "set-page-boxes");
+        addEndpointToGroup("Java", "cut-contour");
+        addEndpointToGroup("Java", "cut-contour-preview");
         addEndpointToGroup("Java", "get-info-on-pdf");
+        addEndpointToGroup("Java", "print-preflight");
+        addEndpointToGroup("Java", "print-preflight-annotated");
         addEndpointToGroup("Java", "pdf-to-single-page");
         addEndpointToGroup("Java", "markdown-to-pdf");
         addEndpointToGroup("Java", "show-javascript");
@@ -582,12 +593,14 @@ public class EndpointConfiguration {
         addEndpointToGroup("Ghostscript", "scanner-effect");
         addEndpointToGroup("Ghostscript", "pdf-to-vector");
         addEndpointToGroup("Ghostscript", "vector-to-pdf");
+        addEndpointToGroup("Ghostscript", "text-to-outlines");
 
         /* ImageMagick */
         addEndpointToGroup("ImageMagick", "compress-pdf");
 
         /* tesseract */
         addEndpointToGroup("tesseract", "ocr-pdf");
+        addEndpointToGroup("tesseract", "auto-rotate-pdf");
 
         /* OCRmyPDF */
         addEndpointToGroup("OCRmyPDF", "ocr-pdf");

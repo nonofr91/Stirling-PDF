@@ -1,0 +1,33 @@
+Cut Contour / Subject Matting - third-party model attribution
+=============================================================
+
+Models are downloaded on demand from the URLs in model-catalog.json and verified against the
+SHA-256 recorded there. Nothing is vendored into this repository or the Docker images.
+
+u2net, u2netp, u2net_human_seg
+------------------------------
+U-2-Net salient-object segmentation (xuebinqin/U-2-Net).
+
+  Upstream     https://github.com/xuebinqin/U-2-Net            Apache-2.0
+  ONNX export  distributed by https://github.com/danielgatis/rembg
+               (release v0.0.0 assets; our catalog URLs are byte-identical
+               Hugging Face mirrors, verified against the upstream sha256)
+  Paper        U^2-Net: Going Deeper with Nested U-Structure for Salient
+               Object Detection, Pattern Recognition 2020, arXiv:2005.09007
+
+The ONNX files are produced by the rembg project from the upstream PyTorch
+checkpoints. U-2-Net's author confirmed the Apache-2.0 licence covers both code
+and released models (upstream issue #208). Stirling does not re-export or modify
+the weights; the catalog pins URL + sha256 so exactly the vetted artifact is
+installed.
+
+Caveats worth knowing:
+
+- Provenance: the rembg ONNX artifacts have no independently documented export
+  provenance beyond the upstream checkpoint hash. Deployments needing a fully
+  audited chain can re-export from the .pth themselves with
+  scripts/export-u2net-onnx.py and place the result in
+  <configs>/models/cut-contour/<id>.onnx.
+- Training data: u2net/u2netp were trained on DUTS-TR (dataset terms set by its
+  authors), u2net_human_seg on the Supervisely person dataset. This is the same
+  exposure accepted by every consumer of these public weights.

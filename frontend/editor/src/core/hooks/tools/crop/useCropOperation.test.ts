@@ -20,6 +20,17 @@ describe("crop mappers", () => {
         cropArea: { x: 10, y: 20, width: 300, height: 400 },
       },
     },
+    {
+      label: "cropToBox on",
+      overrides: { cropToBox: true, pageBox: "TRIM_BOX" },
+    },
+    {
+      label: "single page selection",
+      overrides: {
+        pageNumbers: "3",
+        cropArea: { x: 5, y: 5, width: 100, height: 200 },
+      },
+    },
   ])("round-trips backend params ($label)", ({ overrides }) => {
     const api = cropToApiParams({ ...defaultParameters, ...overrides });
     const roundTripped = cropToApiParams({
@@ -28,5 +39,20 @@ describe("crop mappers", () => {
     });
 
     expect(roundTripped).toEqual(api);
+  });
+
+  test("cropToBox sends the box and drops the drawn rectangle", () => {
+    const api = cropToApiParams({
+      ...defaultParameters,
+      cropToBox: true,
+      pageBox: "BLEED_BOX",
+      cropArea: { x: 10, y: 20, width: 300, height: 400 },
+    });
+
+    expect(api.cropToBox).toBe(true);
+    expect(api.pageBox).toBe("BLEED_BOX");
+    expect(api.autoCrop).toBe(false);
+    expect(api.x).toBeUndefined();
+    expect(api.width).toBeUndefined();
   });
 });

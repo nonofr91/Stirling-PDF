@@ -5,10 +5,14 @@
  * Allows users to manually enter crop coordinates and dimensions.
  */
 
-import { Stack } from "@mantine/core";
+import { Stack, Checkbox } from "@mantine/core";
+import { useTranslation } from "react-i18next";
 import { CropParameters } from "@app/hooks/tools/crop/useCropParameters";
 import { Rectangle } from "@app/utils/cropCoordinates";
+import { PageBox } from "@app/constants/pageBoxConstants";
 import CropCoordinateInputs from "@app/components/tools/crop/CropCoordinateInputs";
+import PageBoxSelect from "@app/components/tools/shared/PageBoxSelect";
+import CropPageSelection from "@app/components/tools/crop/CropPageSelection";
 
 interface CropAutomationSettingsProps {
   parameters: CropParameters;
@@ -24,6 +28,8 @@ const CropAutomationSettings = ({
   onParameterChange,
   disabled = false,
 }: CropAutomationSettingsProps) => {
+  const { t } = useTranslation();
+
   // Handle coordinate changes
   const handleCoordinateChange = (
     field: keyof Rectangle,
@@ -38,12 +44,36 @@ const CropAutomationSettings = ({
 
   return (
     <Stack gap="md">
-      <CropCoordinateInputs
-        cropArea={parameters.cropArea}
-        onCoordinateChange={handleCoordinateChange}
+      <CropPageSelection
+        value={parameters.pageNumbers ?? "all"}
+        onChange={(value) => onParameterChange("pageNumbers", value)}
         disabled={disabled}
-        showAutomationInfo={true}
       />
+      <Checkbox
+        label={t("crop.cropToBox", "Crop to a named page box")}
+        checked={parameters.cropToBox}
+        onChange={(e) =>
+          onParameterChange("cropToBox", e.currentTarget.checked)
+        }
+        disabled={disabled}
+      />
+
+      {parameters.cropToBox && (
+        <PageBoxSelect
+          value={parameters.pageBox}
+          onChange={(v: PageBox) => onParameterChange("pageBox", v)}
+          disabled={disabled}
+        />
+      )}
+
+      {!parameters.cropToBox && (
+        <CropCoordinateInputs
+          cropArea={parameters.cropArea}
+          onCoordinateChange={handleCoordinateChange}
+          disabled={disabled}
+          showAutomationInfo={true}
+        />
+      )}
     </Stack>
   );
 };

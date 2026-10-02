@@ -145,6 +145,26 @@
       "title": "Crop PDF - Stirling PDF",
       "description": "Crop a PDF to reduce its size (maintains text!)"
     },
+    "setPageBoxes": {
+      "image": "/og_images/home.png",
+      "title": "Set Page Boxes - Stirling PDF",
+      "description": "Define MediaBox, CropBox, TrimBox, BleedBox and ArtBox on every page for prepress workflows."
+    },
+    "cutContour": {
+      "image": "/og_images/home.png",
+      "title": "Cut Contour - Stirling PDF",
+      "description": "Trace the artwork's silhouette and write a production cut line (CutContour spot colour) with optional clipping and bleed."
+    },
+    "textToOutlines": {
+      "image": "/og_images/home.png",
+      "title": "Text to Outlines - Stirling PDF",
+      "description": "Convert all text to vector outlines so no fonts are needed for printing."
+    },
+    "printPreflight": {
+      "image": "/og_images/home.png",
+      "title": "Print Preflight - Stirling PDF",
+      "description": "Check a PDF for print production issues: unembedded fonts, RGB/spot colors, low-resolution images, missing or unpainted bleed, hairlines, transparency."
+    },
     "pdfToSinglePage": {
       "image": "/og_images/single-large-page.png",
       "title": "Combine PDF into a Single Page - Stirling PDF",
@@ -798,6 +818,10 @@
     "/scale-pages": "scalePages",
     "/adjust-contrast": "adjustContrast",
     "/crop": "crop",
+    "/set-page-boxes": "setPageBoxes",
+    "/cut-contour": "cutContour",
+    "/text-to-outlines": "textToOutlines",
+    "/print-preflight": "printPreflight",
     "/pdf-to-single-page": "pdfToSinglePage",
     "/repair": "repair",
     "/compare": "compare",
@@ -1065,6 +1089,10 @@
       "label": "Crop PDF"
     },
     {
+      "path": "/cut-contour",
+      "label": "Cut Contour"
+    },
+    {
       "path": "/remove-pages",
       "label": "Delete Pages from PDF"
     },
@@ -1209,6 +1237,10 @@
       "label": "PDF Workflow Automation"
     },
     {
+      "path": "/print-preflight",
+      "label": "Print Preflight"
+    },
+    {
       "path": "/redact",
       "label": "Redact PDF"
     },
@@ -1253,6 +1285,10 @@
       "label": "Sanitize PDF"
     },
     {
+      "path": "/set-page-boxes",
+      "label": "Set Page Boxes"
+    },
+    {
       "path": "/shared-sign",
       "label": "Shared Signing"
     },
@@ -1275,6 +1311,10 @@
     {
       "path": "/scanner-image-split",
       "label": "Split Scanned Photos"
+    },
+    {
+      "path": "/text-to-outlines",
+      "label": "Text to Outlines"
     },
     {
       "path": "/timestamp-pdf",
