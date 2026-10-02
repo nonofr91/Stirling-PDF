@@ -88,7 +88,7 @@ jobs:
 
           curl -fsS -H "$auth" "$api/services/$SERVICE_UUID" -o service.json
           python3 - "$IMAGE_TAG" <<'PY'
-          import json, re, sys
+          import base64, json, re, sys
           svc = json.load(open("service.json"))
           raw = svc.get("docker_compose_raw") or svc.get("docker_compose")
           if not raw:
@@ -97,7 +97,9 @@ jobs:
           new, n = re.subn(r"(image:\s*\S*?stirling-pdf:)[^\s'\"]+", rf"\g<1>{tag}", raw, count=1)
           if n == 0:
               sys.exit("no stirling-pdf image line found in compose")
-          json.dump({"docker_compose_raw": new}, open("patch.json", "w"))
+          # The REST API wants the compose body base64-encoded.
+          b64 = base64.b64encode(new.encode()).decode()
+          json.dump({"docker_compose_raw": b64}, open("patch.json", "w"))
           PY
           curl -fsS -X PATCH -H "$auth" -H "Content-Type: application/json" \
             --data @patch.json "$api/services/$SERVICE_UUID"
