@@ -33,8 +33,11 @@ export interface PrintPreflightOperationHook extends ToolOperationHook<PrintPref
   downloadAnnotated: (fileId: string) => Promise<void>;
   /** Fetch the standalone summary report PDF for one analyzed file. */
   downloadReport: (fileId: string) => Promise<void>;
+  /** Fetch the auto-fixed copy for one analyzed file. */
+  downloadFixed: (fileId: string) => Promise<void>;
   annotatedLoading: string | null;
   reportLoading: string | null;
+  fixedLoading: string | null;
 }
 
 const PREFLIGHT_ENDPOINT =
@@ -43,6 +46,8 @@ const PREFLIGHT_ANNOTATED_ENDPOINT =
   "/api/v1/security/print-preflight-annotated" satisfies ToolEndpoint;
 const PREFLIGHT_REPORT_ENDPOINT =
   "/api/v1/security/print-preflight-report" satisfies ToolEndpoint;
+const PREFLIGHT_FIX_ENDPOINT =
+  "/api/v1/security/print-preflight-fix" satisfies ToolEndpoint;
 
 const NUMERIC_FIELDS = [
   "requiredBleedMm",
@@ -73,6 +78,9 @@ const buildFormData = (
   if (params.disabledChecks && params.disabledChecks.length > 0) {
     formData.append("disabledChecks", params.disabledChecks.join(","));
   }
+  if (params.fixups && params.fixups.length > 0) {
+    formData.append("fixups", params.fixups.join(","));
+  }
   return formData;
 };
 
@@ -101,9 +109,14 @@ const printPreflightProcessor = async (
         }),
       );
     } else {
-      const isReport = params.reportFormat === "reportPdf";
+      const endpoint =
+        params.reportFormat === "reportPdf"
+          ? PREFLIGHT_REPORT_ENDPOINT
+          : params.reportFormat === "fixedPdf"
+            ? PREFLIGHT_FIX_ENDPOINT
+            : PREFLIGHT_ANNOTATED_ENDPOINT;
       const response = await apiClient.post(
-        isReport ? PREFLIGHT_REPORT_ENDPOINT : PREFLIGHT_ANNOTATED_ENDPOINT,
+        endpoint,
         buildFormData(file, params),
         { responseType: "blob" },
       );
@@ -128,11 +141,14 @@ export const printPreflightOperationConfig = defineCustomTool({
       ? PREFLIGHT_ENDPOINT
       : params.reportFormat === "reportPdf"
         ? PREFLIGHT_REPORT_ENDPOINT
-        : PREFLIGHT_ANNOTATED_ENDPOINT,
+        : params.reportFormat === "fixedPdf"
+          ? PREFLIGHT_FIX_ENDPOINT
+          : PREFLIGHT_ANNOTATED_ENDPOINT,
   endpoints: [
     PREFLIGHT_ENDPOINT,
     PREFLIGHT_ANNOTATED_ENDPOINT,
     PREFLIGHT_REPORT_ENDPOINT,
+    PREFLIGHT_FIX_ENDPOINT,
   ],
   customProcessor: printPreflightProcessor,
   defaultParameters,
@@ -157,6 +173,7 @@ export const usePrintPreflightOperation = (): PrintPreflightOperationHook => {
   >(new Map());
   const [annotatedLoading, setAnnotatedLoading] = useState<string | null>(null);
   const [reportLoading, setReportLoading] = useState<string | null>(null);
+  const [fixedLoading, setFixedLoading] = useState<string | null>(null);
 
   const cleanupDownloadUrl = useCallback(() => {
     if (previousUrl.current) {
@@ -278,7 +295,7 @@ export const usePrintPreflightOperation = (): PrintPreflightOperationHook => {
       setBusy: (id: string | null) => void,
     ) => {
       const run = lastRun.current.get(fileId);
-      if (!run || annotatedLoading || reportLoading) {
+      if (!run || annotatedLoading || reportLoading || fixedLoading) {
         return;
       }
       setBusy(fileId);
@@ -305,7 +322,7 @@ export const usePrintPreflightOperation = (): PrintPreflightOperationHook => {
         setBusy(null);
       }
     },
-    [annotatedLoading, reportLoading],
+    [annotatedLoading, reportLoading, fixedLoading],
   );
 
   const downloadAnnotated = useCallback(
@@ -326,6 +343,17 @@ export const usePrintPreflightOperation = (): PrintPreflightOperationHook => {
         PREFLIGHT_REPORT_ENDPOINT,
         "_preflight-report",
         setReportLoading,
+      ),
+    [downloadPdf],
+  );
+
+  const downloadFixed = useCallback(
+    (fileId: string) =>
+      downloadPdf(
+        fileId,
+        PREFLIGHT_FIX_ENDPOINT,
+        "_preflight-fixed",
+        setFixedLoading,
       ),
     [downloadPdf],
   );
@@ -367,11 +395,15 @@ export const usePrintPreflightOperation = (): PrintPreflightOperationHook => {
       results,
       downloadAnnotated,
       downloadReport,
+      downloadFixed,
       annotatedLoading,
       reportLoading,
+      fixedLoading,
     }),
     [
       annotatedLoading,
+      downloadFixed,
+      fixedLoading,
       reportLoading,
       cancelOperation,
       clearError,

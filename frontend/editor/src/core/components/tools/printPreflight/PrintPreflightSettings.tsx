@@ -7,10 +7,14 @@ import {
   TextInput,
   Collapse,
   Divider,
+  MultiSelect,
 } from "@mantine/core";
 import { Button } from "@app/ui/Button";
 import { useTranslation } from "react-i18next";
-import { PrintPreflightParameters } from "@app/hooks/tools/printPreflight/usePrintPreflightParameters";
+import {
+  PrintPreflightParameters,
+  FIXUP_CODES,
+} from "@app/hooks/tools/printPreflight/usePrintPreflightParameters";
 
 interface PrintPreflightSettingsProps {
   parameters: PrintPreflightParameters;
@@ -28,6 +32,7 @@ const PrintPreflightSettings = ({
 }: PrintPreflightSettingsProps) => {
   const { t } = useTranslation();
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [fixesOpen, setFixesOpen] = useState(false);
 
   const optionalNumber = (
     value: string | number | undefined,
@@ -297,6 +302,55 @@ const PrintPreflightSettings = ({
                 );
               }}
               disabled={disabled}
+            />
+          </Stack>
+        </Collapse>
+      </Stack>
+
+      <Divider />
+
+      <Stack gap="sm">
+        <Button
+          variant="tertiary"
+          onClick={() => setFixesOpen(!fixesOpen)}
+          disabled={disabled}
+        >
+          {t("printPreflight.fixes.toggle", "Automatic fixes")}{" "}
+          {fixesOpen ? "▲" : "▼"}
+        </Button>
+
+        <Collapse in={fixesOpen}>
+          <Stack gap="md" mt="md">
+            <Text size="xs" c="dimmed">
+              {t(
+                "printPreflight.fixes.help",
+                "Corrections applied when producing a Fixed PDF. The annotated and JSON reports are always analysis-only.",
+              )}
+            </Text>
+            <MultiSelect
+              label={t("printPreflight.fixups.label", "Fixups to apply")}
+              description={t(
+                "printPreflight.fixups.help",
+                "Leave empty to apply every fixup that has something to correct.",
+              )}
+              placeholder={t(
+                "printPreflight.fixups.placeholder",
+                "All applicable fixups",
+              )}
+              data={FIXUP_CODES.map((code) => ({
+                value: code,
+                label: t(`printPreflight.fixups.codes.${code}`, code),
+              }))}
+              value={parameters.fixups ?? []}
+              onChange={(value) =>
+                onParameterChange(
+                  "fixups",
+                  value.length === 0 ? undefined : value,
+                )
+              }
+              searchable
+              disabled={disabled}
+              comboboxProps={{ withinPortal: true }}
             />
           </Stack>
         </Collapse>

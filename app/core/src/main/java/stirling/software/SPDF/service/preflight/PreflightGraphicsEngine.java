@@ -84,6 +84,9 @@ final class PreflightGraphicsEngine extends PDFGraphicsStreamEngine {
         final boolean technical;
         final int bitsPerComponent;
 
+        /** The painted object itself — fixups match it back to the page resources. */
+        final PDImage image;
+
         /** Image quad in page space: llx, lly, urx, ury — where the object lands on the page. */
         final float[] bounds;
 
@@ -93,13 +96,15 @@ final class PreflightGraphicsEngine extends PDFGraphicsStreamEngine {
                 String label,
                 float[] bounds,
                 boolean technical,
-                int bitsPerComponent) {
+                int bitsPerComponent,
+                PDImage image) {
             this.effectiveDpi = effectiveDpi;
             this.softMasked = softMasked;
             this.colorSpaceLabel = label;
             this.bounds = bounds;
             this.technical = technical;
             this.bitsPerComponent = bitsPerComponent;
+            this.image = image;
         }
     }
 
@@ -470,7 +475,7 @@ final class PreflightGraphicsEngine extends PDFGraphicsStreamEngine {
             recordAlpha(bounds, "soft-masked image", technical);
         }
         int bpc = pdImage.getBitsPerComponent();
-        images.add(new ImageUse(dpi, smasked, label, bounds, technical, bpc));
+        images.add(new ImageUse(dpi, smasked, label, bounds, technical, bpc, pdImage));
         checkTransparency(bounds, technical);
         // An image is opaque paint: it covers whatever it overlaps. Gray-only content carries no
         // chromatic ink for knockout-black purposes; everything else counts as coloured ink.

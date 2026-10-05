@@ -1184,7 +1184,7 @@ public class PrintPreflightService {
      * Spot names that differ only in spelling — "PANTONE 485 C" vs "pms-485cv" — each become a
      * separate plate although the ink is the same.
      */
-    private static List<List<String>> spotAliasGroups(Set<String> spotColors) {
+    static List<List<String>> spotAliasGroups(Set<String> spotColors) {
         Map<String, Set<String>> byNormalized = new LinkedHashMap<>();
         for (String name : spotColors) {
             String norm = normalizeSpotName(name);
@@ -1355,7 +1355,7 @@ public class PrintPreflightService {
     }
 
     /** Bleed width on each side: left, bottom, right, top; null when bleed does not cover trim. */
-    private static float[] bleedWidthPerSide(PDRectangle bleed, PDRectangle trim) {
+    static float[] bleedWidthPerSide(PDRectangle bleed, PDRectangle trim) {
         if (bleed == null || trim == null) {
             return null;
         }

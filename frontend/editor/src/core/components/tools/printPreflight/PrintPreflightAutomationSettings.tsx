@@ -30,13 +30,14 @@ const PrintPreflightAutomationSettings = ({
         label={t("printPreflight.reportFormat.label", "Report format")}
         description={t(
           "printPreflight.reportFormat.help",
-          "Annotated PDF keeps a PDF in the pipeline; JSON report ends the chain with the findings.",
+          "PDF outputs keep the pipeline flowing; JSON report ends the chain with the findings.",
         )}
         value={parameters.reportFormat}
         onChange={(value) => {
           if (
             value !== "annotatedPdf" &&
             value !== "reportPdf" &&
+            value !== "fixedPdf" &&
             value !== "json"
           ) {
             return;
@@ -56,6 +57,13 @@ const PrintPreflightAutomationSettings = ({
             label: t(
               "printPreflight.reportFormat.reportPdf",
               "Summary report PDF",
+            ),
+          },
+          {
+            value: "fixedPdf",
+            label: t(
+              "printPreflight.reportFormat.fixedPdf",
+              "Fixed PDF (apply selected fixups)",
             ),
           },
           {

@@ -10939,6 +10939,7 @@ title = "Print File"
 areasTruncated = "Additional locations omitted from the preview"
 counts = "{{errors}} errors · {{warnings}} warnings · {{infos}} info"
 downloadAnnotated = "Annotated PDF"
+downloadFixed = "Fixed PDF"
 downloadJson = "Download report (JSON)"
 downloadReport = "Report PDF"
 locate = "Show on document"
@@ -11009,6 +11010,29 @@ type3 = "Type 3"
 userUnit = "UserUnit on page(s) {{pages}}"
 xfa = "XFA"
 
+[printPreflight.fixes]
+help = "Corrections applied when producing a Fixed PDF. The annotated and JSON reports are always analysis-only."
+toggle = "Automatic fixes"
+
+[printPreflight.fixups]
+help = "Leave empty to apply every fixup that has something to correct."
+label = "Fixups to apply"
+placeholder = "All applicable fixups"
+
+[printPreflight.fixups.codes]
+DISCARD_CROPBOX = "Discard crop boxes"
+DOWNSAMPLE_IMAGES = "Downsample oversampled images"
+EXTEND_BLEED = "Generate missing bleed"
+FLATTEN_FORM = "Flatten form fields"
+MERGE_SPOT_ALIASES = "Merge spot colour aliases"
+NORMALIZE_USER_UNIT = "Normalize page scale (UserUnit)"
+REMOVE_ANNOTATIONS_IN_TRIM = "Remove annotations inside trim"
+REMOVE_ATTACHMENTS = "Remove embedded files"
+REMOVE_EMPTY_PAGES = "Remove empty pages"
+REMOVE_JAVASCRIPT = "Remove JavaScript"
+SET_MISSING_BOXES = "Declare missing TrimBox"
+SET_OUTPUT_INTENT = "Attach output intent (ICC)"
+
 [printPreflight.hairlineThresholdPt]
 help = "Strokes thinner than this are flagged — they may drop out on press."
 label = "Hairline threshold (pt)"
@@ -11046,7 +11070,8 @@ stepTitle = "Check thresholds"
 
 [printPreflight.reportFormat]
 annotatedPdf = "Annotated PDF"
-help = "Annotated PDF keeps a PDF in the pipeline; JSON report ends the chain with the findings."
+fixedPdf = "Fixed PDF (apply selected fixups)"
+help = "PDF outputs keep the pipeline flowing; JSON report ends the chain with the findings."
 json = "JSON report"
 label = "Report format"
 reportPdf = "Summary report PDF"

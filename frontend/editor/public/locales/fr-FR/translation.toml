@@ -13731,6 +13731,7 @@ title = "Preflight d'impression"
 areasTruncated = "Emplacements supplémentaires omis de l'aperçu"
 counts = "{{errors}} erreurs · {{warnings}} avertissements · {{infos}} infos"
 downloadAnnotated = "PDF annoté"
+downloadFixed = "PDF corrigé"
 downloadJson = "Télécharger le rapport (JSON)"
 downloadReport = "Rapport PDF"
 locate = "Voir sur le document"
@@ -13801,6 +13802,29 @@ type3 = "Type 3"
 userUnit = "UserUnit page(s) {{pages}}"
 xfa = "XFA"
 
+[printPreflight.fixes]
+help = "Corrections appliquées lors de la production d'un PDF corrigé. Les rapports annoté et JSON restent toujours une simple analyse."
+toggle = "Corrections automatiques"
+
+[printPreflight.fixups]
+help = "Laisser vide pour appliquer toutes les corrections possibles."
+label = "Corrections à appliquer"
+placeholder = "Toutes les corrections applicables"
+
+[printPreflight.fixups.codes]
+DISCARD_CROPBOX = "Supprimer les CropBox"
+DOWNSAMPLE_IMAGES = "Rééchantillonner les images surdimensionnées"
+EXTEND_BLEED = "Générer le fond perdu manquant"
+FLATTEN_FORM = "Aplatir les champs de formulaire"
+MERGE_SPOT_ALIASES = "Fusionner les alias de tons directs"
+NORMALIZE_USER_UNIT = "Normaliser l'échelle de page (UserUnit)"
+REMOVE_ANNOTATIONS_IN_TRIM = "Supprimer les annotations dans le format"
+REMOVE_ATTACHMENTS = "Supprimer les fichiers embarqués"
+REMOVE_EMPTY_PAGES = "Supprimer les pages vides"
+REMOVE_JAVASCRIPT = "Supprimer le JavaScript"
+SET_MISSING_BOXES = "Déclarer le TrimBox manquant"
+SET_OUTPUT_INTENT = "Attacher un output intent (ICC)"
+
 [printPreflight.hairlineThresholdPt]
 help = "Les traits plus fins que ce seuil sont signalés — ils risquent de disparaître à l'impression."
 label = "Seuil des filets (pt)"
@@ -13838,7 +13862,8 @@ stepTitle = "Seuils de contrôle"
 
 [printPreflight.reportFormat]
 annotatedPdf = "PDF annoté"
-help = "Le PDF annoté garde un PDF dans la chaîne ; le rapport JSON termine la chaîne avec les constats."
+fixedPdf = "PDF corrigé (fixups sélectionnés)"
+help = "Les sorties PDF gardent un PDF dans la chaîne ; le rapport JSON la termine avec les constats."
 json = "Rapport JSON"
 label = "Format du rapport"
 reportPdf = "Rapport PDF de synthèse"

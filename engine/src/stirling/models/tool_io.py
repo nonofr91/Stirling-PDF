@@ -281,6 +281,9 @@ TOOL_IO: dict[ToolEndpoint, ToolIOSpec] = {
     ToolEndpoint.PRINT_PREFLIGHT_ANNOTATED: ToolIOSpec(
         accepts=[ToolFormat.PDF], produces=ToolFormat.PDF, arity=ToolArity.SISO
     ),
+    ToolEndpoint.PRINT_PREFLIGHT_FIX: ToolIOSpec(
+        accepts=[ToolFormat.PDF], produces=ToolFormat.PDF, arity=ToolArity.SISO
+    ),
     ToolEndpoint.PRINT_PREFLIGHT_REPORT: ToolIOSpec(
         accepts=[ToolFormat.PDF], produces=ToolFormat.PDF, arity=ToolArity.SISO
     ),

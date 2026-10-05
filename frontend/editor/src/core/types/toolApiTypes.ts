@@ -1159,9 +1159,14 @@ export interface PrintPreflightRequest {
    */
   disabledChecks?: string[];
   /**
+   * Fixup codes to apply on the print-preflight-fix endpoint (e.g. EXTEND_BLEED, FLATTEN_FORM, REMOVE_JAVASCRIPT); empty or absent applies every supported fixup that has something to correct
+   */
+  fixups?: string[];
+  /**
    * Strokes thinner than this width in points are reported as hairlines at risk of disappearing in print
    */
   hairlineThresholdPt?: number;
+  iccProfile?: File;
   /**
    * Prepend summary pages (verdict, document facts, fonts, colours, findings) to the annotated PDF
    */
@@ -1896,6 +1901,7 @@ export type ToolEndpoint =
   | "/api/v1/security/get-info-on-pdf"
   | "/api/v1/security/print-preflight"
   | "/api/v1/security/print-preflight-annotated"
+  | "/api/v1/security/print-preflight-fix"
   | "/api/v1/security/print-preflight-report"
   | "/api/v1/security/redact"
   | "/api/v1/security/redact-execute"
@@ -2012,6 +2018,7 @@ export interface ToolApiParams {
   "/api/v1/security/get-info-on-pdf": SecurityGetInfoOnPdfRequest;
   "/api/v1/security/print-preflight": PrintPreflightRequest;
   "/api/v1/security/print-preflight-annotated": PrintPreflightRequest;
+  "/api/v1/security/print-preflight-fix": PrintPreflightRequest;
   "/api/v1/security/print-preflight-report": PrintPreflightRequest;
   "/api/v1/security/redact": ManualRedactPdfRequest;
   "/api/v1/security/redact-execute": RedactExecuteRequest;
@@ -2129,6 +2136,7 @@ export const TOOL_ENDPOINTS = [
   "/api/v1/security/get-info-on-pdf",
   "/api/v1/security/print-preflight",
   "/api/v1/security/print-preflight-annotated",
+  "/api/v1/security/print-preflight-fix",
   "/api/v1/security/print-preflight-report",
   "/api/v1/security/redact",
   "/api/v1/security/redact-execute",
@@ -2156,6 +2164,10 @@ export const TOOL_FILE_FIELDS = {
     "jksFile",
   ],
   "/api/v1/security/cert-sign/validate-certificate": ["p12File", "jksFile"],
+  "/api/v1/security/print-preflight": ["iccProfile"],
+  "/api/v1/security/print-preflight-annotated": ["iccProfile"],
+  "/api/v1/security/print-preflight-fix": ["iccProfile"],
+  "/api/v1/security/print-preflight-report": ["iccProfile"],
   "/api/v1/security/validate-signature": ["certFile"],
 } as const satisfies Partial<Record<ToolEndpoint, readonly string[]>>;
 

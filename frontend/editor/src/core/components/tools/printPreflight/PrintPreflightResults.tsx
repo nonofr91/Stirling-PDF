@@ -697,7 +697,8 @@ const PrintPreflightResults = ({
                 disabled={
                   (operation.annotatedLoading != null &&
                     operation.annotatedLoading !== entry.fileId) ||
-                  operation.reportLoading != null
+                  operation.reportLoading != null ||
+                  operation.fixedLoading != null
                 }
                 onClick={() => void operation.downloadAnnotated(entry.fileId)}
               >
@@ -709,11 +710,25 @@ const PrintPreflightResults = ({
                 disabled={
                   (operation.reportLoading != null &&
                     operation.reportLoading !== entry.fileId) ||
-                  operation.annotatedLoading != null
+                  operation.annotatedLoading != null ||
+                  operation.fixedLoading != null
                 }
                 onClick={() => void operation.downloadReport(entry.fileId)}
               >
                 {t("printPreflight.downloadReport", "Report PDF")}
+              </Button>
+              <Button
+                variant="secondary"
+                loading={operation.fixedLoading === entry.fileId}
+                disabled={
+                  (operation.fixedLoading != null &&
+                    operation.fixedLoading !== entry.fileId) ||
+                  operation.annotatedLoading != null ||
+                  operation.reportLoading != null
+                }
+                onClick={() => void operation.downloadFixed(entry.fileId)}
+              >
+                {t("printPreflight.downloadFixed", "Fixed PDF")}
               </Button>
             </Stack>
           ))}

@@ -2,6 +2,8 @@ package stirling.software.SPDF.model.api.security;
 
 import java.util.List;
 
+import org.springframework.web.multipart.MultipartFile;
+
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import lombok.Data;
@@ -104,4 +106,19 @@ public class PrintPreflightRequest extends PDFFile {
                     "Finding codes to skip (e.g. SAFETY_MARGIN, INK_COVERAGE_HIGH); empty runs"
                             + " every check")
     private List<String> disabledChecks;
+
+    @Schema(
+            description =
+                    "Fixup codes to apply on the print-preflight-fix endpoint (e.g. EXTEND_BLEED,"
+                            + " FLATTEN_FORM, REMOVE_JAVASCRIPT); empty or absent applies every"
+                            + " supported fixup that has something to correct")
+    private List<String> fixups;
+
+    @Schema(
+            description =
+                    "ICC profile attached as output intent by the SET_OUTPUT_INTENT fixup; when"
+                            + " absent the bundled sRGB2014 profile is used",
+            type = "string",
+            format = "binary")
+    private MultipartFile iccProfile;
 }

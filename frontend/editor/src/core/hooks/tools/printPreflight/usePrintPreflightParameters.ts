@@ -22,13 +22,34 @@ export interface PrintPreflightParameters extends BaseParameters {
   /** Finding codes to skip entirely (advanced troubleshooting). */
   disabledChecks?: string[];
   /**
+   * Fixup codes the print-preflight-fix endpoint applies; empty or undefined
+   * runs every supported fixup that has something to correct.
+   */
+  fixups?: string[];
+  /**
    * Automation output: "annotatedPdf" returns a PDF copy with located issues
-   * framed (keeps the pipeline chain alive), "reportPdf" returns the
-   * standalone report document, "json" returns the machine-readable report.
+   * framed, "reportPdf" returns the standalone report document, "fixedPdf"
+   * returns the corrected PDF and "json" returns the machine-readable report.
    * Interactive mode ignores it — the tool page exposes all outputs itself.
    */
-  reportFormat: "annotatedPdf" | "reportPdf" | "json";
+  reportFormat: "annotatedPdf" | "reportPdf" | "fixedPdf" | "json";
 }
+
+/** Every fixup the print-preflight-fix endpoint understands. */
+export const FIXUP_CODES = [
+  "REMOVE_JAVASCRIPT",
+  "REMOVE_ATTACHMENTS",
+  "FLATTEN_FORM",
+  "NORMALIZE_USER_UNIT",
+  "SET_OUTPUT_INTENT",
+  "REMOVE_ANNOTATIONS_IN_TRIM",
+  "MERGE_SPOT_ALIASES",
+  "DOWNSAMPLE_IMAGES",
+  "EXTEND_BLEED",
+  "SET_MISSING_BOXES",
+  "REMOVE_EMPTY_PAGES",
+  "DISCARD_CROPBOX",
+] as const;
 
 export const defaultParameters: PrintPreflightParameters = {
   requiredBleedMm: undefined,
@@ -43,6 +64,7 @@ export const defaultParameters: PrintPreflightParameters = {
   maxSpotCount: undefined,
   includeSummaryPage: true,
   disabledChecks: undefined,
+  fixups: undefined,
   reportFormat: "annotatedPdf",
 };
 
@@ -95,6 +117,7 @@ export function validatePrintPreflightParameters(
   if (
     params.reportFormat !== "annotatedPdf" &&
     params.reportFormat !== "reportPdf" &&
+    params.reportFormat !== "fixedPdf" &&
     params.reportFormat !== "json"
   ) {
     return false;

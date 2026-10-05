@@ -19,6 +19,7 @@ import lombok.extern.slf4j.Slf4j;
 import stirling.software.SPDF.model.api.security.PrintPreflightReport;
 import stirling.software.SPDF.model.api.security.PrintPreflightRequest;
 import stirling.software.SPDF.service.preflight.PreflightAnnotator;
+import stirling.software.SPDF.service.preflight.PreflightFixer;
 import stirling.software.SPDF.service.preflight.PreflightReportRenderer;
 import stirling.software.SPDF.service.preflight.PrintPreflightService;
 import stirling.software.common.annotations.AutoJobPostMapping;
@@ -136,6 +137,50 @@ public class PrintPreflightController {
                     GeneralUtils.generateFilename(
                             file.getOriginalFilename(), "_preflight-report.pdf"),
                     tempFileManager);
+        }
+    }
+
+    @ToolIO(produces = ToolFormat.PDF)
+    @Operation(
+            summary = "Print preflight fix",
+            description =
+                    "Applies opt-in corrections (PitStop-style fixups) to the PDF: flatten forms,"
+                            + " merge spot aliases, generate missing bleed, downsample oversampled"
+                            + " images, normalize page geometry, drop JavaScript/attachments and"
+                            + " attach an output intent. Returns the corrected copy — the uploaded"
+                            + " file is never modified. Applied fixup codes are listed in the"
+                            + " X-Preflight-Fixups response header.")
+    @AutoJobPostMapping(
+            value = "/print-preflight-fix",
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
+            resourceWeight = ResourceWeight.MEDIUM_WEIGHT)
+    public ResponseEntity<Resource> printPreflightFix(@ModelAttribute PrintPreflightRequest request)
+            throws IOException {
+
+        MultipartFile file = request.getFileInput();
+        validate(file, request);
+
+        try (PDDocument document = pdfDocumentFactory.load(request)) {
+            // Analysis feeds the fixups that depend on computed facts (spot alias groups, empty
+            // pages) and keeps every correction auditable against a shared finding set.
+            PrintPreflightReport report =
+                    printPreflightService.analyze(
+                            document, file.getOriginalFilename(), file.getSize(), request);
+            List<String> applied = PreflightFixer.apply(document, request, report);
+            log.info(
+                    "Preflight fixups on '{}': {}",
+                    file.getOriginalFilename(),
+                    applied.isEmpty() ? "none applicable" : String.join(", ", applied));
+            ResponseEntity<Resource> response =
+                    WebResponseUtils.pdfDocToWebResponse(
+                            document,
+                            GeneralUtils.generateFilename(
+                                    file.getOriginalFilename(), "_preflight-fixed.pdf"),
+                            tempFileManager);
+            return ResponseEntity.status(response.getStatusCode())
+                    .headers(response.getHeaders())
+                    .header("X-Preflight-Fixups", String.join(", ", applied))
+                    .body(response.getBody());
         }
     }
 

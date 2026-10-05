@@ -1,0 +1,684 @@
+package stirling.software.SPDF.service.preflight;
+
+import java.awt.image.BufferedImage;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
+
+import org.apache.pdfbox.cos.COSArray;
+import org.apache.pdfbox.cos.COSBase;
+import org.apache.pdfbox.cos.COSDictionary;
+import org.apache.pdfbox.cos.COSFloat;
+import org.apache.pdfbox.cos.COSName;
+import org.apache.pdfbox.cos.COSObject;
+import org.apache.pdfbox.cos.COSStream;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDDocumentCatalog;
+import org.apache.pdfbox.pdmodel.PDDocumentNameDictionary;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDResources;
+import org.apache.pdfbox.pdmodel.common.PDRectangle;
+import org.apache.pdfbox.pdmodel.graphics.PDXObject;
+import org.apache.pdfbox.pdmodel.graphics.color.PDDeviceGray;
+import org.apache.pdfbox.pdmodel.graphics.color.PDDeviceRGB;
+import org.apache.pdfbox.pdmodel.graphics.color.PDICCBased;
+import org.apache.pdfbox.pdmodel.graphics.color.PDOutputIntent;
+import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
+import org.apache.pdfbox.pdmodel.graphics.image.JPEGFactory;
+import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
+import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
+import org.apache.pdfbox.pdmodel.graphics.pattern.PDAbstractPattern;
+import org.apache.pdfbox.pdmodel.graphics.pattern.PDTilingPattern;
+import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotation;
+import org.apache.pdfbox.pdmodel.interactive.form.PDAcroForm;
+import org.springframework.web.multipart.MultipartFile;
+
+import lombok.extern.slf4j.Slf4j;
+
+import stirling.software.SPDF.model.api.security.PrintPreflightReport;
+import stirling.software.SPDF.model.api.security.PrintPreflightRequest;
+import stirling.software.SPDF.service.preflight.PreflightGraphicsEngine.ImageUse;
+import stirling.software.common.util.PageBleedGenerator;
+import stirling.software.common.util.PageBleedGenerator.BleedEdges;
+import stirling.software.common.util.PageBleedGenerator.BleedMethod;
+
+/**
+ * Automatic corrections (PitStop-style fixups) for findings the preflight can report. Each fixup is
+ * opt-in via {@code request.fixups}; an empty list applies every fixup that finds work to do.
+ * Fixups mutate the document — this endpoint returns a new copy, never the source bytes.
+ *
+ * <p>Deliberately not implemented (they need content-stream rewriting or colour-engine work, not
+ * dictionary surgery): overprint/knockout changes, rich-black text conversion, invisible-text
+ * removal, ink-coverage remapping, layer deletion, clipping objects outside the page.
+ */
+@Slf4j
+public final class PreflightFixer {
+
+    private static final float MM_TO_POINTS = 72f / 25.4f;
+    private static final float JPEG_QUALITY = 0.9f;
+
+    public enum Code {
+        REMOVE_JAVASCRIPT,
+        REMOVE_ATTACHMENTS,
+        FLATTEN_FORM,
+        NORMALIZE_USER_UNIT,
+        SET_OUTPUT_INTENT,
+        REMOVE_ANNOTATIONS_IN_TRIM,
+        MERGE_SPOT_ALIASES,
+        DOWNSAMPLE_IMAGES,
+        EXTEND_BLEED,
+        SET_MISSING_BOXES,
+        REMOVE_EMPTY_PAGES,
+        DISCARD_CROPBOX
+    }
+
+    private PreflightFixer() {}
+
+    /**
+     * Applies the requested fixups to {@code document}. Returns the codes that changed something —
+     * a fixup whose target is absent is silently skipped, so the caller learns what it actually did
+     * from the returned list.
+     */
+    public static List<String> apply(
+            PDDocument document, PrintPreflightRequest request, PrintPreflightReport report) {
+        Set<Code> wanted = resolveWanted(request.getFixups());
+        List<String> applied = new ArrayList<>();
+
+        if (wanted.contains(Code.REMOVE_JAVASCRIPT) && removeJavascript(document)) {
+            applied.add(Code.REMOVE_JAVASCRIPT.name());
+        }
+        if (wanted.contains(Code.REMOVE_ATTACHMENTS) && removeAttachments(document)) {
+            applied.add(Code.REMOVE_ATTACHMENTS.name());
+        }
+        if (wanted.contains(Code.FLATTEN_FORM) && flattenForm(document)) {
+            applied.add(Code.FLATTEN_FORM.name());
+        }
+        if (wanted.contains(Code.NORMALIZE_USER_UNIT) && normalizeUserUnit(document)) {
+            applied.add(Code.NORMALIZE_USER_UNIT.name());
+        }
+        if (wanted.contains(Code.SET_OUTPUT_INTENT)
+                && setOutputIntent(document, request.getIccProfile())) {
+            applied.add(Code.SET_OUTPUT_INTENT.name());
+        }
+        if (wanted.contains(Code.REMOVE_ANNOTATIONS_IN_TRIM) && removeAnnotationsInTrim(document)) {
+            applied.add(Code.REMOVE_ANNOTATIONS_IN_TRIM.name());
+        }
+        if (wanted.contains(Code.MERGE_SPOT_ALIASES) && mergeSpotAliases(document, report)) {
+            applied.add(Code.MERGE_SPOT_ALIASES.name());
+        }
+        if (wanted.contains(Code.SET_MISSING_BOXES) && setMissingBoxes(document)) {
+            applied.add(Code.SET_MISSING_BOXES.name());
+        }
+        if (wanted.contains(Code.DISCARD_CROPBOX) && discardCropBox(document)) {
+            applied.add(Code.DISCARD_CROPBOX.name());
+        }
+        if (wanted.contains(Code.EXTEND_BLEED) && extendBleed(document, request)) {
+            applied.add(Code.EXTEND_BLEED.name());
+        }
+        if (wanted.contains(Code.DOWNSAMPLE_IMAGES) && downsampleImages(document, request)) {
+            applied.add(Code.DOWNSAMPLE_IMAGES.name());
+        }
+        // Destructive page removal runs last so every other fixup sees stable page indexes.
+        if (wanted.contains(Code.REMOVE_EMPTY_PAGES) && removeEmptyPages(document, report)) {
+            applied.add(Code.REMOVE_EMPTY_PAGES.name());
+        }
+        return applied;
+    }
+
+    private static Set<Code> resolveWanted(List<String> requested) {
+        if (requested == null || requested.isEmpty()) {
+            return Set.of(Code.values());
+        }
+        Set<Code> wanted = new LinkedHashSet<>();
+        for (String raw : requested) {
+            try {
+                wanted.add(Code.valueOf(raw.trim().toUpperCase(Locale.ROOT)));
+            } catch (IllegalArgumentException e) {
+                log.debug("Ignoring unknown fixup code '{}'", raw);
+            }
+        }
+        return wanted;
+    }
+
+    private static boolean removeJavascript(PDDocument document) {
+        PDDocumentNameDictionary names = document.getDocumentCatalog().getNames();
+        if (names != null && names.getJavaScript() != null) {
+            names.setJavascript(null);
+            return true;
+        }
+        return false;
+    }
+
+    private static boolean removeAttachments(PDDocument document) {
+        PDDocumentNameDictionary names = document.getDocumentCatalog().getNames();
+        if (names != null && names.getEmbeddedFiles() != null) {
+            names.setEmbeddedFiles(null);
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Flattens AcroForm widgets into page content; a present XFA stream is dropped first so the
+     * AcroForm rendition wins — that is the only rendition print RIPs can see anyway.
+     */
+    private static boolean flattenForm(PDDocument document) {
+        PDAcroForm form = document.getDocumentCatalog().getAcroForm();
+        if (form == null || form.getFields().isEmpty()) {
+            return false;
+        }
+        try {
+            if (form.hasXFA()) {
+                form.setXFA(null);
+            }
+            form.flatten();
+            return true;
+        } catch (IOException e) {
+            log.warn("AcroForm flatten failed: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Every page box is expressed in the page's user units; scaling all declared boxes by the unit
+     * and clearing {@code /UserUnit} keeps identical geometry on a standard grid.
+     */
+    private static boolean normalizeUserUnit(PDDocument document) {
+        boolean changed = false;
+        for (PDPage page : document.getPages()) {
+            float unit = page.getUserUnit();
+            if (Math.abs(unit - 1f) <= 0.001f || unit <= 0f) {
+                continue;
+            }
+            for (COSName boxName :
+                    List.of(
+                            COSName.MEDIA_BOX,
+                            COSName.CROP_BOX,
+                            COSName.BLEED_BOX,
+                            COSName.TRIM_BOX,
+                            COSName.ART_BOX)) {
+                COSBase item = page.getCOSObject().getItem(boxName);
+                if (item == null) {
+                    continue;
+                }
+                PDRectangle box = toRectangle(item);
+                if (box == null) {
+                    continue;
+                }
+                setBox(
+                        page,
+                        boxName,
+                        new PDRectangle(
+                                box.getLowerLeftX() * unit,
+                                box.getLowerLeftY() * unit,
+                                box.getWidth() * unit,
+                                box.getHeight() * unit));
+                changed = true;
+            }
+            page.getCOSObject().removeItem(COSName.USER_UNIT);
+        }
+        return changed;
+    }
+
+    private static boolean setOutputIntent(PDDocument document, MultipartFile iccProfile) {
+        PDDocumentCatalog catalog = document.getDocumentCatalog();
+        try {
+            if (!catalog.getOutputIntents().isEmpty()) {
+                return false;
+            }
+            String identifier;
+            try (InputStream icc = openIccStream(iccProfile)) {
+                if (icc == null) {
+                    return false;
+                }
+                PDOutputIntent intent = new PDOutputIntent(document, icc);
+                identifier =
+                        iccProfile != null && !iccProfile.isEmpty()
+                                ? iccProfile.getOriginalFilename()
+                                : "sRGB2014";
+                intent.setInfo(identifier);
+                intent.setRegistryName("http://www.color.org");
+                intent.setOutputConditionIdentifier(identifier);
+                intent.setOutputCondition(identifier);
+                catalog.addOutputIntent(intent);
+            }
+            return true;
+        } catch (IOException e) {
+            log.warn("Could not attach output intent: {}", e.getMessage());
+            return false;
+        }
+    }
+
+    private static InputStream openIccStream(MultipartFile iccProfile) throws IOException {
+        if (iccProfile != null && !iccProfile.isEmpty()) {
+            return iccProfile.getInputStream();
+        }
+        return PreflightFixer.class.getResourceAsStream("/icc/sRGB2014.icc");
+    }
+
+    /** Same predicate the check uses: flagged-for-print annotation overlapping the trim. */
+    private static boolean removeAnnotationsInTrim(PDDocument document) {
+        boolean changed = false;
+        for (PDPage page : document.getPages()) {
+            PDRectangle trim = page.getTrimBox();
+            if (trim == null) {
+                continue;
+            }
+            List<PDAnnotation> keep;
+            try {
+                keep = new ArrayList<>();
+                boolean dropped = false;
+                for (PDAnnotation annotation : page.getAnnotations()) {
+                    PDRectangle rect = annotation.getRectangle();
+                    if (annotation.isPrinted() && rect != null && overlaps(trim, rect)) {
+                        dropped = true;
+                    } else {
+                        keep.add(annotation);
+                    }
+                }
+                if (dropped) {
+                    page.setAnnotations(keep);
+                    changed = true;
+                }
+            } catch (IOException e) {
+                log.debug("Annotation cleanup skipped a page: {}", e.getMessage());
+            }
+        }
+        return changed;
+    }
+
+    /**
+     * Spot names that normalize to the same ink (Pantone 485 C vs pms 485cv) print as separate
+     * plates; renaming every matching Separation/DeviceN colorant to the group's first name merges
+     * them back onto one plate.
+     */
+    private static boolean mergeSpotAliases(PDDocument document, PrintPreflightReport report) {
+        Set<String> printSpots = new LinkedHashSet<>(report.getFacts().getSpotColors());
+        printSpots.removeAll(report.getFacts().getTechnicalSeparations());
+        Map<String, String> renameTo = new LinkedHashMap<>();
+        for (List<String> group : PrintPreflightService.spotAliasGroups(printSpots)) {
+            String canonical = group.get(0);
+            for (String alias : group) {
+                if (!alias.equals(canonical)) {
+                    renameTo.put(alias, canonical);
+                }
+            }
+        }
+        if (renameTo.isEmpty()) {
+            return false;
+        }
+        boolean changed = false;
+        Set<COSBase> visited = new LinkedHashSet<>();
+        for (PDPage page : document.getPages()) {
+            try {
+                changed |= renameSeparations(page.getResources(), renameTo, visited);
+            } catch (IOException e) {
+                log.debug("Spot alias merge skipped a page: {}", e.getMessage());
+            }
+        }
+        return changed;
+    }
+
+    private static boolean renameSeparations(
+            PDResources resources, Map<String, String> renameTo, Set<COSBase> visited)
+            throws IOException {
+        if (resources == null || !visited.add(resources.getCOSObject())) {
+            return false;
+        }
+        boolean changed = false;
+        COSDictionary csDict = resources.getCOSObject().getCOSDictionary(COSName.COLORSPACE);
+        if (csDict != null) {
+            for (COSName key : new ArrayList<>(csDict.keySet())) {
+                COSBase value = dereference(csDict.getDictionaryObject(key));
+                if (value instanceof COSArray array) {
+                    changed |= renameInColorSpace(array, renameTo);
+                }
+            }
+        }
+        for (COSName name : resources.getXObjectNames()) {
+            PDXObject xo = resources.getXObject(name);
+            if (xo instanceof PDFormXObject form) {
+                changed |= renameSeparations(form.getResources(), renameTo, visited);
+            }
+        }
+        for (COSName name : resources.getPatternNames()) {
+            PDAbstractPattern pattern = resources.getPattern(name);
+            if (pattern instanceof PDTilingPattern tiling) {
+                changed |= renameSeparations(tiling.getResources(), renameTo, visited);
+            }
+        }
+        return changed;
+    }
+
+    private static boolean renameInColorSpace(COSArray array, Map<String, String> renameTo) {
+        boolean changed = false;
+        if (array.size() == 0 || !(array.get(0) instanceof COSName kind)) {
+            return false;
+        }
+        if (COSName.SEPARATION.equals(kind) && array.size() >= 2) {
+            changed |= renameColorant(array, 1, renameTo);
+        } else if (COSName.DEVICEN.equals(kind)
+                && array.size() >= 2
+                && array.get(1) instanceof COSArray colorants) {
+            for (int i = 0; i < colorants.size(); i++) {
+                changed |= renameColorant(colorants, i, renameTo);
+            }
+        } else if ((COSName.INDEXED.equals(kind) || COSName.PATTERN.equals(kind))
+                && array.size() >= 2
+                && dereference(array.get(1)) instanceof COSArray base) {
+            changed |= renameInColorSpace(base, renameTo);
+        }
+        return changed;
+    }
+
+    private static boolean renameColorant(
+            COSArray colorants, int index, Map<String, String> renameTo) {
+        String canonical = renameTo.get(colorants.getName(index));
+        if (canonical != null) {
+            colorants.setName(index, canonical);
+            return true;
+        }
+        return false;
+    }
+
+    /** Declares TrimBox = CropBox where the page never said otherwise — the check's fallback. */
+    private static boolean setMissingBoxes(PDDocument document) {
+        boolean changed = false;
+        for (PDPage page : document.getPages()) {
+            if (page.getCOSObject().getItem(COSName.TRIM_BOX) == null) {
+                page.setTrimBox(page.getCropBox());
+                changed = true;
+            }
+        }
+        return changed;
+    }
+
+    /** Drops declared CropBoxes so every page displays at full MediaBox size. */
+    private static boolean discardCropBox(PDDocument document) {
+        boolean changed = false;
+        for (PDPage page : document.getPages()) {
+            if (page.getCOSObject().getItem(COSName.CROP_BOX) != null) {
+                page.getCOSObject().removeItem(COSName.CROP_BOX);
+                changed = true;
+            }
+        }
+        return changed;
+    }
+
+    /**
+     * Mirrors the page edge into the missing bleed (vector MIRROR, no rasterization), declares the
+     * grown BleedBox and enlarges MediaBox/CropBox so the new area stays reachable. Pages that
+     * already bleed enough — or that have no content to mirror — are untouched.
+     */
+    private static boolean extendBleed(PDDocument document, PrintPreflightRequest request) {
+        float requiredPt = request.getRequiredBleedMm() * MM_TO_POINTS;
+        if (requiredPt <= 0) {
+            return false;
+        }
+        boolean changed = false;
+        int pageIndex = 0;
+        for (PDPage page : document.getPages()) {
+            PDRectangle trim = page.getTrimBox();
+            PDRectangle bleed = page.getBleedBox();
+            float[] sides = PrintPreflightService.bleedWidthPerSide(bleed, trim);
+            // sides order: [left, bottom, right, top]; BleedEdges: (left, right, bottom, top).
+            // Paint only what's missing; declare the full required width — existing wider bleed
+            // is kept by taking the max on every side.
+            BleedEdges gaps =
+                    sides == null
+                            ? new BleedEdges(requiredPt, requiredPt, requiredPt, requiredPt)
+                            : new BleedEdges(
+                                    Math.max(0, requiredPt - sides[0]),
+                                    Math.max(0, requiredPt - sides[2]),
+                                    Math.max(0, requiredPt - sides[1]),
+                                    Math.max(0, requiredPt - sides[3]));
+            if (!gaps.any()) {
+                pageIndex++;
+                continue;
+            }
+            BleedEdges total =
+                    sides == null
+                            ? gaps
+                            : new BleedEdges(
+                                    Math.max(requiredPt, sides[0]),
+                                    Math.max(requiredPt, sides[2]),
+                                    Math.max(requiredPt, sides[1]),
+                                    Math.max(requiredPt, sides[3]));
+            PDRectangle target = total.unionWith(trim, false, 0, 0);
+            if (page.hasContents()) {
+                try {
+                    PageBleedGenerator.generateBleed(
+                            document,
+                            page,
+                            pageIndex,
+                            trim,
+                            gaps,
+                            BleedMethod.MIRROR,
+                            true,
+                            300,
+                            0f);
+                } catch (IOException e) {
+                    log.debug(
+                            "Bleed generation failed on page {}: {}",
+                            pageIndex + 1,
+                            e.getMessage());
+                    pageIndex++;
+                    continue;
+                }
+            }
+            // A BleedBox outside the MediaBox is dead geometry: grow the clip-bound boxes.
+            page.setBleedBox(target);
+            page.setMediaBox(union(page.getMediaBox(), target));
+            page.setCropBox(union(page.getCropBox(), target));
+            changed = true;
+            pageIndex++;
+        }
+        return changed;
+    }
+
+    /**
+     * Re-encodes images drawn above {@code maxImageDpi} at that target resolution, matched back to
+     * resources by object identity. Skips 1-bit art, stencils, soft-masked images and colour spaces
+     * a BufferedImage round-trip cannot represent faithfully (CMYK, separations).
+     */
+    private static boolean downsampleImages(PDDocument document, PrintPreflightRequest request) {
+        float maxDpi = request.getMaxImageDpi();
+        if (maxDpi <= 0) {
+            return false;
+        }
+        // image COS object → largest placement (lowest effective dpi means biggest on page)
+        Map<COSBase, PDImageXObject> imageByObj = new LinkedHashMap<>();
+        Map<COSBase, Float> minDpiByImage = new LinkedHashMap<>();
+        int pageIndex = 0;
+        for (PDPage page : document.getPages()) {
+            PreflightGraphicsEngine engine =
+                    new PreflightGraphicsEngine(page, request.getMaxInkCoveragePercent());
+            try {
+                engine.processPage(page);
+            } catch (Exception e) {
+                log.debug("Downsample scan skipped page {}: {}", pageIndex + 1, e.getMessage());
+            }
+            for (ImageUse use : engine.getImages()) {
+                if (!(use.image instanceof PDImageXObject pix)
+                        || use.technical
+                        || use.softMasked
+                        || use.bitsPerComponent <= 1
+                        || !Double.isFinite(use.effectiveDpi)
+                        || use.effectiveDpi <= maxDpi) {
+                    continue;
+                }
+                imageByObj.putIfAbsent(pix.getCOSObject(), pix);
+                minDpiByImage.merge(pix.getCOSObject(), (float) use.effectiveDpi, Math::min);
+            }
+            pageIndex++;
+        }
+        if (minDpiByImage.isEmpty()) {
+            return false;
+        }
+        boolean changed = false;
+        try {
+            for (Map.Entry<COSBase, Float> entry : minDpiByImage.entrySet()) {
+                PDImageXObject source = imageByObj.get(entry.getKey());
+                PDImageXObject replaced = resample(document, source, maxDpi, entry.getValue());
+                if (replaced == null) {
+                    continue;
+                }
+                changed |= replaceImageReferences(document, entry.getKey(), replaced);
+            }
+        } catch (IOException e) {
+            log.warn("Image downsampling stopped early: {}", e.getMessage());
+        }
+        return changed;
+    }
+
+    private static PDImageXObject resample(
+            PDDocument document, PDImageXObject image, float targetDpi, float currentDpi)
+            throws IOException {
+        try {
+            if (!(image.getColorSpace() instanceof PDDeviceRGB)
+                    && !(image.getColorSpace() instanceof PDDeviceGray)
+                    && !(image.getColorSpace() instanceof PDICCBased)) {
+                return null;
+            }
+        } catch (IOException e) {
+            return null;
+        }
+        BufferedImage source;
+        try {
+            source = image.getImage();
+        } catch (IOException e) {
+            return null;
+        }
+        if (source == null) {
+            return null;
+        }
+        float scale = targetDpi / currentDpi;
+        int targetW = Math.max(1, Math.round(source.getWidth() * scale));
+        int targetH = Math.max(1, Math.round(source.getHeight() * scale));
+        if (targetW >= source.getWidth() || targetH >= source.getHeight()) {
+            return null;
+        }
+        BufferedImage scaled = new BufferedImage(targetW, targetH, BufferedImage.TYPE_INT_RGB);
+        java.awt.Graphics2D g = scaled.createGraphics();
+        g.setRenderingHint(
+                java.awt.RenderingHints.KEY_INTERPOLATION,
+                java.awt.RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+        g.drawImage(source, 0, 0, targetW, targetH, null);
+        g.dispose();
+        // JPEG keeps photographic weight down; lossless for already-Flate art and gray.
+        COSBase filters =
+                image.getCOSObject() instanceof COSStream stream ? stream.getFilters() : null;
+        boolean jpegSource = COSName.DCT_DECODE.equals(filters) || filterListContains(filters);
+        if (jpegSource) {
+            return JPEGFactory.createFromImage(document, scaled, JPEG_QUALITY, (int) targetDpi);
+        }
+        return LosslessFactory.createFromImage(document, scaled);
+    }
+
+    private static boolean replaceImageReferences(
+            PDDocument document, COSBase oldImage, PDImageXObject replacement) throws IOException {
+        boolean changed = false;
+        Set<COSBase> visited = new LinkedHashSet<>();
+        for (PDPage page : document.getPages()) {
+            changed |= replaceInResources(page.getResources(), oldImage, replacement, visited);
+        }
+        return changed;
+    }
+
+    private static boolean replaceInResources(
+            PDResources resources,
+            COSBase oldImage,
+            PDImageXObject replacement,
+            Set<COSBase> visited)
+            throws IOException {
+        if (resources == null || !visited.add(resources.getCOSObject())) {
+            return false;
+        }
+        boolean changed = false;
+        for (COSName name : resources.getXObjectNames()) {
+            PDXObject xo = resources.getXObject(name);
+            if (xo instanceof PDImageXObject image && image.getCOSObject() == oldImage) {
+                resources.put(name, replacement);
+                changed = true;
+            } else if (xo instanceof PDFormXObject form) {
+                changed |= replaceInResources(form.getResources(), oldImage, replacement, visited);
+            }
+        }
+        for (COSName name : resources.getPatternNames()) {
+            if (resources.getPattern(name) instanceof PDTilingPattern tiling) {
+                changed |=
+                        replaceInResources(tiling.getResources(), oldImage, replacement, visited);
+            }
+        }
+        return changed;
+    }
+
+    private static boolean filterListContains(COSBase filters) {
+        if (filters instanceof COSArray fa) {
+            for (int i = 0; i < fa.size(); i++) {
+                if (COSName.DCT_DECODE.equals(fa.get(i))) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static boolean removeEmptyPages(PDDocument document, PrintPreflightReport report) {
+        List<Integer> empties = report.getFacts().getEmptyPages();
+        if (empties.isEmpty() || document.getNumberOfPages() - empties.size() < 1) {
+            return false;
+        }
+        // Remove back to front so lower indexes stay valid while deleting.
+        for (int pageNum : new TreeSet<>(empties).descendingSet()) {
+            if (pageNum >= 1 && pageNum <= document.getNumberOfPages()) {
+                document.removePage(pageNum - 1);
+            }
+        }
+        return true;
+    }
+
+    private static COSBase dereference(COSBase base) {
+        return base instanceof COSObject ref ? ref.getObject() : base;
+    }
+
+    private static boolean overlaps(PDRectangle a, PDRectangle b) {
+        return b.getLowerLeftX() < a.getUpperRightX()
+                && b.getUpperRightX() > a.getLowerLeftX()
+                && b.getLowerLeftY() < a.getUpperRightY()
+                && b.getUpperRightY() > a.getLowerLeftY();
+    }
+
+    private static PDRectangle union(PDRectangle a, PDRectangle b) {
+        float llx = Math.min(a.getLowerLeftX(), b.getLowerLeftX());
+        float lly = Math.min(a.getLowerLeftY(), b.getLowerLeftY());
+        return new PDRectangle(
+                llx,
+                lly,
+                Math.max(a.getUpperRightX(), b.getUpperRightX()) - llx,
+                Math.max(a.getUpperRightY(), b.getUpperRightY()) - lly);
+    }
+
+    private static PDRectangle toRectangle(COSBase item) {
+        if (dereference(item) instanceof COSArray array && array.size() >= 4) {
+            return new PDRectangle(array);
+        }
+        return null;
+    }
+
+    private static void setBox(PDPage page, COSName name, PDRectangle rect) {
+        COSArray array = new COSArray();
+        array.add(new COSFloat(rect.getLowerLeftX()));
+        array.add(new COSFloat(rect.getLowerLeftY()));
+        array.add(new COSFloat(rect.getUpperRightX()));
+        array.add(new COSFloat(rect.getUpperRightY()));
+        page.getCOSObject().setItem(name, array);
+    }
+}
