@@ -72,4 +72,58 @@ describe("validatePrintPreflightParameters", () => {
       ).toBe(false);
     },
   );
+
+  test.each([
+    "minFontSizePt",
+    "safetyMarginMm",
+    "maxInkCoveragePercent",
+    "maxSpotCount",
+  ] as const)("rejects a negative %s", (key) => {
+    expect(
+      validatePrintPreflightParameters({ ...defaultParameters, [key]: -1 }),
+    ).toBe(false);
+  });
+
+  test.each(["minImage1BitDpi", "maxImageDpi"] as const)(
+    "rejects %s below 1 dpi",
+    (key) => {
+      expect(
+        validatePrintPreflightParameters({ ...defaultParameters, [key]: 0 }),
+      ).toBe(false);
+    },
+  );
+
+  test.each([
+    "minFontSizePt",
+    "safetyMarginMm",
+    "maxInkCoveragePercent",
+    "minImage1BitDpi",
+    "maxImageDpi",
+    "maxSpotCount",
+  ] as const)("accepts a valid %s", (key) => {
+    expect(
+      validatePrintPreflightParameters({ ...defaultParameters, [key]: 300 }),
+    ).toBe(true);
+  });
+
+  test.each(["annotatedPdf", "reportPdf", "json"] as const)(
+    "accepts reportFormat %s",
+    (format) => {
+      expect(
+        validatePrintPreflightParameters({
+          ...defaultParameters,
+          reportFormat: format,
+        }),
+      ).toBe(true);
+    },
+  );
+
+  test("rejects an unknown reportFormat", () => {
+    expect(
+      validatePrintPreflightParameters({
+        ...defaultParameters,
+        reportFormat: "docx" as never,
+      }),
+    ).toBe(false);
+  });
 });

@@ -31,13 +31,30 @@ export interface PrintPreflightOperationHook extends ToolOperationHook<PrintPref
   results: PrintPreflightResultEntry[];
   /** Fetch the annotated copy for one analyzed file and trigger a download. */
   downloadAnnotated: (fileId: string) => Promise<void>;
+  /** Fetch the standalone summary report PDF for one analyzed file. */
+  downloadReport: (fileId: string) => Promise<void>;
   annotatedLoading: string | null;
+  reportLoading: string | null;
 }
 
 const PREFLIGHT_ENDPOINT =
   "/api/v1/security/print-preflight" satisfies ToolEndpoint;
 const PREFLIGHT_ANNOTATED_ENDPOINT =
   "/api/v1/security/print-preflight-annotated" satisfies ToolEndpoint;
+const PREFLIGHT_REPORT_ENDPOINT =
+  "/api/v1/security/print-preflight-report" satisfies ToolEndpoint;
+
+const NUMERIC_FIELDS = [
+  "requiredBleedMm",
+  "minImageDpi",
+  "hairlineThresholdPt",
+  "minFontSizePt",
+  "safetyMarginMm",
+  "maxInkCoveragePercent",
+  "minImage1BitDpi",
+  "maxImageDpi",
+  "maxSpotCount",
+] as const satisfies ReadonlyArray<keyof PrintPreflightParameters>;
 
 const buildFormData = (
   file: File,
@@ -45,16 +62,17 @@ const buildFormData = (
 ): FormData => {
   const formData = new FormData();
   formData.append("fileInput", file);
-  if (params.requiredBleedMm !== undefined) {
-    formData.append("requiredBleedMm", String(params.requiredBleedMm));
-  }
-  if (params.minImageDpi !== undefined) {
-    formData.append("minImageDpi", String(params.minImageDpi));
-  }
-  if (params.hairlineThresholdPt !== undefined) {
-    formData.append("hairlineThresholdPt", String(params.hairlineThresholdPt));
+  for (const key of NUMERIC_FIELDS) {
+    const value = params[key];
+    if (value !== undefined) {
+      formData.append(key, String(value));
+    }
   }
   formData.append("checkBleedCoverage", String(params.checkBleedCoverage));
+  formData.append("includeSummaryPage", String(params.includeSummaryPage));
+  if (params.disabledChecks && params.disabledChecks.length > 0) {
+    formData.append("disabledChecks", params.disabledChecks.join(","));
+  }
   return formData;
 };
 
@@ -83,8 +101,9 @@ const printPreflightProcessor = async (
         }),
       );
     } else {
+      const isReport = params.reportFormat === "reportPdf";
       const response = await apiClient.post(
-        PREFLIGHT_ANNOTATED_ENDPOINT,
+        isReport ? PREFLIGHT_REPORT_ENDPOINT : PREFLIGHT_ANNOTATED_ENDPOINT,
         buildFormData(file, params),
         { responseType: "blob" },
       );
@@ -107,8 +126,14 @@ export const printPreflightOperationConfig = defineCustomTool({
   endpoint: (params: PrintPreflightParameters) =>
     params.reportFormat === "json"
       ? PREFLIGHT_ENDPOINT
-      : PREFLIGHT_ANNOTATED_ENDPOINT,
-  endpoints: [PREFLIGHT_ENDPOINT, PREFLIGHT_ANNOTATED_ENDPOINT],
+      : params.reportFormat === "reportPdf"
+        ? PREFLIGHT_REPORT_ENDPOINT
+        : PREFLIGHT_ANNOTATED_ENDPOINT,
+  endpoints: [
+    PREFLIGHT_ENDPOINT,
+    PREFLIGHT_ANNOTATED_ENDPOINT,
+    PREFLIGHT_REPORT_ENDPOINT,
+  ],
   customProcessor: printPreflightProcessor,
   defaultParameters,
 });
@@ -131,6 +156,7 @@ export const usePrintPreflightOperation = (): PrintPreflightOperationHook => {
     Map<string, { file: StirlingFile; params: PrintPreflightParameters }>
   >(new Map());
   const [annotatedLoading, setAnnotatedLoading] = useState<string | null>(null);
+  const [reportLoading, setReportLoading] = useState<string | null>(null);
 
   const cleanupDownloadUrl = useCallback(() => {
     if (previousUrl.current) {
@@ -244,16 +270,21 @@ export const usePrintPreflightOperation = (): PrintPreflightOperationHook => {
     [cleanupDownloadUrl, t],
   );
 
-  const downloadAnnotated = useCallback(
-    async (fileId: string) => {
+  const downloadPdf = useCallback(
+    async (
+      fileId: string,
+      endpoint: ToolEndpoint,
+      fileSuffix: string,
+      setBusy: (id: string | null) => void,
+    ) => {
       const run = lastRun.current.get(fileId);
-      if (!run || annotatedLoading) {
+      if (!run || annotatedLoading || reportLoading) {
         return;
       }
-      setAnnotatedLoading(fileId);
+      setBusy(fileId);
       try {
         const response = await apiClient.post(
-          PREFLIGHT_ANNOTATED_ENDPOINT,
+          endpoint,
           buildFormData(run.file, run.params),
           { responseType: "blob" },
         );
@@ -263,18 +294,40 @@ export const usePrintPreflightOperation = (): PrintPreflightOperationHook => {
             : new Blob([response.data], { type: "application/pdf" });
         const base = run.file.name.replace(/\.pdf$/i, "");
         await downloadFile({
-          data: new File([blob], `${base}_preflight.pdf`, {
+          data: new File([blob], `${base}${fileSuffix}.pdf`, {
             type: "application/pdf",
           }),
-          filename: `${base}_preflight.pdf`,
+          filename: `${base}${fileSuffix}.pdf`,
         });
       } catch (error) {
         setErrorMessage(extractErrorMessage(error));
       } finally {
-        setAnnotatedLoading(null);
+        setBusy(null);
       }
     },
-    [annotatedLoading],
+    [annotatedLoading, reportLoading],
+  );
+
+  const downloadAnnotated = useCallback(
+    (fileId: string) =>
+      downloadPdf(
+        fileId,
+        PREFLIGHT_ANNOTATED_ENDPOINT,
+        "_preflight",
+        setAnnotatedLoading,
+      ),
+    [downloadPdf],
+  );
+
+  const downloadReport = useCallback(
+    (fileId: string) =>
+      downloadPdf(
+        fileId,
+        PREFLIGHT_REPORT_ENDPOINT,
+        "_preflight-report",
+        setReportLoading,
+      ),
+    [downloadPdf],
   );
 
   const cancelOperation = useCallback(() => {
@@ -313,13 +366,17 @@ export const usePrintPreflightOperation = (): PrintPreflightOperationHook => {
       undoOperation,
       results,
       downloadAnnotated,
+      downloadReport,
       annotatedLoading,
+      reportLoading,
     }),
     [
       annotatedLoading,
+      reportLoading,
       cancelOperation,
       clearError,
       downloadAnnotated,
+      downloadReport,
       downloadFilename,
       downloadUrl,
       errorMessage,

@@ -18,10 +18,12 @@ import org.apache.pdfbox.contentstream.PDFGraphicsStreamEngine;
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.documentinterchange.markedcontent.PDPropertyList;
 import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.pdmodel.font.PDType3Font;
 import org.apache.pdfbox.pdmodel.graphics.blend.BlendMode;
+import org.apache.pdfbox.pdmodel.graphics.color.PDColor;
 import org.apache.pdfbox.pdmodel.graphics.color.PDColorSpace;
 import org.apache.pdfbox.pdmodel.graphics.color.PDDeviceCMYK;
 import org.apache.pdfbox.pdmodel.graphics.color.PDDeviceGray;
@@ -80,6 +82,7 @@ final class PreflightGraphicsEngine extends PDFGraphicsStreamEngine {
         final boolean softMasked;
         final String colorSpaceLabel;
         final boolean technical;
+        final int bitsPerComponent;
 
         /** Image quad in page space: llx, lly, urx, ury — where the object lands on the page. */
         final float[] bounds;
@@ -89,12 +92,27 @@ final class PreflightGraphicsEngine extends PDFGraphicsStreamEngine {
                 boolean softMasked,
                 String label,
                 float[] bounds,
-                boolean technical) {
+                boolean technical,
+                int bitsPerComponent) {
             this.effectiveDpi = effectiveDpi;
             this.softMasked = softMasked;
             this.colorSpaceLabel = label;
             this.bounds = bounds;
             this.technical = technical;
+            this.bitsPerComponent = bitsPerComponent;
+        }
+    }
+
+    /** One glyph cell below {@link #TEXT_RECORD_MAX_PT}: size, paint and location. */
+    static final class TextUse {
+        final float fontSize;
+        final float[] bounds;
+        final PDColor color;
+
+        TextUse(float fontSize, float[] bounds, PDColor color) {
+            this.fontSize = fontSize;
+            this.bounds = bounds;
+            this.color = color;
         }
     }
 
@@ -117,14 +135,49 @@ final class PreflightGraphicsEngine extends PDFGraphicsStreamEngine {
         final float[] bounds;
         final boolean technical;
 
+        /** Total ink coverage of the paint color in percent — NaN when not measured. */
+        final float totalInk;
+
         PaintedArea(String label, float[] bounds, boolean technical) {
+            this(label, bounds, technical, Float.NaN);
+        }
+
+        PaintedArea(String label, float[] bounds, boolean technical, float totalInk) {
             this.label = label;
             this.bounds = bounds;
             this.technical = technical;
+            this.totalInk = totalInk;
         }
     }
 
+    /**
+     * Bounds of everything already painted on the page. Overprint findings only make sense when
+     * something sits underneath: a knockout black object over bare paper prints the same. White
+     * paint counts as no ink (it erases); technical and invisible paint never count.
+     */
+    private record Underlying(float[] bounds, boolean hasNonBlackInk) {}
+
     private static final int MAX_PAINT_AREAS = 400;
+
+    /** Text cells recorded for small/rich-black checks — larger sizes skip the per-glyph list. */
+    private static final float TEXT_RECORD_MAX_PT = 24f;
+
+    private static final int MAX_TEXT_USES = 400;
+    private static final int MAX_UNDERLYING = 2000;
+
+    /** Object-level TAC floor for recording: a stricter request threshold lowers it further. */
+    private static final float INK_RECORD_PERCENT = 250f;
+
+    /** Component sums below this are white; single-channel gray above it is white too. */
+    private static final float WHITE_EPSILON = 0.04f;
+
+    /** C/M/Y at or under this do not count as chromatic ink for overprint purposes. */
+    private static final float CHROMATIC_EPSILON = 0.02f;
+
+    private static final float BLACK_MIN_TINT = 0.5f;
+
+    private static final Set<String> BLACK_COLORANTS =
+            Set.of("black", "noir", "schwarz", "nero", "preto", "negro", "svart");
 
     /** Spot colorants that always mean marks or finishing, never ink on the artwork. */
     private static final Set<String> REGISTRATION_COLORANTS = Set.of("all", "registration");
@@ -199,6 +252,22 @@ final class PreflightGraphicsEngine extends PDFGraphicsStreamEngine {
     private boolean optionalContentUsed;
     private final Set<String> technicalSeparations = new LinkedHashSet<>();
 
+    private final List<PaintedArea> whiteOverprintAreas = new ArrayList<>();
+    private final List<PaintedArea> knockoutBlackAreas = new ArrayList<>();
+    private final List<PaintedArea> inkAreas = new ArrayList<>();
+    private final List<PaintedArea> registrationAreas = new ArrayList<>();
+    private final List<PaintedArea> outsidePageAreas = new ArrayList<>();
+    private final List<TextUse> textUses = new ArrayList<>();
+    private final List<Underlying> underlying = new ArrayList<>();
+    private float maxInkCoverage;
+    private float minFontSize = Float.NaN;
+    private int paintedOps;
+    private boolean invisibleTextUsed;
+    private boolean patternUsed;
+    private boolean shadingUsed;
+    private final PDRectangle cropBox;
+    private final float inkRecordFloor;
+
     /** Open marked-content contexts; null entries stand for non-OC sequences. */
     private final Deque<PDPropertyList> ocgStack = new LinkedList<>();
 
@@ -209,8 +278,14 @@ final class PreflightGraphicsEngine extends PDFGraphicsStreamEngine {
     private float pathMaxY;
     private boolean pathHasPoints;
 
-    PreflightGraphicsEngine(PDPage page) {
+    /**
+     * @param inkRecordFloor request's TAC threshold — the recording floor must sit at or under it
+     *     so objects just over the user limit are not filtered out before the check runs
+     */
+    PreflightGraphicsEngine(PDPage page, float inkRecordFloor) {
         super(page);
+        this.cropBox = page.getCropBox();
+        this.inkRecordFloor = Math.min(INK_RECORD_PERCENT, inkRecordFloor);
     }
 
     Map<String, FontUse> getFonts() {
@@ -253,6 +328,54 @@ final class PreflightGraphicsEngine extends PDFGraphicsStreamEngine {
         return technicalSeparations;
     }
 
+    List<PaintedArea> getWhiteOverprintAreas() {
+        return whiteOverprintAreas;
+    }
+
+    List<PaintedArea> getKnockoutBlackAreas() {
+        return knockoutBlackAreas;
+    }
+
+    List<PaintedArea> getInkAreas() {
+        return inkAreas;
+    }
+
+    List<PaintedArea> getRegistrationAreas() {
+        return registrationAreas;
+    }
+
+    List<PaintedArea> getOutsidePageAreas() {
+        return outsidePageAreas;
+    }
+
+    List<TextUse> getTextUses() {
+        return textUses;
+    }
+
+    float getMaxInkCoverage() {
+        return maxInkCoverage;
+    }
+
+    float getMinFontSize() {
+        return minFontSize;
+    }
+
+    int getPaintedOps() {
+        return paintedOps;
+    }
+
+    boolean isInvisibleTextUsed() {
+        return invisibleTextUsed;
+    }
+
+    boolean isPatternUsed() {
+        return patternUsed;
+    }
+
+    boolean isShadingUsed() {
+        return shadingUsed;
+    }
+
     @Override
     protected void showGlyph(Matrix textRenderingMatrix, PDFont font, int code, Vector displacement)
             throws IOException {
@@ -265,20 +388,53 @@ final class PreflightGraphicsEngine extends PDFGraphicsStreamEngine {
             if (use.bounds.size() < 8 && bounds != null) {
                 use.bounds.add(bounds);
             }
-            PDTextState ts = getGraphicsState().getTextState();
+            PDGraphicsState state = getGraphicsState();
+            PDTextState ts = state.getTextState();
             RenderingMode mode = ts != null ? ts.getRenderingMode() : null;
+            boolean stroked = mode != null && mode.isStroke();
+            boolean filled = mode == null || mode.isFill();
             PDColorSpace paintCs =
-                    mode != null && mode.isStroke()
-                            ? getGraphicsState().getStrokingColorSpace()
-                            : getGraphicsState().getNonStrokingColorSpace();
-            recordPainted(paintCs, bounds);
-            checkTransparency(bounds, isTechnicalPaint(paintCs));
+                    stroked && !filled
+                            ? state.getStrokingColorSpace()
+                            : state.getNonStrokingColorSpace();
+            if (filled || stroked) {
+                paintedOps++;
+                recordPainted(paintCs, bounds);
+                boolean technical = isTechnicalPaint(paintCs);
+                checkTransparency(bounds, technical);
+
+                float fontSize =
+                        (float)
+                                Math.min(
+                                        Math.abs(textRenderingMatrix.getScalingFactorX()),
+                                        Math.abs(textRenderingMatrix.getScalingFactorY()));
+                if (Float.isNaN(minFontSize) || fontSize < minFontSize) {
+                    minFontSize = fontSize;
+                }
+                PDColor color =
+                        stroked && !filled ? state.getStrokingColor() : state.getNonStrokingColor();
+                boolean overprint =
+                        stroked && !filled ? state.isOverprint() : state.isNonStrokingOverprint();
+                boolean overEarlier = hasUnderlyingNonBlackInk(bounds);
+                if (!technical) {
+                    checkWhiteOverprint(color, overprint, bounds, "text");
+                    checkKnockoutBlack(color, overprint, bounds, "text", overEarlier);
+                    recordInk(paintCs, color, bounds);
+                    if (fontSize < TEXT_RECORD_MAX_PT && textUses.size() < MAX_TEXT_USES) {
+                        textUses.add(new TextUse(fontSize, bounds, color));
+                    }
+                }
+                recordUnderlying(bounds, color, technical || isWhiteOverprint(color, overprint));
+            } else {
+                invisibleTextUsed = true;
+            }
         }
         super.showGlyph(textRenderingMatrix, font, code, displacement);
     }
 
     @Override
     public void drawImage(PDImage pdImage) throws IOException {
+        paintedOps++;
         PDGraphicsState state = getGraphicsState();
         Matrix ctm = state.getCurrentTransformationMatrix();
         double dpi = Double.NaN;
@@ -295,10 +451,11 @@ final class PreflightGraphicsEngine extends PDFGraphicsStreamEngine {
         boolean smasked = pdImage instanceof PDImageXObject xo && xo.getSoftMask() != null;
         boolean technical = isTechnicalContext();
         String label = null;
+        PDColorSpace imageCs = null;
         try {
-            PDColorSpace cs = pdImage.getColorSpace();
-            technical = technical || isTechnicalPaint(cs);
-            label = recordPainted(cs, bounds);
+            imageCs = pdImage.getColorSpace();
+            technical = technical || isTechnicalPaint(imageCs);
+            label = recordPainted(imageCs, bounds);
             if (pdImage.isStencil()) {
                 technical = technical || isTechnicalPaint(state.getNonStrokingColorSpace());
                 recordPainted(state.getNonStrokingColorSpace(), bounds);
@@ -312,43 +469,101 @@ final class PreflightGraphicsEngine extends PDFGraphicsStreamEngine {
             }
             recordAlpha(bounds, "soft-masked image", technical);
         }
-        images.add(new ImageUse(dpi, smasked, label, bounds, technical));
+        int bpc = pdImage.getBitsPerComponent();
+        images.add(new ImageUse(dpi, smasked, label, bounds, technical, bpc));
         checkTransparency(bounds, technical);
+        // An image is opaque paint: it covers whatever it overlaps. Gray-only content carries no
+        // chromatic ink for knockout-black purposes; everything else counts as coloured ink.
+        recordUnderlyingOpaque(bounds, imageCs, technical || smasked);
     }
 
     @Override
     public void strokePath() throws IOException {
+        paintedOps++;
         float[] bounds = takePathBounds();
-        PDColorSpace cs = getGraphicsState().getStrokingColorSpace();
+        PDGraphicsState state = getGraphicsState();
+        PDColorSpace cs = state.getStrokingColorSpace();
         boolean technical = isTechnicalPaint(cs);
         recordPainted(cs, bounds);
         recordStrokeWidth(bounds, technical);
         checkTransparency(bounds, technical);
+        if (!technical) {
+            PDColor color = state.getStrokingColor();
+            boolean overprint = state.isOverprint();
+            boolean overEarlier = hasUnderlyingNonBlackInk(bounds);
+            checkWhiteOverprint(color, overprint, bounds, "stroke");
+            checkKnockoutBlack(color, overprint, bounds, "stroke", overEarlier);
+            recordInk(cs, color, bounds);
+            recordUnderlying(bounds, color, isWhiteOverprint(color, overprint));
+        }
     }
 
     @Override
     public void fillPath(int windingRule) throws IOException {
+        paintedOps++;
         float[] bounds = takePathBounds();
-        PDColorSpace cs = getGraphicsState().getNonStrokingColorSpace();
+        PDGraphicsState state = getGraphicsState();
+        PDColorSpace cs = state.getNonStrokingColorSpace();
+        boolean technical = isTechnicalPaint(cs);
         recordPainted(cs, bounds);
-        checkTransparency(bounds, isTechnicalPaint(cs));
+        checkTransparency(bounds, technical);
+        if (!technical) {
+            PDColor color = state.getNonStrokingColor();
+            boolean overprint = state.isNonStrokingOverprint();
+            boolean overEarlier = hasUnderlyingNonBlackInk(bounds);
+            checkWhiteOverprint(color, overprint, bounds, "fill");
+            checkKnockoutBlack(color, overprint, bounds, "fill", overEarlier);
+            recordInk(cs, color, bounds);
+            recordUnderlying(bounds, color, isWhiteOverprint(color, overprint));
+        }
     }
 
     @Override
     public void fillAndStrokePath(int windingRule) throws IOException {
+        paintedOps++;
         float[] bounds = takePathBounds();
-        PDColorSpace fillCs = getGraphicsState().getNonStrokingColorSpace();
-        PDColorSpace strokeCs = getGraphicsState().getStrokingColorSpace();
+        PDGraphicsState state = getGraphicsState();
+        PDColorSpace fillCs = state.getNonStrokingColorSpace();
+        PDColorSpace strokeCs = state.getStrokingColorSpace();
         boolean fillTechnical = isTechnicalPaint(fillCs);
         boolean strokeTechnical = isTechnicalPaint(strokeCs);
         recordPainted(fillCs, bounds);
         recordPainted(strokeCs, bounds);
         recordStrokeWidth(bounds, strokeTechnical);
         checkTransparency(bounds, fillTechnical && strokeTechnical);
+        if (!fillTechnical) {
+            PDColor color = state.getNonStrokingColor();
+            boolean overprint = state.isNonStrokingOverprint();
+            boolean overEarlier = hasUnderlyingNonBlackInk(bounds);
+            checkWhiteOverprint(color, overprint, bounds, "fill");
+            checkKnockoutBlack(color, overprint, bounds, "fill", overEarlier);
+            recordInk(fillCs, color, bounds);
+        }
+        if (!strokeTechnical) {
+            PDColor color = state.getStrokingColor();
+            boolean overprint = state.isOverprint();
+            boolean overEarlier = hasUnderlyingNonBlackInk(bounds);
+            checkWhiteOverprint(color, overprint, bounds, "stroke");
+            checkKnockoutBlack(color, overprint, bounds, "stroke", overEarlier);
+            recordInk(strokeCs, color, bounds);
+        }
+        if (!fillTechnical) {
+            recordUnderlying(
+                    bounds,
+                    state.getNonStrokingColor(),
+                    isWhiteOverprint(state.getNonStrokingColor(), state.isNonStrokingOverprint()));
+        } else if (!strokeTechnical) {
+            recordUnderlying(
+                    bounds,
+                    state.getStrokingColor(),
+                    isWhiteOverprint(state.getStrokingColor(), state.isOverprint()));
+        }
     }
 
     @Override
     public void shadingFill(COSName shadingName) throws IOException {
+        paintedOps++;
+        shadingUsed = true;
         boolean technical = isTechnicalContext();
         try {
             PDShading shading = getResources().getShading(shadingName);
@@ -641,10 +856,272 @@ final class PreflightGraphicsEngine extends PDFGraphicsStreamEngine {
                 }
             }
         }
+        if (cs instanceof PDPattern) {
+            patternUsed = true;
+        }
         if (bounds != null && paintAreas.size() < MAX_PAINT_AREAS) {
             paintAreas.add(new PaintedArea(label, bounds, technical));
         }
+        if (cs instanceof PDSeparation sep
+                && isRegistrationColorant(sep.getColorantName())
+                && bounds != null
+                && registrationAreas.size() < MAX_PAINT_AREAS) {
+            registrationAreas.add(new PaintedArea(label, bounds, technical));
+        }
+        if (!technical
+                && bounds != null
+                && outsideCrop(bounds)
+                && outsidePageAreas.size() < MAX_PAINT_AREAS) {
+            outsidePageAreas.add(new PaintedArea(label, bounds, false));
+        }
         return label;
+    }
+
+    private static boolean isRegistrationColorant(String name) {
+        return name != null
+                && REGISTRATION_COLORANTS.contains(name.trim().toLowerCase(Locale.ROOT));
+    }
+
+    private boolean outsideCrop(float[] b) {
+        return cropBox != null
+                && (b[2] < cropBox.getLowerLeftX()
+                        || b[0] > cropBox.getUpperRightX()
+                        || b[3] < cropBox.getLowerLeftY()
+                        || b[1] > cropBox.getUpperRightY());
+    }
+
+    private static boolean overlaps(float[] a, float[] b) {
+        return a[0] < b[2] && a[2] > b[0] && a[1] < b[3] && a[3] > b[1];
+    }
+
+    private boolean hasUnderlyingNonBlackInk(float[] bounds) {
+        if (bounds == null) {
+            return false;
+        }
+        for (Underlying u : underlying) {
+            if (u.hasNonBlackInk() && overlaps(u.bounds(), bounds)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Everything painted leaves ink or erases what was under it — either way later objects sit on
+     * it. Paint that deposits nothing (technical paint, white overprint, invisible text) is not a
+     * backdrop a knockout object could reveal.
+     */
+    private void recordUnderlying(float[] bounds, PDColor color, boolean invisibleEffective) {
+        if (bounds == null || invisibleEffective || underlying.size() >= MAX_UNDERLYING) {
+            return;
+        }
+        underlying.add(new Underlying(bounds, hasNonBlackInk(color)));
+    }
+
+    private void recordUnderlyingOpaque(
+            float[] bounds, PDColorSpace cs, boolean invisibleEffective) {
+        if (bounds == null || invisibleEffective || underlying.size() >= MAX_UNDERLYING) {
+            return;
+        }
+        underlying.add(new Underlying(bounds, cs != null && !(cs instanceof PDDeviceGray)));
+    }
+
+    private static boolean isWhiteOverprint(PDColor color, boolean overprint) {
+        return overprint && isWhite(color);
+    }
+
+    private void checkWhiteOverprint(
+            PDColor color, boolean overprint, float[] bounds, String kind) {
+        if (bounds != null
+                && isWhiteOverprint(color, overprint)
+                && whiteOverprintAreas.size() < MAX_PAINT_AREAS) {
+            whiteOverprintAreas.add(new PaintedArea(kind + " set to overprint", bounds, false));
+        }
+    }
+
+    private void checkKnockoutBlack(
+            PDColor color,
+            boolean overprint,
+            float[] bounds,
+            String kind,
+            boolean overEarlierPaint) {
+        if (bounds == null
+                || overprint
+                || !overEarlierPaint
+                || !isBlackOnly(color)
+                || knockoutBlackAreas.size() >= MAX_PAINT_AREAS) {
+            return;
+        }
+        String detail = kind;
+        if (color.getColorSpace() instanceof PDDeviceGray) {
+            detail += ", DeviceGray — overprint flag could not help anyway";
+        }
+        knockoutBlackAreas.add(new PaintedArea(detail, bounds, false));
+    }
+
+    private void recordInk(PDColorSpace cs, PDColor color, float[] bounds) {
+        float tac = totalInk(color);
+        if (Float.isNaN(tac)) {
+            return;
+        }
+        if (tac > maxInkCoverage) {
+            maxInkCoverage = tac;
+        }
+        if (bounds != null && tac > inkRecordFloor && inkAreas.size() < MAX_PAINT_AREAS) {
+            inkAreas.add(
+                    new PaintedArea(
+                            labelSafe(cs) + " · " + Math.round(tac) + "%", bounds, false, tac));
+        }
+    }
+
+    private static String labelSafe(PDColorSpace cs) {
+        try {
+            return cs != null ? label(cs) : "paint";
+        } catch (IOException e) {
+            return "paint";
+        }
+    }
+
+    private static boolean isBlackColorant(String name) {
+        return name != null && BLACK_COLORANTS.contains(name.trim().toLowerCase(Locale.ROOT));
+    }
+
+    /** Every channel at ~zero tint — DeviceGray inverted: 1.0 is white there. */
+    private static boolean isWhite(PDColor color) {
+        if (color == null) {
+            return false;
+        }
+        PDColorSpace cs = color.getColorSpace();
+        float[] c = color.getComponents();
+        if (cs instanceof PDDeviceGray) {
+            return c[0] >= 1f - WHITE_EPSILON;
+        }
+        if (cs instanceof PDSeparation) {
+            return c[0] <= WHITE_EPSILON;
+        }
+        if (cs instanceof PDDeviceCMYK || cs instanceof PDDeviceN) {
+            for (float v : c) {
+                if (v > WHITE_EPSILON) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        int[] rgb = rgbComponents(color);
+        return rgb != null && rgb[0] > 245 && rgb[1] > 245 && rgb[2] > 245;
+    }
+
+    /**
+     * Dark paint carried by the K plate alone — the case where knockout leaves a white sliver if
+     * registration slips. RGB-family "black" is multi-plate and goes through rich-black logic
+     * instead.
+     */
+    private static boolean isBlackOnly(PDColor color) {
+        if (color == null) {
+            return false;
+        }
+        PDColorSpace cs = color.getColorSpace();
+        float[] c = color.getComponents();
+        if (cs instanceof PDDeviceCMYK) {
+            return c[0] <= CHROMATIC_EPSILON
+                    && c[1] <= CHROMATIC_EPSILON
+                    && c[2] <= CHROMATIC_EPSILON
+                    && c[3] > BLACK_MIN_TINT;
+        }
+        if (cs instanceof PDDeviceGray) {
+            return c[0] < 1f - BLACK_MIN_TINT;
+        }
+        if (cs instanceof PDSeparation sep) {
+            return isBlackColorant(sep.getColorantName()) && c[0] > BLACK_MIN_TINT;
+        }
+        return false;
+    }
+
+    /**
+     * Whether the paint deposits any ink a black object could knock out: chromatic CMY, a non-black
+     * separation, or RGB-family paint that is neither black-ish nor white.
+     */
+    private static boolean hasNonBlackInk(PDColor color) {
+        if (color == null) {
+            return false;
+        }
+        PDColorSpace cs = color.getColorSpace();
+        float[] c = color.getComponents();
+        if (cs instanceof PDDeviceCMYK) {
+            return c[0] > CHROMATIC_EPSILON || c[1] > CHROMATIC_EPSILON || c[2] > CHROMATIC_EPSILON;
+        }
+        if (cs instanceof PDDeviceGray) {
+            return false;
+        }
+        if (cs instanceof PDSeparation sep) {
+            return !isBlackColorant(sep.getColorantName());
+        }
+        if (cs instanceof PDDeviceN devN) {
+            List<String> names = devN.getColorantNames();
+            for (int i = 0; i < names.size() && i < c.length; i++) {
+                if (c[i] > CHROMATIC_EPSILON && !isBlackColorant(names.get(i))) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        int[] rgb = rgbComponents(color);
+        if (rgb == null) {
+            return false;
+        }
+        if (rgb[0] < 26 && rgb[1] < 26 && rgb[2] < 26) {
+            return false;
+        }
+        return rgb[0] < 229 || rgb[1] < 229 || rgb[2] < 229;
+    }
+
+    private static int[] rgbComponents(PDColor color) {
+        try {
+            int rgb = color.toRGB();
+            return new int[] {(rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF};
+        } catch (IOException | IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    /**
+     * Object-level total area coverage of a paint colour, percent. Direct colorant tints are summed
+     * (CMYK, DeviceN), a separation contributes its tint on its own plate, and RGB-family colours
+     * go through a naive RGB→CMYK split — what a RIP would lay down, approximately. This is
+     * per-object, not the per-pixel effective coverage a render pass would measure.
+     */
+    private static float totalInk(PDColor color) {
+        if (color == null) {
+            return Float.NaN;
+        }
+        PDColorSpace cs = color.getColorSpace();
+        float[] c = color.getComponents();
+        if (cs instanceof PDDeviceCMYK || cs instanceof PDDeviceN) {
+            float sum = 0;
+            for (float v : c) {
+                sum += v;
+            }
+            return sum * 100f;
+        }
+        if (cs instanceof PDSeparation) {
+            return c[0] * 100f;
+        }
+        if (cs instanceof PDDeviceGray) {
+            return (1f - c[0]) * 100f;
+        }
+        int[] rgb = rgbComponents(color);
+        if (rgb == null) {
+            return Float.NaN;
+        }
+        float r = rgb[0] / 255f;
+        float g = rgb[1] / 255f;
+        float b = rgb[2] / 255f;
+        float k = 1f - Math.max(r, Math.max(g, b));
+        if (k >= 0.999f) {
+            return 100f;
+        }
+        float cmy = (1f - r - k) / (1f - k) + (1f - g - k) / (1f - k) + (1f - b - k) / (1f - k);
+        return (cmy + k) * 100f;
     }
 
     private static String label(PDColorSpace cs) throws IOException {

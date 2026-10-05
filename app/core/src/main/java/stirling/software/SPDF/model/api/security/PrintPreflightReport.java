@@ -136,10 +136,32 @@ public class PrintPreflightReport {
         private List<String> technicalSeparations = new ArrayList<>();
         private int imageCount;
         private int lowResImageCount;
+        private int oversampledImageCount;
+        private double minEffectiveDpi = Double.NaN;
+        private double maxEffectiveDpi = Double.NaN;
+        private float minFontSizeSeen = Float.NaN;
+        private float maxInkCoverageSeen;
         private boolean transparencyUsed;
+        private boolean patternUsed;
+        private boolean shadingUsed;
         private boolean hasTrimBox;
         private boolean hasBleedBox;
+        private boolean hasCropBox;
+        private boolean hasArtBox;
         private List<PageSize> pageSizes = new ArrayList<>();
+        private OutputIntentFact outputIntent;
+        private String trapped;
+        private List<Integer> nonStandardUserUnitPages = new ArrayList<>();
+        private boolean hasAcroForm;
+        private int formFieldCount;
+        private boolean hasXfa;
+        private int signatureCount;
+        private int embeddedFileCount;
+        private boolean hasJavascript;
+        private List<String> layersDisabledForPrint = new ArrayList<>();
+        private List<Integer> emptyPages = new ArrayList<>();
+        private List<Integer> invisibleTextPages = new ArrayList<>();
+        private List<Integer> registrationPaintPages = new ArrayList<>();
     }
 
     @Data
@@ -156,6 +178,23 @@ public class PrintPreflightReport {
             this.subType = subType;
             this.embedded = embedded;
             this.type3 = type3;
+        }
+    }
+
+    @Data
+    @NoArgsConstructor
+    public static class OutputIntentFact {
+        private String name;
+        private String registry;
+        private String info;
+        private String conditionIdentifier;
+
+        public OutputIntentFact(
+                String name, String registry, String info, String conditionIdentifier) {
+            this.name = name;
+            this.registry = registry;
+            this.info = info;
+            this.conditionIdentifier = conditionIdentifier;
         }
     }
 

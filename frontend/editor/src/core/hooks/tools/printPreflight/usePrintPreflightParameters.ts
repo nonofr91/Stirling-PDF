@@ -10,13 +10,24 @@ export interface PrintPreflightParameters extends BaseParameters {
   minImageDpi?: number;
   hairlineThresholdPt?: number;
   checkBleedCoverage: boolean;
+  minFontSizePt?: number;
+  safetyMarginMm?: number;
+  maxInkCoveragePercent?: number;
+  minImage1BitDpi?: number;
+  maxImageDpi?: number;
+  /** Maximum real spot separations before a warning; 0 disables the limit. */
+  maxSpotCount?: number;
+  /** Prepend the summary report pages to the annotated PDF output. */
+  includeSummaryPage: boolean;
+  /** Finding codes to skip entirely (advanced troubleshooting). */
+  disabledChecks?: string[];
   /**
    * Automation output: "annotatedPdf" returns a PDF copy with located issues
-   * framed (keeps the pipeline chain alive), "json" returns the machine-readable
-   * report and ends the chain. Interactive mode ignores it — the tool page
-   * exposes both outputs itself.
+   * framed (keeps the pipeline chain alive), "reportPdf" returns the
+   * standalone report document, "json" returns the machine-readable report.
+   * Interactive mode ignores it — the tool page exposes all outputs itself.
    */
-  reportFormat: "annotatedPdf" | "json";
+  reportFormat: "annotatedPdf" | "reportPdf" | "json";
 }
 
 export const defaultParameters: PrintPreflightParameters = {
@@ -24,6 +35,14 @@ export const defaultParameters: PrintPreflightParameters = {
   minImageDpi: undefined,
   hairlineThresholdPt: undefined,
   checkBleedCoverage: true,
+  minFontSizePt: undefined,
+  safetyMarginMm: undefined,
+  maxInkCoveragePercent: undefined,
+  minImage1BitDpi: undefined,
+  maxImageDpi: undefined,
+  maxSpotCount: undefined,
+  includeSummaryPage: true,
+  disabledChecks: undefined,
   reportFormat: "annotatedPdf",
 };
 
@@ -53,8 +72,29 @@ export function validatePrintPreflightParameters(
   ) {
     return false;
   }
+  const nonNegative: Array<number | undefined> = [
+    params.minFontSizePt,
+    params.safetyMarginMm,
+    params.maxInkCoveragePercent,
+    params.maxSpotCount,
+  ];
+  if (
+    nonNegative.some((v) => v !== undefined && (!Number.isFinite(v) || v < 0))
+  ) {
+    return false;
+  }
+  const atLeastOne: Array<number | undefined> = [
+    params.minImage1BitDpi,
+    params.maxImageDpi,
+  ];
+  if (
+    atLeastOne.some((v) => v !== undefined && (!Number.isFinite(v) || v < 1))
+  ) {
+    return false;
+  }
   if (
     params.reportFormat !== "annotatedPdf" &&
+    params.reportFormat !== "reportPdf" &&
     params.reportFormat !== "json"
   ) {
     return false;

@@ -305,6 +305,7 @@ class PrintPreflightControllerTest {
         PDAnnotationText note = new PDAnnotationText();
         note.setRectangle(new PDRectangle(50, 700, 20, 20));
         note.setContents("fix me");
+        note.setPrinted(true);
         page.setAnnotations(java.util.List.of(note));
         byte[] pdf = toBytes(doc);
 
@@ -488,7 +489,9 @@ class PrintPreflightControllerTest {
         }
         byte[] pdf = toBytes(doc);
 
-        ResponseEntity<Resource> response = controller.printPreflightAnnotated(request(pdf));
+        PrintPreflightRequest req = request(pdf);
+        req.setIncludeSummaryPage(false);
+        ResponseEntity<Resource> response = controller.printPreflightAnnotated(req);
         assertEquals(200, response.getStatusCode().value());
         Resource body = response.getBody();
         assertNotNull(body);
@@ -507,7 +510,9 @@ class PrintPreflightControllerTest {
         doc.addPage(new PDPage(PDRectangle.A4));
         byte[] pdf = toBytes(doc);
 
-        ResponseEntity<Resource> response = controller.printPreflightAnnotated(request(pdf));
+        PrintPreflightRequest req = request(pdf);
+        req.setIncludeSummaryPage(false);
+        ResponseEntity<Resource> response = controller.printPreflightAnnotated(req);
         Resource body = response.getBody();
         assertNotNull(body);
         java.io.File tmp = java.io.File.createTempFile("annotated-notes", ".pdf");
@@ -812,5 +817,560 @@ class PrintPreflightControllerTest {
         assertFalse(
                 hasFinding(report, "HAIRLINE"),
                 "content under an OCMD of print-off layers drives machines, not the sheet");
+    }
+
+    private static byte[] toBytesAndLoad(ResponseEntity<Resource> response) throws IOException {
+        Resource body = response.getBody();
+        assertNotNull(body);
+        java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+        body.getInputStream().transferTo(baos);
+        return baos.toByteArray();
+    }
+
+    private static String pageText(PDDocument doc, int pageIndex) throws IOException {
+        org.apache.pdfbox.text.PDFTextStripper stripper =
+                new org.apache.pdfbox.text.PDFTextStripper();
+        stripper.setStartPage(pageIndex + 1);
+        stripper.setEndPage(pageIndex + 1);
+        return stripper.getText(doc);
+    }
+
+    @Test
+    void testAnnotatedCopyStartsWithSummaryPage() throws Exception {
+        byte[] pdf = redBleedPdf();
+        ResponseEntity<Resource> response = controller.printPreflightAnnotated(request(pdf));
+        try (PDDocument result = Loader.loadPDF(toBytesAndLoad(response))) {
+            assertTrue(
+                    result.getNumberOfPages() > 1, "report pages are prepended to the source page");
+            String text = pageText(result, 0);
+            assertTrue(text.contains("PRINT PREFLIGHT REPORT"), text);
+            assertTrue(text.contains("test.pdf"), "file name belongs on the summary");
+            assertTrue(text.contains("READY FOR PRINT") || text.contains("WARNING"), text);
+            // The source is a single page: one report page in front, nothing duplicated behind.
+            String last = pageText(result, result.getNumberOfPages() - 1);
+            assertFalse(
+                    last.contains("PRINT PREFLIGHT REPORT"),
+                    "report pages must be moved, not copied, to the front");
+        }
+    }
+
+    @Test
+    void testStandaloneReportDocument() throws Exception {
+        byte[] pdf = redBleedPdf();
+        ResponseEntity<Resource> response = controller.printPreflightReport(request(pdf));
+        assertEquals(200, response.getStatusCode().value());
+        try (PDDocument result = Loader.loadPDF(toBytesAndLoad(response))) {
+            String text = pageText(result, 0);
+            assertTrue(text.contains("PRINT PREFLIGHT REPORT"), text);
+            assertTrue(text.contains("Fonts"), "fact sections belong on the report");
+            assertTrue(text.contains("Findings"), text);
+        }
+    }
+
+    @Test
+    void testWhiteOverprintFlagged() throws Exception {
+        PDDocument doc = new PDDocument();
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
+        try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+            cs.setNonStrokingColor(0.2f, 0.4f, 0.8f);
+            cs.addRect(50, 50, 200, 200);
+            cs.fill();
+            PDExtendedGraphicsState gs = new PDExtendedGraphicsState();
+            gs.setNonStrokingOverprintControl(true);
+            cs.setGraphicsStateParameters(gs);
+            cs.setNonStrokingColor(1f, 1f, 1f);
+            cs.addRect(60, 60, 50, 50);
+            cs.fill();
+        }
+        byte[] pdf = toBytes(doc);
+
+        PrintPreflightReport report = controller.printPreflight(request(pdf)).getBody();
+        assertNotNull(report);
+        assertTrue(
+                hasFinding(report, "OVERPRINT_WHITE"),
+                "white overprint prints nothing — a knockout trap");
+        assertEquals(Severity.ERROR, finding(report, "OVERPRINT_WHITE").getSeverity());
+    }
+
+    @Test
+    void testKnockoutBlackTextOverColour() throws Exception {
+        PDDocument doc = new PDDocument();
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
+        try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+            cs.setNonStrokingColor(0f, 0.6f, 0.8f);
+            cs.addRect(50, 50, 300, 200);
+            cs.fill();
+            cs.setNonStrokingColor(0f, 0f, 0f, 1f);
+            cs.beginText();
+            cs.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA), 12);
+            cs.newLineAtOffset(60, 150);
+            cs.showText("BLACK TEXT");
+            cs.endText();
+        }
+        byte[] pdf = toBytes(doc);
+
+        PrintPreflightReport report = controller.printPreflight(request(pdf)).getBody();
+        assertNotNull(report);
+        assertTrue(
+                hasFinding(report, "OVERPRINT_BLACK"),
+                "black text knocking out colour needs overprint");
+    }
+
+    @Test
+    void testBlackTextOnBarePaperIsNotKnockoutRisk() throws Exception {
+        PDDocument doc = new PDDocument();
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
+        try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+            cs.setNonStrokingColor(0f, 0f, 0f, 1f);
+            cs.beginText();
+            cs.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA), 12);
+            cs.newLineAtOffset(60, 150);
+            cs.showText("BLACK TEXT");
+            cs.endText();
+        }
+        byte[] pdf = toBytes(doc);
+
+        PrintPreflightReport report = controller.printPreflight(request(pdf)).getBody();
+        assertNotNull(report);
+        assertFalse(
+                hasFinding(report, "OVERPRINT_BLACK"),
+                "nothing underneath — knockout erases only blank paper");
+    }
+
+    @Test
+    void testOverprintBlackTextAccepted() throws Exception {
+        PDDocument doc = new PDDocument();
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
+        try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+            cs.setNonStrokingColor(0f, 0.6f, 0.8f);
+            cs.addRect(50, 50, 300, 200);
+            cs.fill();
+            PDExtendedGraphicsState gs = new PDExtendedGraphicsState();
+            gs.setNonStrokingOverprintControl(true);
+            cs.setGraphicsStateParameters(gs);
+            cs.setNonStrokingColor(0f, 0f, 0f, 1f);
+            cs.beginText();
+            cs.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA), 12);
+            cs.newLineAtOffset(60, 150);
+            cs.showText("BLACK TEXT");
+            cs.endText();
+        }
+        byte[] pdf = toBytes(doc);
+
+        PrintPreflightReport report = controller.printPreflight(request(pdf)).getBody();
+        assertNotNull(report);
+        assertFalse(
+                hasFinding(report, "OVERPRINT_BLACK"),
+                "overprinting black text is the right setup");
+    }
+
+    @Test
+    void testRichBlackTextFlagged() throws Exception {
+        PDDocument doc = new PDDocument();
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
+        try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+            cs.setNonStrokingColor(0.4f, 0.3f, 0.2f, 1f);
+            cs.beginText();
+            cs.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA), 9);
+            cs.newLineAtOffset(60, 150);
+            cs.showText("RICH BLACK");
+            cs.endText();
+        }
+        byte[] pdf = toBytes(doc);
+
+        PrintPreflightReport report = controller.printPreflight(request(pdf)).getBody();
+        assertNotNull(report);
+        assertTrue(
+                hasFinding(report, "TEXT_RICH_BLACK"), "4C small text blurs at registration drift");
+    }
+
+    @Test
+    void testSmallTextFlagged() throws Exception {
+        PDDocument doc = new PDDocument();
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
+        try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+            cs.beginText();
+            cs.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA), 3);
+            cs.newLineAtOffset(60, 150);
+            cs.showText("tiny");
+            cs.endText();
+        }
+        byte[] pdf = toBytes(doc);
+
+        PrintPreflightReport report = controller.printPreflight(request(pdf)).getBody();
+        assertNotNull(report);
+        assertTrue(hasFinding(report, "TEXT_SMALL"));
+        assertEquals(3f, report.getFacts().getMinFontSizeSeen(), 0.5f);
+    }
+
+    @Test
+    void testSafetyMarginNearTrimEdge() throws Exception {
+        PDDocument doc = new PDDocument();
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
+        page.setTrimBox(
+                new PDRectangle(
+                        10 * MM,
+                        10 * MM,
+                        page.getMediaBox().getWidth() - 20 * MM,
+                        page.getMediaBox().getHeight() - 20 * MM));
+        try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+            // 1 mm inside the trim on the left, well under the 3 mm default margin.
+            cs.setNonStrokingColor(0f, 0f, 0f, 1f);
+            cs.addRect(11 * MM, 100, 5, 5);
+            cs.fill();
+        }
+        byte[] pdf = toBytes(doc);
+
+        PrintPreflightReport report = controller.printPreflight(request(pdf)).getBody();
+        assertNotNull(report);
+        assertTrue(
+                hasFinding(report, "SAFETY_MARGIN"),
+                "content 1 mm from the trim edge risks the blade");
+    }
+
+    @Test
+    void testContentWellInsideTrimIsSafe() throws Exception {
+        PDDocument doc = new PDDocument();
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
+        page.setTrimBox(
+                new PDRectangle(
+                        10 * MM,
+                        10 * MM,
+                        page.getMediaBox().getWidth() - 20 * MM,
+                        page.getMediaBox().getHeight() - 20 * MM));
+        try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+            cs.setNonStrokingColor(0f, 0f, 0f, 1f);
+            cs.addRect(
+                    page.getMediaBox().getWidth() / 2, page.getMediaBox().getHeight() / 2, 20, 20);
+            cs.fill();
+        }
+        byte[] pdf = toBytes(doc);
+
+        PrintPreflightReport report = controller.printPreflight(request(pdf)).getBody();
+        assertNotNull(report);
+        assertFalse(hasFinding(report, "SAFETY_MARGIN"));
+    }
+
+    @Test
+    void testEmptyPage() throws Exception {
+        PDDocument doc = new PDDocument();
+        doc.addPage(new PDPage(PDRectangle.A4));
+        PDPage painted = new PDPage(PDRectangle.A4);
+        doc.addPage(painted);
+        try (PDPageContentStream cs = new PDPageContentStream(doc, painted)) {
+            cs.setNonStrokingColor(0f, 0f, 0f, 1f);
+            cs.addRect(50, 50, 20, 20);
+            cs.fill();
+        }
+        byte[] pdf = toBytes(doc);
+
+        PrintPreflightReport report = controller.printPreflight(request(pdf)).getBody();
+        assertNotNull(report);
+        assertTrue(hasFinding(report, "EMPTY_PAGE"));
+        assertTrue(report.getFacts().getEmptyPages().contains(1));
+    }
+
+    @Test
+    void testInkCoverageOverLimit() throws Exception {
+        PDDocument doc = new PDDocument();
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
+        try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+            cs.setNonStrokingColor(1f, 1f, 1f, 1f);
+            cs.addRect(50, 50, 200, 200);
+            cs.fill();
+        }
+        byte[] pdf = toBytes(doc);
+
+        PrintPreflightReport report = controller.printPreflight(request(pdf)).getBody();
+        assertNotNull(report);
+        assertTrue(hasFinding(report, "INK_COVERAGE_HIGH"), "400% TAC drowns the sheet");
+        assertEquals(400f, report.getFacts().getMaxInkCoverageSeen(), 1f);
+    }
+
+    @Test
+    void testInkCoverageUnderLimit() throws Exception {
+        PDDocument doc = new PDDocument();
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
+        try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+            cs.setNonStrokingColor(0.3f, 0.2f, 0.1f, 0.9f);
+            cs.addRect(50, 50, 200, 200);
+            cs.fill();
+        }
+        byte[] pdf = toBytes(doc);
+
+        PrintPreflightReport report = controller.printPreflight(request(pdf)).getBody();
+        assertNotNull(report);
+        assertFalse(hasFinding(report, "INK_COVERAGE_HIGH"));
+    }
+
+    @Test
+    void testSpotAliasFlagged() throws Exception {
+        PDDocument doc = new PDDocument();
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
+        try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+            for (String colorant : new String[] {"PANTONE 485 C", "pms 485cv"}) {
+                org.apache.pdfbox.pdmodel.graphics.color.PDSeparation sep =
+                        new org.apache.pdfbox.pdmodel.graphics.color.PDSeparation();
+                sep.setColorantName(colorant);
+                sep.setAlternateColorSpace(
+                        org.apache.pdfbox.pdmodel.graphics.color.PDDeviceCMYK.INSTANCE);
+                org.apache.pdfbox.cos.COSDictionary fn = new org.apache.pdfbox.cos.COSDictionary();
+                fn.setInt(org.apache.pdfbox.cos.COSName.FUNCTION_TYPE, 2);
+                org.apache.pdfbox.cos.COSArray c0 = new org.apache.pdfbox.cos.COSArray();
+                org.apache.pdfbox.cos.COSArray c1 = new org.apache.pdfbox.cos.COSArray();
+                for (int i = 0; i < 4; i++) {
+                    c0.add(org.apache.pdfbox.cos.COSInteger.ZERO);
+                    c1.add(org.apache.pdfbox.cos.COSInteger.ZERO);
+                }
+                c1.set(3, org.apache.pdfbox.cos.COSInteger.ONE);
+                fn.setItem(org.apache.pdfbox.cos.COSName.C0, c0);
+                fn.setItem(org.apache.pdfbox.cos.COSName.C1, c1);
+                fn.setFloat(org.apache.pdfbox.cos.COSName.N, 1f);
+                sep.setTintTransform(
+                        new org.apache.pdfbox.pdmodel.common.function.PDFunctionType2(fn));
+                cs.setNonStrokingColor(
+                        new org.apache.pdfbox.pdmodel.graphics.color.PDColor(
+                                new float[] {1f}, sep));
+                cs.addRect(50, 50, 20, 20);
+                cs.fill();
+            }
+        }
+        byte[] pdf = toBytes(doc);
+
+        PrintPreflightReport report = controller.printPreflight(request(pdf)).getBody();
+        assertNotNull(report);
+        assertTrue(
+                hasFinding(report, "SPOT_ALIAS"),
+                "same ink, two names — two plates where one would do");
+    }
+
+    @Test
+    void testOutputIntentMissing() throws Exception {
+        PrintPreflightReport report = controller.printPreflight(request(redBleedPdf())).getBody();
+        assertNotNull(report);
+        assertTrue(hasFinding(report, "OUTPUT_INTENT_MISSING"));
+        assertNull(report.getFacts().getOutputIntent());
+    }
+
+    @Test
+    void testEmbeddedFilesFlagged() throws Exception {
+        PDDocument doc = new PDDocument();
+        doc.addPage(new PDPage(PDRectangle.A4));
+        org.apache.pdfbox.pdmodel.PDDocumentNameDictionary names =
+                new org.apache.pdfbox.pdmodel.PDDocumentNameDictionary(doc.getDocumentCatalog());
+        org.apache.pdfbox.pdmodel.PDEmbeddedFilesNameTreeNode tree =
+                new org.apache.pdfbox.pdmodel.PDEmbeddedFilesNameTreeNode();
+        org.apache.pdfbox.pdmodel.common.filespecification.PDComplexFileSpecification spec =
+                new org.apache.pdfbox.pdmodel.common.filespecification.PDComplexFileSpecification();
+        spec.setFile("attachment.txt");
+        spec.setEmbeddedFile(
+                new org.apache.pdfbox.pdmodel.common.filespecification.PDEmbeddedFile(
+                        doc, new java.io.ByteArrayInputStream("x".getBytes())));
+        tree.setNames(java.util.Map.of("attachment.txt", spec));
+        names.setEmbeddedFiles(tree);
+        doc.getDocumentCatalog().setNames(names);
+        byte[] pdf = toBytes(doc);
+
+        PrintPreflightReport report = controller.printPreflight(request(pdf)).getBody();
+        assertNotNull(report);
+        assertTrue(hasFinding(report, "EMBEDDED_FILES"));
+        assertEquals(1, report.getFacts().getEmbeddedFileCount());
+    }
+
+    @Test
+    void testAcroFormFlagged() throws Exception {
+        PDDocument doc = new PDDocument();
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
+        org.apache.pdfbox.pdmodel.interactive.form.PDAcroForm form =
+                new org.apache.pdfbox.pdmodel.interactive.form.PDAcroForm(doc);
+        doc.getDocumentCatalog().setAcroForm(form);
+        org.apache.pdfbox.pdmodel.interactive.form.PDTextField field =
+                new org.apache.pdfbox.pdmodel.interactive.form.PDTextField(form);
+        field.setPartialName("field1");
+        form.setFields(java.util.List.of(field));
+        byte[] pdf = toBytes(doc);
+
+        PrintPreflightReport report = controller.printPreflight(request(pdf)).getBody();
+        assertNotNull(report);
+        assertTrue(hasFinding(report, "FORM_FIELDS"));
+        assertTrue(report.getFacts().isHasAcroForm());
+        assertEquals(1, report.getFacts().getFormFieldCount());
+    }
+
+    @Test
+    void testUserUnitFlagged() throws Exception {
+        PDDocument doc = new PDDocument();
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
+        page.getCOSObject().setFloat(org.apache.pdfbox.cos.COSName.getPDFName("UserUnit"), 2f);
+        byte[] pdf = toBytes(doc);
+
+        PrintPreflightReport report = controller.printPreflight(request(pdf)).getBody();
+        assertNotNull(report);
+        assertTrue(hasFinding(report, "USER_UNIT"));
+        assertTrue(report.getFacts().getNonStandardUserUnitPages().contains(1));
+    }
+
+    @Test
+    void testRegistrationPaintReported() throws Exception {
+        PrintPreflightReport report =
+                controller.printPreflight(request(spotStrokePdf("All"))).getBody();
+        assertNotNull(report);
+        assertTrue(
+                hasFinding(report, "REGISTRATION_PAINT"),
+                "the All colorant paints every plate — worth listing");
+        assertTrue(report.getFacts().getRegistrationPaintPages().contains(1));
+    }
+
+    @Test
+    void testInvisibleTextReported() throws Exception {
+        PDDocument doc = new PDDocument();
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
+        try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+            cs.beginText();
+            cs.setRenderingMode(org.apache.pdfbox.pdmodel.graphics.state.RenderingMode.NEITHER);
+            cs.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA), 10);
+            cs.newLineAtOffset(60, 150);
+            cs.showText("invisible");
+            cs.endText();
+        }
+        byte[] pdf = toBytes(doc);
+
+        PrintPreflightReport report = controller.printPreflight(request(pdf)).getBody();
+        assertNotNull(report);
+        assertTrue(hasFinding(report, "INVISIBLE_TEXT"));
+        assertTrue(report.getFacts().getInvisibleTextPages().contains(1));
+    }
+
+    @Test
+    void testOversampledImage() throws Exception {
+        PDDocument doc = new PDDocument();
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
+        BufferedImage img = new BufferedImage(1000, 1000, BufferedImage.TYPE_INT_RGB);
+        PDImageXObject xo = LosslessFactory.createFromImage(doc, img);
+        try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+            cs.drawImage(xo, 50, 50, 50, 50);
+        }
+        byte[] pdf = toBytes(doc);
+
+        PrintPreflightReport report = controller.printPreflight(request(pdf)).getBody();
+        assertNotNull(report);
+        assertTrue(hasFinding(report, "IMAGE_OVERSAMPLED"), "1440 effective dpi is dead weight");
+    }
+
+    @Test
+    void testOneBitImageNeedsHigherDpi() throws Exception {
+        PDDocument doc = new PDDocument();
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
+        BufferedImage img = new BufferedImage(50, 50, BufferedImage.TYPE_BYTE_BINARY);
+        PDImageXObject xo = LosslessFactory.createFromImage(doc, img);
+        try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+            cs.drawImage(xo, 50, 50, 50, 50);
+        }
+        byte[] pdf = toBytes(doc);
+
+        PrintPreflightReport report = controller.printPreflight(request(pdf)).getBody();
+        assertNotNull(report);
+        assertTrue(
+                hasFinding(report, "IMAGE_1BIT_LOW_RES"), "72 dpi line art stair-steps in print");
+        assertFalse(
+                hasFinding(report, "IMAGE_LOW_RES"),
+                "1-bit images have their own threshold, not the contone one");
+    }
+
+    @Test
+    void testObjectOutsidePage() throws Exception {
+        PDDocument doc = new PDDocument();
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
+        try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+            cs.setNonStrokingColor(0f, 0f, 0f, 1f);
+            cs.addRect(-500, -500, 100, 100);
+            cs.fill();
+        }
+        byte[] pdf = toBytes(doc);
+
+        PrintPreflightReport report = controller.printPreflight(request(pdf)).getBody();
+        assertNotNull(report);
+        assertTrue(hasFinding(report, "OBJECT_OUTSIDE_PAGE"));
+    }
+
+    @Test
+    void testPrintOffLayerListed() throws Exception {
+        byte[] pdf =
+                layerStrokePdf(
+                        "Guides",
+                        true,
+                        new org.apache.pdfbox.pdmodel.graphics.color.PDColor(
+                                new float[] {0f, 0f, 0f, 1f},
+                                org.apache.pdfbox.pdmodel.graphics.color.PDDeviceCMYK.INSTANCE));
+        PrintPreflightReport report = controller.printPreflight(request(pdf)).getBody();
+        assertNotNull(report);
+        assertTrue(
+                hasFinding(report, "LAYERS_PRINT_OFF"),
+                "a print-off layer is a fact a print buyer wants to know");
+        assertTrue(report.getFacts().getLayersDisabledForPrint().contains("Guides"));
+    }
+
+    @Test
+    void testDisabledChecksSkipFindings() throws Exception {
+        PDDocument doc = new PDDocument();
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
+        try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+            cs.setLineWidth(0.1f);
+            cs.moveTo(50, 50);
+            cs.lineTo(400, 50);
+            cs.stroke();
+        }
+        byte[] pdf = toBytes(doc);
+
+        PrintPreflightRequest req = request(pdf);
+        req.setDisabledChecks(
+                java.util.List.of(
+                        "HAIRLINE",
+                        "TRIMBOX_MISSING",
+                        "BLEED_MISSING",
+                        "OUTPUT_INTENT_MISSING",
+                        "EMPTY_PAGE",
+                        "MIXED_PAGE_SIZES",
+                        "CROPBOX_NE_MEDIA"));
+        PrintPreflightReport report = controller.printPreflight(req).getBody();
+        assertNotNull(report);
+        assertFalse(hasFinding(report, "HAIRLINE"), "disabled checks stay silent");
+        assertFalse(hasFinding(report, "TRIMBOX_MISSING"));
+        assertFalse(hasFinding(report, "BLEED_MISSING"));
+        assertFalse(hasFinding(report, "OUTPUT_INTENT_MISSING"));
+    }
+
+    @Test
+    void testValidationRejectsBadNewParams() {
+        PrintPreflightRequest req = request(new byte[] {1});
+        req.setMinFontSizePt(-1);
+        assertThrows(IllegalArgumentException.class, () -> controller.printPreflight(req));
+        req.setMinFontSizePt(5);
+        req.setSafetyMarginMm(-1);
+        assertThrows(IllegalArgumentException.class, () -> controller.printPreflight(req));
+        req.setSafetyMarginMm(3);
+        req.setMaxInkCoveragePercent(-1);
+        assertThrows(IllegalArgumentException.class, () -> controller.printPreflight(req));
+        req.setMaxInkCoveragePercent(320);
+        req.setMinImage1BitDpi(0);
+        assertThrows(IllegalArgumentException.class, () -> controller.printPreflight(req));
     }
 }

@@ -52,6 +52,13 @@ export interface PreflightPageSize {
   count: number;
 }
 
+export interface PreflightOutputIntent {
+  name: string | null;
+  registry: string | null;
+  info: string | null;
+  conditionIdentifier: string | null;
+}
+
 export interface PreflightFacts {
   fonts: PreflightFontFact[];
   colorSpaces: string[];
@@ -59,10 +66,32 @@ export interface PreflightFacts {
   technicalSeparations: string[];
   imageCount: number;
   lowResImageCount: number;
+  oversampledImageCount: number;
+  minEffectiveDpi: number;
+  maxEffectiveDpi: number;
+  minFontSizeSeen: number;
+  maxInkCoverageSeen: number;
   transparencyUsed: boolean;
+  patternUsed: boolean;
+  shadingUsed: boolean;
   hasTrimBox: boolean;
   hasBleedBox: boolean;
+  hasCropBox: boolean;
+  hasArtBox: boolean;
   pageSizes: PreflightPageSize[];
+  outputIntent: PreflightOutputIntent | null;
+  trapped: string | null;
+  nonStandardUserUnitPages: number[];
+  hasAcroForm: boolean;
+  formFieldCount: number;
+  hasXfa: boolean;
+  signatureCount: number;
+  embeddedFileCount: number;
+  hasJavascript: boolean;
+  layersDisabledForPrint: string[];
+  emptyPages: number[];
+  invisibleTextPages: number[];
+  registrationPaintPages: number[];
 }
 
 export interface PrintPreflightReport {

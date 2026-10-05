@@ -34,7 +34,13 @@ const PrintPreflightAutomationSettings = ({
         )}
         value={parameters.reportFormat}
         onChange={(value) => {
-          if (value !== "annotatedPdf" && value !== "json") return;
+          if (
+            value !== "annotatedPdf" &&
+            value !== "reportPdf" &&
+            value !== "json"
+          ) {
+            return;
+          }
           onParameterChange("reportFormat", value);
         }}
         data={[
@@ -43,6 +49,13 @@ const PrintPreflightAutomationSettings = ({
             label: t(
               "printPreflight.reportFormat.annotatedPdf",
               "Annotated PDF",
+            ),
+          },
+          {
+            value: "reportPdf",
+            label: t(
+              "printPreflight.reportFormat.reportPdf",
+              "Summary report PDF",
             ),
           },
           {

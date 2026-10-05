@@ -13732,6 +13732,7 @@ areasTruncated = "Emplacements supplémentaires omis de l'aperçu"
 counts = "{{errors}} erreurs · {{warnings}} avertissements · {{infos}} infos"
 downloadAnnotated = "PDF annoté"
 downloadJson = "Télécharger le rapport (JSON)"
+downloadReport = "Rapport PDF"
 locate = "Voir sur le document"
 locatedHint = "Les problèmes localisés sont encadrés sur le document — le bouton cible permet d'en isoler un."
 noResults = "Lancez l'outil pour générer un rapport preflight."
@@ -13739,6 +13740,9 @@ pages = "Pages"
 processing = "Contrôles preflight en cours..."
 results = "Résultats"
 submit = "Lancer le preflight"
+
+[printPreflight.advanced]
+toggle = "Seuils avancés"
 
 [printPreflight.category]
 COLOR = "Couleur"
@@ -13752,6 +13756,10 @@ IMAGES = "Images"
 desc = "Rend chaque page pour vérifier que la zone de fond perdu est réellement couverte par du contenu, pas seulement déclarée."
 label = "Vérifier que le fond perdu est peint"
 
+[printPreflight.disabledChecks]
+help = "Ignore complètement les contrôles nommés, ex. SAFETY_MARGIN, INK_COVERAGE_HIGH. Laisser vide pour tout exécuter."
+label = "Contrôles désactivés (codes, séparés par des virgules)"
+
 [printPreflight.error]
 noReport = "Aucun rapport renvoyé."
 partial = "Certains fichiers n'ont pas pu être analysés."
@@ -13760,17 +13768,66 @@ unexpected = "Erreur inattendue pendant le preflight."
 [printPreflight.facts]
 boxes = "Boîtes de page"
 colors = "Espaces colorimétriques"
+dpiRange = "{{min}}–{{max}} dpi"
+effects = "Effets"
+embedded = "{{count}} fichier(s) incorporé(s)"
+emptyPages = "page(s) vide(s) {{pages}}"
+extras = "Interactif et divers"
+flags = "Remarques"
 fonts = "Polices"
+formFields = "{{count}} champ(s) de formulaire"
 images = "Images"
+inkCoverage = "Couverture d'encre max"
+invisibleText = "texte invisible page(s) {{pages}}"
+javascript = "JavaScript"
+layersOff = "Calques désactivés à l'impression"
 lowRes = "{{count}} sous le seuil"
+none = "aucun"
+outputIntent = "Intent de sortie"
+oversampled = "{{count}} suréchantillonnée(s)"
 pageCount = "Pages"
+pageSizes = "Dimensions des pages"
+patterns = "motifs"
+registration = "couleur de repérage page(s) {{pages}}"
+rotated = "pivotée de {{deg}}°"
+shadings = "dégradés"
+signatures = "{{count}} signature(s)"
+spotColors = "Tons directs"
 technical = "Séparations techniques"
 title = "Caractéristiques du document"
+trapped = "tramage : {{value}}"
+transparency = "transparence"
 type3 = "Type 3"
+userUnit = "UserUnit page(s) {{pages}}"
+xfa = "XFA"
 
 [printPreflight.hairlineThresholdPt]
 help = "Les traits plus fins que ce seuil sont signalés — ils risquent de disparaître à l'impression."
 label = "Seuil des filets (pt)"
+
+[printPreflight.includeSummaryPage]
+desc = "Ajoute la synthèse du rapport — verdict, caractéristiques, polices, couleurs — en tête du PDF annoté."
+label = "Page de synthèse dans le PDF annoté"
+
+[printPreflight.maxImageDpi]
+help = "Les images rendues au-dessus de cette résolution effective sont signalées comme suréchantillonnées — du poids mort pour la presse."
+label = "Résolution maximale des images (dpi)"
+
+[printPreflight.maxInkCoveragePercent]
+help = "Les couleurs dépassant ce taux de couverture total sont signalées — problèmes de séchage et de repérage au-delà de ~320 % en offset."
+label = "Couverture d'encre max (%)"
+
+[printPreflight.maxSpotCount]
+help = "Avertit quand plus de tons directs que ce seuil sont utilisés — chaque plaque coûte un calage. 0 désactive la limite."
+label = "Nombre maximal de tons directs"
+
+[printPreflight.minFontSizePt]
+help = "Le texte plus petit que cette taille est signalé comme trop petit pour une impression fiable."
+label = "Taille minimale des caractères (pt)"
+
+[printPreflight.minImage1BitDpi]
+help = "Le trait / bitmap exige bien plus de résolution que la photo — 1200 dpi est le plancher habituel."
+label = "Résolution minimale des images 1 bit (dpi)"
 
 [printPreflight.minImageDpi]
 help = "Les images placées sous cette résolution effective sont signalées. 300 est idéal pour l'offset ; 150 est un minimum courant."
@@ -13784,10 +13841,15 @@ annotatedPdf = "PDF annoté"
 help = "Le PDF annoté garde un PDF dans la chaîne ; le rapport JSON termine la chaîne avec les constats."
 json = "Rapport JSON"
 label = "Format du rapport"
+reportPdf = "Rapport PDF de synthèse"
 
 [printPreflight.requiredBleedMm]
 help = "Largeur de fond perdu attendue de chaque côté au-delà du format fini. 3 mm est la norme en Europe."
 label = "Fond perdu requis (mm)"
+
+[printPreflight.safetyMarginMm]
+help = "Le contenu plus proche que cette distance du bord du format fini est signalé — il risque d'être coupé au massicot."
+label = "Marge de sécurité dans le format fini (mm)"
 
 [printPreflight.severity]
 ERROR = "Erreur"

@@ -1155,9 +1155,37 @@ export interface PrintPreflightRequest {
    */
   checkBleedCoverage?: boolean;
   /**
+   * Finding codes to skip (e.g. SAFETY_MARGIN, INK_COVERAGE_HIGH); empty runs every check
+   */
+  disabledChecks?: string[];
+  /**
    * Strokes thinner than this width in points are reported as hairlines at risk of disappearing in print
    */
   hairlineThresholdPt?: number;
+  /**
+   * Prepend summary pages (verdict, document facts, fonts, colours, findings) to the annotated PDF
+   */
+  includeSummaryPage?: boolean;
+  /**
+   * Images rendered above this effective resolution are reported as oversampled — heavier than print can use
+   */
+  maxImageDpi?: number;
+  /**
+   * Painted colours whose total ink coverage exceeds this percentage are reported — drying and registration problems above ~320% in offset
+   */
+  maxInkCoveragePercent?: number;
+  /**
+   * More spot separations than this are reported — each plate costs makeready; 0 disables the limit
+   */
+  maxSpotCount?: number;
+  /**
+   * Text rendered smaller than this size in points is reported as too small to print reliably
+   */
+  minFontSizePt?: number;
+  /**
+   * 1-bit (bitmap) images rendered below this effective resolution are reported — line art needs far more resolution than continuous tone
+   */
+  minImage1BitDpi?: number;
   /**
    * Images rendered below this effective resolution are reported as low resolution
    */
@@ -1166,6 +1194,10 @@ export interface PrintPreflightRequest {
    * Bleed width in millimetres required on every side beyond the TrimBox
    */
   requiredBleedMm?: number;
+  /**
+   * Content inside the trim but closer than this distance in millimetres to the trim edge is reported as at risk of being cut off
+   */
+  safetyMarginMm?: number;
 }
 export interface ProcessPdfWithOcrRequest {
   /**
@@ -1864,6 +1896,7 @@ export type ToolEndpoint =
   | "/api/v1/security/get-info-on-pdf"
   | "/api/v1/security/print-preflight"
   | "/api/v1/security/print-preflight-annotated"
+  | "/api/v1/security/print-preflight-report"
   | "/api/v1/security/redact"
   | "/api/v1/security/redact-execute"
   | "/api/v1/security/remove-cert-sign"
@@ -1979,6 +2012,7 @@ export interface ToolApiParams {
   "/api/v1/security/get-info-on-pdf": SecurityGetInfoOnPdfRequest;
   "/api/v1/security/print-preflight": PrintPreflightRequest;
   "/api/v1/security/print-preflight-annotated": PrintPreflightRequest;
+  "/api/v1/security/print-preflight-report": PrintPreflightRequest;
   "/api/v1/security/redact": ManualRedactPdfRequest;
   "/api/v1/security/redact-execute": RedactExecuteRequest;
   "/api/v1/security/remove-cert-sign": SecurityRemoveCertSignRequest;
@@ -2095,6 +2129,7 @@ export const TOOL_ENDPOINTS = [
   "/api/v1/security/get-info-on-pdf",
   "/api/v1/security/print-preflight",
   "/api/v1/security/print-preflight-annotated",
+  "/api/v1/security/print-preflight-report",
   "/api/v1/security/redact",
   "/api/v1/security/redact-execute",
   "/api/v1/security/remove-cert-sign",

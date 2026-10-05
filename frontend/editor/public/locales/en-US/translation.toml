@@ -10940,6 +10940,7 @@ areasTruncated = "Additional locations omitted from the preview"
 counts = "{{errors}} errors · {{warnings}} warnings · {{infos}} info"
 downloadAnnotated = "Annotated PDF"
 downloadJson = "Download report (JSON)"
+downloadReport = "Report PDF"
 locate = "Show on document"
 locatedHint = "Located issues are framed on the document — use the target button to isolate one."
 noResults = "Run the tool to generate a preflight report."
@@ -10947,6 +10948,9 @@ pages = "Pages"
 processing = "Running preflight checks..."
 results = "Results"
 submit = "Run preflight"
+
+[printPreflight.advanced]
+toggle = "Advanced thresholds"
 
 [printPreflight.category]
 COLOR = "Color"
@@ -10960,6 +10964,10 @@ IMAGES = "Images"
 desc = "Render each page to verify the bleed area is actually covered by content, not just declared."
 label = "Check bleed is painted"
 
+[printPreflight.disabledChecks]
+help = "Skip named checks entirely, e.g. SAFETY_MARGIN, INK_COVERAGE_HIGH. Leave empty to run everything."
+label = "Disabled checks (codes, comma-separated)"
+
 [printPreflight.error]
 noReport = "No report returned."
 partial = "Some files could not be analyzed."
@@ -10968,17 +10976,66 @@ unexpected = "Unexpected error during preflight."
 [printPreflight.facts]
 boxes = "Page boxes"
 colors = "Color spaces"
+dpiRange = "{{min}}–{{max}} dpi"
+effects = "Effects"
+embedded = "{{count}} embedded file(s)"
+emptyPages = "empty page(s) {{pages}}"
+extras = "Interactive & extras"
+flags = "Notices"
 fonts = "Fonts"
+formFields = "{{count}} form field(s)"
 images = "Images"
+inkCoverage = "Max ink coverage"
+invisibleText = "invisible text on page(s) {{pages}}"
+javascript = "JavaScript"
+layersOff = "Layers off for print"
 lowRes = "{{count}} below threshold"
+none = "none"
+outputIntent = "Output intent"
+oversampled = "{{count}} oversampled"
 pageCount = "Pages"
+pageSizes = "Page dimensions"
+patterns = "patterns"
+registration = "registration colour on page(s) {{pages}}"
+rotated = "rotated {{deg}}°"
+shadings = "shadings"
+signatures = "{{count}} signature(s)"
+spotColors = "Spot colours"
 technical = "Technical separations"
 title = "Document facts"
+trapped = "trapped: {{value}}"
+transparency = "transparency"
 type3 = "Type 3"
+userUnit = "UserUnit on page(s) {{pages}}"
+xfa = "XFA"
 
 [printPreflight.hairlineThresholdPt]
 help = "Strokes thinner than this are flagged — they may drop out on press."
 label = "Hairline threshold (pt)"
+
+[printPreflight.includeSummaryPage]
+desc = "Prepend the report summary — verdict, facts, fonts, colors — to the annotated PDF copy."
+label = "Summary page in annotated PDF"
+
+[printPreflight.maxImageDpi]
+help = "Images rendered above this effective resolution are flagged as oversampled — dead weight the press cannot use."
+label = "Maximum image resolution (dpi)"
+
+[printPreflight.maxInkCoveragePercent]
+help = "Painted colours above this total area coverage are reported — ink drying and registration issues. ~320% is a common offset limit."
+label = "Max ink coverage (%)"
+
+[printPreflight.maxSpotCount]
+help = "Warn when more spot separations than this are used — each plate costs makeready. 0 disables the limit."
+label = "Maximum spot colours"
+
+[printPreflight.minFontSizePt]
+help = "Text smaller than this is reported as too small to print reliably."
+label = "Minimum font size (pt)"
+
+[printPreflight.minImage1BitDpi]
+help = "Line art / bitmap images need far more resolution than photos — 1200 dpi is the usual floor."
+label = "Minimum 1-bit image resolution (dpi)"
 
 [printPreflight.minImageDpi]
 help = "Images placed below this effective resolution are flagged. 300 is ideal for offset; 150 is a common minimum."
@@ -10992,10 +11049,15 @@ annotatedPdf = "Annotated PDF"
 help = "Annotated PDF keeps a PDF in the pipeline; JSON report ends the chain with the findings."
 json = "JSON report"
 label = "Report format"
+reportPdf = "Summary report PDF"
 
 [printPreflight.requiredBleedMm]
 help = "Bleed width expected on every side past the trim. 3 mm is standard in Europe."
 label = "Required bleed (mm)"
+
+[printPreflight.safetyMarginMm]
+help = "Content closer than this to the trim edge is reported — it may be cut off on the guillotine."
+label = "Safety margin inside trim (mm)"
 
 [printPreflight.severity]
 ERROR = "Error"

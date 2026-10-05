@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
@@ -13,10 +14,28 @@ import java.util.TreeSet;
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDDocumentCatalog;
+import org.apache.pdfbox.pdmodel.PDDocumentInformation;
+import org.apache.pdfbox.pdmodel.PDDocumentNameDictionary;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
+import org.apache.pdfbox.pdmodel.graphics.color.PDColor;
+import org.apache.pdfbox.pdmodel.graphics.color.PDColorSpace;
+import org.apache.pdfbox.pdmodel.graphics.color.PDDeviceCMYK;
+import org.apache.pdfbox.pdmodel.graphics.color.PDDeviceN;
+import org.apache.pdfbox.pdmodel.graphics.color.PDDeviceRGB;
+import org.apache.pdfbox.pdmodel.graphics.color.PDICCBased;
+import org.apache.pdfbox.pdmodel.graphics.color.PDOutputIntent;
+import org.apache.pdfbox.pdmodel.graphics.optionalcontent.PDOptionalContentGroup;
+import org.apache.pdfbox.pdmodel.graphics.optionalcontent.PDOptionalContentGroup.RenderState;
+import org.apache.pdfbox.pdmodel.graphics.optionalcontent.PDOptionalContentProperties;
+import org.apache.pdfbox.pdmodel.interactive.action.PDActionJavaScript;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotation;
+import org.apache.pdfbox.pdmodel.interactive.form.PDAcroForm;
+import org.apache.pdfbox.pdmodel.interactive.form.PDField;
+import org.apache.pdfbox.pdmodel.interactive.form.PDSignatureField;
 import org.apache.pdfbox.rendering.PDFRenderer;
+import org.apache.pdfbox.rendering.RenderDestination;
 import org.springframework.stereotype.Service;
 
 import lombok.extern.slf4j.Slf4j;
@@ -27,6 +46,7 @@ import stirling.software.SPDF.model.api.security.PrintPreflightReport.Facts;
 import stirling.software.SPDF.model.api.security.PrintPreflightReport.Finding;
 import stirling.software.SPDF.model.api.security.PrintPreflightReport.FindingArea;
 import stirling.software.SPDF.model.api.security.PrintPreflightReport.FontFact;
+import stirling.software.SPDF.model.api.security.PrintPreflightReport.OutputIntentFact;
 import stirling.software.SPDF.model.api.security.PrintPreflightReport.PageSize;
 import stirling.software.SPDF.model.api.security.PrintPreflightReport.Severity;
 import stirling.software.SPDF.model.api.security.PrintPreflightRequest;
@@ -34,6 +54,7 @@ import stirling.software.SPDF.service.preflight.PreflightGraphicsEngine.FontUse;
 import stirling.software.SPDF.service.preflight.PreflightGraphicsEngine.ImageUse;
 import stirling.software.SPDF.service.preflight.PreflightGraphicsEngine.PaintedArea;
 import stirling.software.SPDF.service.preflight.PreflightGraphicsEngine.StrokeUse;
+import stirling.software.SPDF.service.preflight.PreflightGraphicsEngine.TextUse;
 
 /**
  * Read-only print preflight: walks painted content and page geometry and reports what would break
@@ -62,19 +83,37 @@ public class PrintPreflightService {
         report.setPdfVersion(Float.toString(document.getVersion()));
         report.setPageCount(document.getNumberOfPages());
 
+        Set<PreflightCheck> disabled = PreflightCheck.disabledSet(request.getDisabledChecks());
+
         Map<String, FontUse> fonts = new LinkedHashMap<>();
         Map<String, Integer> colorSpaceCounts = new LinkedHashMap<>();
         Set<String> spotColors = new LinkedHashSet<>();
         Set<String> technicalSeparations = new LinkedHashSet<>();
         List<ImageUse> images = new ArrayList<>();
         Map<Integer, List<ImageUse>> lowResByPage = new LinkedHashMap<>();
+        Map<Integer, List<ImageUse>> lowRes1BitByPage = new LinkedHashMap<>();
+        Map<Integer, List<ImageUse>> oversampledByPage = new LinkedHashMap<>();
         double minImageDpi = Double.MAX_VALUE;
+        double maxImageDpi = 0;
         Map<Integer, List<StrokeUse>> hairlinesByPage = new LinkedHashMap<>();
         Map<Integer, List<PaintedArea>> rgbAreasByPage = new LinkedHashMap<>();
         Map<Integer, List<PaintedArea>> spotAreasByPage = new LinkedHashMap<>();
         Map<Integer, List<PaintedArea>> alphaAreasByPage = new LinkedHashMap<>();
+        Map<Integer, List<PaintedArea>> whiteOverprintByPage = new LinkedHashMap<>();
+        Map<Integer, List<PaintedArea>> knockoutBlackByPage = new LinkedHashMap<>();
+        Map<Integer, List<PaintedArea>> inkAreasByPage = new LinkedHashMap<>();
+        Map<Integer, List<PaintedArea>> registrationByPage = new LinkedHashMap<>();
+        Map<Integer, List<PaintedArea>> outsidePageByPage = new LinkedHashMap<>();
+        Map<Integer, List<TextUse>> textUsesByPage = new LinkedHashMap<>();
+        Map<Integer, List<FindingArea>> safetyMarginAreas = new LinkedHashMap<>();
         Set<Integer> transparencyPages = new TreeSet<>();
         Set<Integer> optionalContentPages = new TreeSet<>();
+        Set<Integer> invisibleTextPages = new TreeSet<>();
+        Set<Integer> patternPages = new TreeSet<>();
+        Set<Integer> shadingPages = new TreeSet<>();
+        Set<Integer> emptyPages = new TreeSet<>();
+        Set<Integer> nonStandardUserUnitPages = new TreeSet<>();
+        Set<Integer> cropBoxDiffersPages = new TreeSet<>();
         Map<Integer, List<FindingArea>> annotationAreasByPage = new LinkedHashMap<>();
         Set<Integer> missingTrimPages = new TreeSet<>();
         Set<Integer> missingBleedPages = new TreeSet<>();
@@ -86,30 +125,45 @@ public class PrintPreflightService {
         Map<Integer, List<FindingArea>> unpaintedBleedAreas = new LinkedHashMap<>();
         Map<String, Integer> pageSizeCounts = new LinkedHashMap<>();
         Map<String, Integer> pageSizeFirstPage = new LinkedHashMap<>();
+        float minFontSize = Float.NaN;
+        float maxInkCoverage = 0;
         boolean anyTrim = false;
         boolean anyBleed = false;
+        boolean anyCrop = false;
+        boolean anyArt = false;
         boolean transparency = false;
+        boolean anyPattern = false;
+        boolean anyShading = false;
 
-        PDFRenderer renderer = request.isCheckBleedCoverage() ? new PDFRenderer(document) : null;
+        boolean coverageCheck =
+                request.isCheckBleedCoverage()
+                        && !disabled.contains(PreflightCheck.BLEED_UNPAINTED);
+        PDFRenderer renderer = coverageCheck ? new PDFRenderer(document) : null;
         float requiredBleedPt = request.getRequiredBleedMm() * PT_PER_MM;
+        float safetyMarginPt = request.getSafetyMarginMm() * PT_PER_MM;
 
         int pageIndex = 0;
         for (PDPage page : document.getPages()) {
             pageIndex++;
             final int pageNum = pageIndex;
 
-            PreflightGraphicsEngine engine = new PreflightGraphicsEngine(page);
+            PreflightGraphicsEngine engine =
+                    new PreflightGraphicsEngine(page, request.getMaxInkCoveragePercent());
+            boolean parseFailed = false;
             try {
                 engine.processPage(page);
             } catch (Exception e) {
+                parseFailed = true;
                 log.debug("Preflight content pass failed on page {}", pageNum, e);
-                report.addFinding(
-                        new Finding(
-                                Severity.WARNING,
-                                Category.CONTENT,
-                                "CONTENT_PARSE_ERROR",
-                                "Page content could not be fully analyzed: " + e.getMessage(),
-                                List.of(pageNum)));
+                if (!disabled.contains(PreflightCheck.CONTENT_PARSE_ERROR)) {
+                    report.addFinding(
+                            new Finding(
+                                    Severity.WARNING,
+                                    Category.CONTENT,
+                                    "CONTENT_PARSE_ERROR",
+                                    "Page content could not be fully analyzed: " + e.getMessage(),
+                                    List.of(pageNum)));
+                }
             }
             for (Map.Entry<String, FontUse> e : engine.getFonts().entrySet()) {
                 fonts.computeIfAbsent(e.getKey(), k -> e.getValue()).pages.add(pageNum);
@@ -140,10 +194,49 @@ public class PrintPreflightService {
                 images.add(img);
                 if (!Double.isNaN(img.effectiveDpi)) {
                     minImageDpi = Math.min(minImageDpi, img.effectiveDpi);
-                    if (img.effectiveDpi < request.getMinImageDpi()) {
+                    maxImageDpi = Math.max(maxImageDpi, img.effectiveDpi);
+                    if (img.bitsPerComponent == 1) {
+                        if (img.effectiveDpi < request.getMinImage1BitDpi()) {
+                            lowRes1BitByPage
+                                    .computeIfAbsent(pageNum, k -> new ArrayList<>())
+                                    .add(img);
+                        }
+                    } else if (img.effectiveDpi < request.getMinImageDpi()) {
                         lowResByPage.computeIfAbsent(pageNum, k -> new ArrayList<>()).add(img);
                     }
+                    if (img.effectiveDpi > request.getMaxImageDpi()) {
+                        oversampledByPage.computeIfAbsent(pageNum, k -> new ArrayList<>()).add(img);
+                    }
                 }
+            }
+            mergePaintAreas(whiteOverprintByPage, pageNum, engine.getWhiteOverprintAreas());
+            mergePaintAreas(knockoutBlackByPage, pageNum, engine.getKnockoutBlackAreas());
+            mergePaintAreas(inkAreasByPage, pageNum, engine.getInkAreas());
+            mergePaintAreas(registrationByPage, pageNum, engine.getRegistrationAreas());
+            mergePaintAreas(outsidePageByPage, pageNum, engine.getOutsidePageAreas());
+            if (!engine.getTextUses().isEmpty()) {
+                textUsesByPage.put(pageNum, engine.getTextUses());
+            }
+            if (!Float.isNaN(engine.getMinFontSize())
+                    && (Float.isNaN(minFontSize) || engine.getMinFontSize() < minFontSize)) {
+                minFontSize = engine.getMinFontSize();
+            }
+            maxInkCoverage = Math.max(maxInkCoverage, engine.getMaxInkCoverage());
+            if (engine.getPaintedOps() == 0 && !parseFailed) {
+                // A failed pass proves nothing about what the page paints — only
+                // CONTENT_PARSE_ERROR.
+                emptyPages.add(pageNum);
+            }
+            if (engine.isInvisibleTextUsed()) {
+                invisibleTextPages.add(pageNum);
+            }
+            if (engine.isPatternUsed()) {
+                patternPages.add(pageNum);
+                anyPattern = true;
+            }
+            if (engine.isShadingUsed()) {
+                shadingPages.add(pageNum);
+                anyShading = true;
             }
             for (PaintedArea area : engine.getPaintAreas()) {
                 if (area.technical) {
@@ -191,11 +284,25 @@ public class PrintPreflightService {
 
             boolean hasTrim = page.getCOSObject().getItem(COSName.TRIM_BOX) != null;
             boolean hasBleed = page.getCOSObject().getItem(COSName.BLEED_BOX) != null;
+            boolean hasCrop = page.getCOSObject().getItem(COSName.CROP_BOX) != null;
+            boolean hasArt = page.getCOSObject().getItem(COSName.ART_BOX) != null;
             anyTrim |= hasTrim;
             anyBleed |= hasBleed;
+            anyCrop |= hasCrop;
+            anyArt |= hasArt;
             PDRectangle trim = page.getTrimBox();
             PDRectangle bleed = page.getBleedBox();
+            PDRectangle cropBox = page.getCropBox();
             trimByPage.put(pageNum, trim);
+            if (!rectEquals(cropBox, media)) {
+                cropBoxDiffersPages.add(pageNum);
+            }
+            if (Math.abs(page.getUserUnit() - 1f) > 0.001f) {
+                nonStandardUserUnitPages.add(pageNum);
+            }
+            if (hasTrim && !disabled.contains(PreflightCheck.SAFETY_MARGIN) && safetyMarginPt > 0) {
+                collectSafetyMargin(pageNum, trim, safetyMarginPt, engine, safetyMarginAreas);
+            }
             if (!hasTrim) {
                 missingTrimPages.add(pageNum);
             }
@@ -230,6 +337,10 @@ public class PrintPreflightService {
 
             if (hasTrim) {
                 for (PDAnnotation annotation : page.getAnnotations()) {
+                    // An annotation not flagged for print can only be seen on screen.
+                    if (!annotation.isPrinted()) {
+                        continue;
+                    }
                     PDRectangle rect = annotation.getRectangle();
                     if (rect != null && trimBoundsOverlap(trim, rect)) {
                         annotationAreasByPage
@@ -262,10 +373,31 @@ public class PrintPreflightService {
         facts.setSpotColors(new ArrayList<>(printSpots));
         facts.setTechnicalSeparations(new ArrayList<>(technicalSeparations));
         facts.setImageCount(images.size());
-        facts.setLowResImageCount(lowResByPage.values().stream().mapToInt(List::size).sum());
+        facts.setLowResImageCount(
+                lowResByPage.values().stream().mapToInt(List::size).sum()
+                        + lowRes1BitByPage.values().stream().mapToInt(List::size).sum());
+        facts.setOversampledImageCount(
+                oversampledByPage.values().stream().mapToInt(List::size).sum());
+        if (minImageDpi != Double.MAX_VALUE) {
+            facts.setMinEffectiveDpi(minImageDpi);
+        }
+        if (maxImageDpi > 0) {
+            facts.setMaxEffectiveDpi(maxImageDpi);
+        }
+        facts.setMinFontSizeSeen(minFontSize);
+        facts.setMaxInkCoverageSeen(maxInkCoverage);
         facts.setTransparencyUsed(transparency);
+        facts.setPatternUsed(anyPattern);
+        facts.setShadingUsed(anyShading);
         facts.setHasTrimBox(anyTrim);
         facts.setHasBleedBox(anyBleed);
+        facts.setHasCropBox(anyCrop);
+        facts.setHasArtBox(anyArt);
+        facts.setEmptyPages(new ArrayList<>(emptyPages));
+        facts.setInvisibleTextPages(new ArrayList<>(invisibleTextPages));
+        facts.setRegistrationPaintPages(new ArrayList<>(registrationByPage.keySet()));
+        facts.setNonStandardUserUnitPages(new ArrayList<>(nonStandardUserUnitPages));
+        collectDocumentFacts(document, facts);
         for (Map.Entry<String, Integer> e : pageSizeCounts.entrySet()) {
             String[] parts = e.getKey().split("[x@]");
             facts.getPageSizes()
@@ -304,7 +436,7 @@ public class PrintPreflightService {
                 }
             }
         }
-        if (!unembeddedNames.isEmpty()) {
+        if (!disabled.contains(PreflightCheck.FONT_NOT_EMBEDDED) && !unembeddedNames.isEmpty()) {
             Finding finding =
                     new Finding(
                             Severity.ERROR,
@@ -317,7 +449,7 @@ public class PrintPreflightService {
             unembeddedAreas.forEach(finding::addArea);
             report.addFinding(finding);
         }
-        if (!type3Names.isEmpty()) {
+        if (!disabled.contains(PreflightCheck.FONT_TYPE3) && !type3Names.isEmpty()) {
             Finding finding =
                     new Finding(
                             Severity.WARNING,
@@ -334,7 +466,7 @@ public class PrintPreflightService {
         boolean rgbUsed =
                 colorSpaceCounts.keySet().stream()
                         .anyMatch(l -> l.contains("RGB") || l.startsWith("Indexed over DeviceRGB"));
-        if (rgbUsed) {
+        if (rgbUsed && !disabled.contains(PreflightCheck.COLOR_RGB_USED)) {
             Finding finding =
                     new Finding(
                             Severity.WARNING,
@@ -346,7 +478,7 @@ public class PrintPreflightService {
             addPaintAreas(finding, rgbAreasByPage);
             report.addFinding(finding);
         }
-        if (!printSpots.isEmpty()) {
+        if (!printSpots.isEmpty() && !disabled.contains(PreflightCheck.COLOR_SPOT)) {
             Finding finding =
                     new Finding(
                             Severity.INFO,
@@ -358,7 +490,7 @@ public class PrintPreflightService {
             report.addFinding(finding);
         }
 
-        if (!lowResByPage.isEmpty()) {
+        if (!lowResByPage.isEmpty() && !disabled.contains(PreflightCheck.IMAGE_LOW_RES)) {
             Finding finding =
                     new Finding(
                             Severity.WARNING,
@@ -388,7 +520,7 @@ public class PrintPreflightService {
             report.addFinding(finding);
         }
 
-        if (!missingTrimPages.isEmpty()) {
+        if (!missingTrimPages.isEmpty() && !disabled.contains(PreflightCheck.TRIMBOX_MISSING)) {
             report.addFinding(
                     new Finding(
                             Severity.WARNING,
@@ -397,7 +529,7 @@ public class PrintPreflightService {
                             "No TrimBox — the finished cut size is undefined",
                             new ArrayList<>(missingTrimPages)));
         }
-        if (!missingBleedPages.isEmpty()) {
+        if (!missingBleedPages.isEmpty() && !disabled.contains(PreflightCheck.BLEED_MISSING)) {
             Finding finding =
                     new Finding(
                             Severity.ERROR,
@@ -422,7 +554,8 @@ public class PrintPreflightService {
             }
             report.addFinding(finding);
         }
-        if (!insufficientBleedAreas.isEmpty()) {
+        if (!insufficientBleedAreas.isEmpty()
+                && !disabled.contains(PreflightCheck.BLEED_INSUFFICIENT)) {
             Finding finding =
                     new Finding(
                             Severity.ERROR,
@@ -435,7 +568,7 @@ public class PrintPreflightService {
             insufficientBleedAreas.values().forEach(list -> list.forEach(finding::addArea));
             report.addFinding(finding);
         }
-        if (!unpaintedBleedPages.isEmpty()) {
+        if (!unpaintedBleedPages.isEmpty() && !disabled.contains(PreflightCheck.BLEED_UNPAINTED)) {
             Finding finding =
                     new Finding(
                             Severity.WARNING,
@@ -448,7 +581,8 @@ public class PrintPreflightService {
             unpaintedBleedAreas.values().forEach(list -> list.forEach(finding::addArea));
             report.addFinding(finding);
         }
-        if (!annotationAreasByPage.isEmpty()) {
+        if (!annotationAreasByPage.isEmpty()
+                && !disabled.contains(PreflightCheck.ANNOTATION_IN_TRIM)) {
             Finding finding =
                     new Finding(
                             Severity.WARNING,
@@ -459,7 +593,7 @@ public class PrintPreflightService {
             annotationAreasByPage.values().forEach(list -> list.forEach(finding::addArea));
             report.addFinding(finding);
         }
-        if (!hairlinesByPage.isEmpty()) {
+        if (!hairlinesByPage.isEmpty() && !disabled.contains(PreflightCheck.HAIRLINE)) {
             double min = Double.MAX_VALUE;
             for (List<StrokeUse> ws : hairlinesByPage.values()) {
                 for (StrokeUse s : ws) {
@@ -474,7 +608,7 @@ public class PrintPreflightService {
                             "Strokes thinner than "
                                     + request.getHairlineThresholdPt()
                                     + " pt (thinnest: "
-                                    + String.format("%.3f", min)
+                                    + String.format(Locale.ROOT, "%.3f", min)
                                     + " pt) may drop out in print",
                             new ArrayList<>(hairlinesByPage.keySet()));
             for (Map.Entry<Integer, List<StrokeUse>> e : hairlinesByPage.entrySet()) {
@@ -487,13 +621,13 @@ public class PrintPreflightService {
                                         s.bounds[1],
                                         Math.max(s.bounds[2] - s.bounds[0], 0.5f),
                                         Math.max(s.bounds[3] - s.bounds[1], 0.5f),
-                                        String.format("%.2f pt", s.widthPt)));
+                                        String.format(Locale.ROOT, "%.2f pt", s.widthPt)));
                     }
                 }
             }
             report.addFinding(finding);
         }
-        if (transparency) {
+        if (transparency && !disabled.contains(PreflightCheck.TRANSPARENCY)) {
             Finding finding =
                     new Finding(
                             Severity.INFO,
@@ -504,7 +638,8 @@ public class PrintPreflightService {
             addPaintAreas(finding, alphaAreasByPage);
             report.addFinding(finding);
         }
-        if (!optionalContentPages.isEmpty()) {
+        if (!optionalContentPages.isEmpty()
+                && !disabled.contains(PreflightCheck.OPTIONAL_CONTENT)) {
             report.addFinding(
                     new Finding(
                             Severity.INFO,
@@ -514,7 +649,7 @@ public class PrintPreflightService {
                                     + " dropped depending on the RIP",
                             new ArrayList<>(optionalContentPages)));
         }
-        if (pageSizeCounts.size() > 1) {
+        if (pageSizeCounts.size() > 1 && !disabled.contains(PreflightCheck.MIXED_PAGE_SIZES)) {
             List<Integer> allPages = new ArrayList<>();
             for (int i = 1; i <= pageIndex; i++) {
                 allPages.add(i);
@@ -529,7 +664,614 @@ public class PrintPreflightService {
                             allPages));
         }
 
+        if (!whiteOverprintByPage.isEmpty() && !disabled.contains(PreflightCheck.OVERPRINT_WHITE)) {
+            Finding finding =
+                    new Finding(
+                            Severity.ERROR,
+                            Category.COLOR,
+                            "OVERPRINT_WHITE",
+                            "White objects set to overprint print nothing — they are invisible on"
+                                    + " press",
+                            new ArrayList<>(whiteOverprintByPage.keySet()));
+            addPaintAreas(finding, whiteOverprintByPage);
+            report.addFinding(finding);
+        }
+        if (!knockoutBlackByPage.isEmpty() && !disabled.contains(PreflightCheck.OVERPRINT_BLACK)) {
+            Finding finding =
+                    new Finding(
+                            Severity.WARNING,
+                            Category.COLOR,
+                            "OVERPRINT_BLACK",
+                            "Black objects knock out the colour beneath — set them to overprint to"
+                                    + " avoid white slivers when registration slips",
+                            new ArrayList<>(knockoutBlackByPage.keySet()));
+            addPaintAreas(finding, knockoutBlackByPage);
+            report.addFinding(finding);
+        }
+        collectTextFindings(report, disabled, request, textUsesByPage);
+        if (!safetyMarginAreas.isEmpty() && !disabled.contains(PreflightCheck.SAFETY_MARGIN)) {
+            Finding finding =
+                    new Finding(
+                            Severity.WARNING,
+                            Category.GEOMETRY,
+                            "SAFETY_MARGIN",
+                            "Content sits within "
+                                    + request.getSafetyMarginMm()
+                                    + " mm of the trim edge — trimming tolerance may cut it",
+                            new ArrayList<>(safetyMarginAreas.keySet()));
+            safetyMarginAreas.values().forEach(list -> list.forEach(finding::addArea));
+            report.addFinding(finding);
+        }
+        if (!emptyPages.isEmpty() && !disabled.contains(PreflightCheck.EMPTY_PAGE)) {
+            report.addFinding(
+                    new Finding(
+                            Severity.INFO,
+                            Category.DOCUMENT,
+                            "EMPTY_PAGE",
+                            emptyPages.size() + " page(s) carry no painted content",
+                            new ArrayList<>(emptyPages)));
+        }
+        if (!oversampledByPage.isEmpty() && !disabled.contains(PreflightCheck.IMAGE_OVERSAMPLED)) {
+            Finding finding =
+                    new Finding(
+                            Severity.INFO,
+                            Category.IMAGES,
+                            "IMAGE_OVERSAMPLED",
+                            oversampledByPage.size()
+                                    + " page(s) hold images above "
+                                    + request.getMaxImageDpi()
+                                    + " dpi effective (highest: "
+                                    + Math.round(maxImageDpi)
+                                    + " dpi) — heavier than print can use",
+                            new ArrayList<>(oversampledByPage.keySet()));
+            addImageAreas(finding, oversampledByPage, " dpi");
+            report.addFinding(finding);
+        }
+        if (!lowRes1BitByPage.isEmpty() && !disabled.contains(PreflightCheck.IMAGE_1BIT_LOW_RES)) {
+            double min1Bit = Double.MAX_VALUE;
+            for (List<ImageUse> list : lowRes1BitByPage.values()) {
+                for (ImageUse img : list) {
+                    min1Bit = Math.min(min1Bit, img.effectiveDpi);
+                }
+            }
+            Finding finding =
+                    new Finding(
+                            Severity.WARNING,
+                            Category.IMAGES,
+                            "IMAGE_1BIT_LOW_RES",
+                            "1-bit images below "
+                                    + request.getMinImage1BitDpi()
+                                    + " dpi effective (lowest: "
+                                    + Math.round(min1Bit)
+                                    + " dpi) — line art needs far more resolution than continuous"
+                                    + " tone",
+                            new ArrayList<>(lowRes1BitByPage.keySet()));
+            addImageAreas(finding, lowRes1BitByPage, " dpi");
+            report.addFinding(finding);
+        }
+        List<Map.Entry<Integer, List<PaintedArea>>> inkHits = new ArrayList<>();
+        float maxTacHit = 0;
+        for (Map.Entry<Integer, List<PaintedArea>> e : inkAreasByPage.entrySet()) {
+            List<PaintedArea> over = new ArrayList<>();
+            for (PaintedArea a : e.getValue()) {
+                if (a.totalInk > request.getMaxInkCoveragePercent()) {
+                    over.add(a);
+                    maxTacHit = Math.max(maxTacHit, a.totalInk);
+                }
+            }
+            if (!over.isEmpty()) {
+                inkHits.add(Map.entry(e.getKey(), over));
+            }
+        }
+        if (!inkHits.isEmpty() && !disabled.contains(PreflightCheck.INK_COVERAGE_HIGH)) {
+            List<Integer> pages = new ArrayList<>();
+            Finding finding =
+                    new Finding(
+                            Severity.WARNING,
+                            Category.COLOR,
+                            "INK_COVERAGE_HIGH",
+                            "Paint exceeds "
+                                    + request.getMaxInkCoveragePercent()
+                                    + "% total ink coverage (max: "
+                                    + Math.round(maxTacHit)
+                                    + "%) — drying and registration problems on press",
+                            pages);
+            for (Map.Entry<Integer, List<PaintedArea>> e : inkHits) {
+                pages.add(e.getKey());
+                for (PaintedArea a : e.getValue()) {
+                    float[] b = a.bounds;
+                    finding.addArea(
+                            new FindingArea(
+                                    e.getKey(),
+                                    b[0],
+                                    b[1],
+                                    Math.max(b[2] - b[0], 0.5f),
+                                    Math.max(b[3] - b[1], 0.5f),
+                                    a.label));
+                }
+            }
+            report.addFinding(finding);
+        }
+        List<List<String>> spotAliases = spotAliasGroups(printSpots);
+        if (!spotAliases.isEmpty() && !disabled.contains(PreflightCheck.SPOT_ALIAS)) {
+            List<String> lines = new ArrayList<>();
+            for (List<String> group : spotAliases) {
+                lines.add(String.join(" ≈ ", group));
+            }
+            report.addFinding(
+                    new Finding(
+                            Severity.WARNING,
+                            Category.COLOR,
+                            "SPOT_ALIAS",
+                            "Spot names that normalize to the same ink make duplicate plates: "
+                                    + String.join("; ", lines),
+                            new ArrayList<>(spotAreasByPage.keySet())));
+        }
+        if (request.getMaxSpotCount() > 0
+                && printSpots.size() > request.getMaxSpotCount()
+                && !disabled.contains(PreflightCheck.SPOT_COUNT)) {
+            report.addFinding(
+                    new Finding(
+                            Severity.INFO,
+                            Category.COLOR,
+                            "SPOT_COUNT",
+                            printSpots.size()
+                                    + " spot separations (> "
+                                    + request.getMaxSpotCount()
+                                    + " allowed) — each adds a plate to the press run",
+                            new ArrayList<>(spotAreasByPage.keySet())));
+        }
+        if (!registrationByPage.isEmpty()
+                && !disabled.contains(PreflightCheck.REGISTRATION_PAINT)) {
+            Finding finding =
+                    new Finding(
+                            Severity.INFO,
+                            Category.COLOR,
+                            "REGISTRATION_PAINT",
+                            "Registration/All colorant painted — hits every plate; expected on"
+                                    + " printer's marks only",
+                            new ArrayList<>(registrationByPage.keySet()));
+            addPaintAreas(finding, registrationByPage);
+            report.addFinding(finding);
+        }
+        if (!invisibleTextPages.isEmpty() && !disabled.contains(PreflightCheck.INVISIBLE_TEXT)) {
+            report.addFinding(
+                    new Finding(
+                            Severity.INFO,
+                            Category.CONTENT,
+                            "INVISIBLE_TEXT",
+                            "Invisible text present (OCR/search layer) — never prints but affects"
+                                    + " extraction",
+                            new ArrayList<>(invisibleTextPages)));
+        }
+        if (!patternPages.isEmpty() && !disabled.contains(PreflightCheck.PATTERN_USED)) {
+            report.addFinding(
+                    new Finding(
+                            Severity.INFO,
+                            Category.COLOR,
+                            "PATTERN_USED",
+                            "Pattern fills in use — tiling and flattening vary across RIPs",
+                            new ArrayList<>(patternPages)));
+        }
+        if (!shadingPages.isEmpty() && !disabled.contains(PreflightCheck.SHADING_USED)) {
+            report.addFinding(
+                    new Finding(
+                            Severity.INFO,
+                            Category.COLOR,
+                            "SHADING_USED",
+                            "Smooth shadings in use — flattening behaviour varies across RIPs",
+                            new ArrayList<>(shadingPages)));
+        }
+        if (!outsidePageByPage.isEmpty()
+                && !disabled.contains(PreflightCheck.OBJECT_OUTSIDE_PAGE)) {
+            Finding finding =
+                    new Finding(
+                            Severity.INFO,
+                            Category.GEOMETRY,
+                            "OBJECT_OUTSIDE_PAGE",
+                            "Content painted entirely outside the crop area — dead weight or a"
+                                    + " misplaced object",
+                            new ArrayList<>(outsidePageByPage.keySet()));
+            addPaintAreas(finding, outsidePageByPage);
+            report.addFinding(finding);
+        }
+        if (facts.getOutputIntent() == null
+                && !disabled.contains(PreflightCheck.OUTPUT_INTENT_MISSING)) {
+            report.addFinding(
+                    new Finding(
+                            Severity.WARNING,
+                            Category.COLOR,
+                            "OUTPUT_INTENT_MISSING",
+                            "No output intent — the target printing condition is undeclared;"
+                                    + " colour conversion will guess",
+                            null));
+        }
+        if (facts.getEmbeddedFileCount() > 0 && !disabled.contains(PreflightCheck.EMBEDDED_FILES)) {
+            report.addFinding(
+                    new Finding(
+                            Severity.WARNING,
+                            Category.DOCUMENT,
+                            "EMBEDDED_FILES",
+                            facts.getEmbeddedFileCount()
+                                    + " embedded file(s) — attachments travel with the PDF and may"
+                                    + " not be wanted in print",
+                            null));
+        }
+        if (facts.isHasAcroForm() && !disabled.contains(PreflightCheck.FORM_FIELDS)) {
+            report.addFinding(
+                    new Finding(
+                            Severity.WARNING,
+                            Category.DOCUMENT,
+                            "FORM_FIELDS",
+                            facts.getFormFieldCount()
+                                    + " form field(s) — interactive widgets may print or be dropped"
+                                    + " depending on the RIP",
+                            null));
+        }
+        if (facts.isHasXfa() && !disabled.contains(PreflightCheck.XFA_FORM)) {
+            report.addFinding(
+                    new Finding(
+                            Severity.WARNING,
+                            Category.DOCUMENT,
+                            "XFA_FORM",
+                            "XFA form content — poorly supported outside Acrobat; flatten before"
+                                    + " print",
+                            null));
+        }
+        if (facts.getSignatureCount() > 0 && !disabled.contains(PreflightCheck.SIGNATURES)) {
+            report.addFinding(
+                    new Finding(
+                            Severity.INFO,
+                            Category.DOCUMENT,
+                            "SIGNATURES",
+                            facts.getSignatureCount()
+                                    + " signature field(s) — signing after edit invalidates them",
+                            null));
+        }
+        if (facts.isHasJavascript() && !disabled.contains(PreflightCheck.JAVASCRIPT)) {
+            report.addFinding(
+                    new Finding(
+                            Severity.INFO,
+                            Category.DOCUMENT,
+                            "JAVASCRIPT",
+                            "JavaScript actions present — ignored by print RIPs",
+                            null));
+        }
+        if (!nonStandardUserUnitPages.isEmpty() && !disabled.contains(PreflightCheck.USER_UNIT)) {
+            report.addFinding(
+                    new Finding(
+                            Severity.WARNING,
+                            Category.GEOMETRY,
+                            "USER_UNIT",
+                            "Non-default /UserUnit scaling on page(s) — real-world size differs"
+                                    + " from raw coordinates",
+                            new ArrayList<>(nonStandardUserUnitPages)));
+        }
+        if (!facts.getLayersDisabledForPrint().isEmpty()
+                && !disabled.contains(PreflightCheck.LAYERS_PRINT_OFF)) {
+            report.addFinding(
+                    new Finding(
+                            Severity.INFO,
+                            Category.CONTENT,
+                            "LAYERS_PRINT_OFF",
+                            "Layers configured off for print: "
+                                    + String.join(", ", facts.getLayersDisabledForPrint()),
+                            new ArrayList<>(optionalContentPages)));
+        }
+        if (!cropBoxDiffersPages.isEmpty() && !disabled.contains(PreflightCheck.CROPBOX_NE_MEDIA)) {
+            report.addFinding(
+                    new Finding(
+                            Severity.INFO,
+                            Category.GEOMETRY,
+                            "CROPBOX_NE_MEDIA",
+                            "CropBox differs from MediaBox — usually a slug margin for printer's"
+                                    + " marks",
+                            new ArrayList<>(cropBoxDiffersPages)));
+        }
+
         return report;
+    }
+
+    private static void mergePaintAreas(
+            Map<Integer, List<PaintedArea>> byPage, int pageNum, List<PaintedArea> areas) {
+        if (!areas.isEmpty()) {
+            byPage.computeIfAbsent(pageNum, k -> new ArrayList<>()).addAll(areas);
+        }
+    }
+
+    private static void addImageAreas(
+            Finding finding, Map<Integer, List<ImageUse>> byPage, String unit) {
+        for (Map.Entry<Integer, List<ImageUse>> e : byPage.entrySet()) {
+            for (ImageUse img : e.getValue()) {
+                if (img.bounds != null) {
+                    finding.addArea(
+                            new FindingArea(
+                                    e.getKey(),
+                                    img.bounds[0],
+                                    img.bounds[1],
+                                    Math.max(img.bounds[2] - img.bounds[0], 0.5f),
+                                    Math.max(img.bounds[3] - img.bounds[1], 0.5f),
+                                    Math.round(img.effectiveDpi) + unit));
+                }
+            }
+        }
+    }
+
+    /** Text findings that need the request thresholds — small size and rich-black colour. */
+    private static void collectTextFindings(
+            PrintPreflightReport report,
+            Set<PreflightCheck> disabled,
+            PrintPreflightRequest request,
+            Map<Integer, List<TextUse>> textUsesByPage) {
+        Map<Integer, List<TextUse>> smallByPage = new LinkedHashMap<>();
+        Map<Integer, List<TextUse>> richByPage = new LinkedHashMap<>();
+        float smallest = Float.MAX_VALUE;
+        for (Map.Entry<Integer, List<TextUse>> e : textUsesByPage.entrySet()) {
+            for (TextUse t : e.getValue()) {
+                if (t.fontSize < request.getMinFontSizePt()) {
+                    smallByPage.computeIfAbsent(e.getKey(), k -> new ArrayList<>()).add(t);
+                    smallest = Math.min(smallest, t.fontSize);
+                }
+                if (isRichBlackText(t.color)) {
+                    richByPage.computeIfAbsent(e.getKey(), k -> new ArrayList<>()).add(t);
+                }
+            }
+        }
+        if (!smallByPage.isEmpty() && !disabled.contains(PreflightCheck.TEXT_SMALL)) {
+            Finding finding =
+                    new Finding(
+                            Severity.WARNING,
+                            Category.CONTENT,
+                            "TEXT_SMALL",
+                            "Text under "
+                                    + request.getMinFontSizePt()
+                                    + " pt (smallest: "
+                                    + String.format(Locale.ROOT, "%.1f", smallest)
+                                    + " pt) may fill in or drop out on press",
+                            new ArrayList<>(smallByPage.keySet()));
+            addTextAreas(finding, smallByPage);
+            report.addFinding(finding);
+        }
+        if (!richByPage.isEmpty() && !disabled.contains(PreflightCheck.TEXT_RICH_BLACK)) {
+            Finding finding =
+                    new Finding(
+                            Severity.WARNING,
+                            Category.COLOR,
+                            "TEXT_RICH_BLACK",
+                            "Text painted in rich/composite black — registration drift makes small"
+                                    + " type fuzzy and hard to read",
+                            new ArrayList<>(richByPage.keySet()));
+            addTextAreas(finding, richByPage);
+            report.addFinding(finding);
+        }
+    }
+
+    private static void addTextAreas(Finding finding, Map<Integer, List<TextUse>> byPage) {
+        for (Map.Entry<Integer, List<TextUse>> e : byPage.entrySet()) {
+            for (TextUse t : e.getValue()) {
+                if (t.bounds != null) {
+                    finding.addArea(
+                            new FindingArea(
+                                    e.getKey(),
+                                    t.bounds[0],
+                                    t.bounds[1],
+                                    Math.max(t.bounds[2] - t.bounds[0], 0.5f),
+                                    Math.max(t.bounds[3] - t.bounds[1], 0.5f),
+                                    String.format(Locale.ROOT, "%.1f pt", t.fontSize)));
+                }
+            }
+        }
+    }
+
+    /**
+     * Text that lands on more than one plate: K-plate black plus a chromatic underlay (rich black),
+     * composite CMY black, multi-separation DeviceN, or dark RGB which converts to four plates.
+     * Fine for display, fragile at small sizes.
+     */
+    private static boolean isRichBlackText(PDColor color) {
+        if (color == null) {
+            return false;
+        }
+        PDColorSpace cs = color.getColorSpace();
+        float[] c = color.getComponents();
+        if (cs instanceof PDDeviceCMYK
+                || (cs instanceof PDICCBased icc && icc.getNumberOfComponents() == 4)) {
+            if (c.length >= 4 && c[3] >= 0.4f) {
+                return c[0] >= 0.15f || c[1] >= 0.15f || c[2] >= 0.15f;
+            }
+            return c.length >= 3 && c[0] >= 0.3f && c[1] >= 0.3f && c[2] >= 0.3f;
+        }
+        if (cs instanceof PDDeviceN) {
+            int nonZero = 0;
+            float sum = 0;
+            for (float v : c) {
+                if (v > 0.15f) {
+                    nonZero++;
+                }
+                sum += v;
+            }
+            return nonZero >= 2 && sum > 0.8f;
+        }
+        if (cs instanceof PDDeviceRGB
+                || (cs instanceof PDICCBased icc && icc.getNumberOfComponents() == 3)) {
+            return c.length >= 3 && c[0] < 0.35f && c[1] < 0.35f && c[2] < 0.35f;
+        }
+        return false;
+    }
+
+    /**
+     * Painted bounds fully inside the trim (bleed elements cross the edge) but closer than the
+     * safety margin to it — the zone where cutting tolerance can bite.
+     */
+    private static void collectSafetyMargin(
+            int pageNum,
+            PDRectangle trim,
+            float marginPt,
+            PreflightGraphicsEngine engine,
+            Map<Integer, List<FindingArea>> out) {
+        List<FindingArea> hits = new ArrayList<>();
+        for (PaintedArea a : engine.getPaintAreas()) {
+            if (!a.technical && a.bounds != null) {
+                addIfNearEdge(pageNum, a.bounds, a.label, trim, marginPt, hits);
+            }
+        }
+        for (ImageUse img : engine.getImages()) {
+            if (!img.technical && img.bounds != null) {
+                addIfNearEdge(pageNum, img.bounds, img.colorSpaceLabel, trim, marginPt, hits);
+            }
+        }
+        for (TextUse t : engine.getTextUses()) {
+            if (t.bounds != null) {
+                addIfNearEdge(
+                        pageNum,
+                        t.bounds,
+                        String.format(Locale.ROOT, "%.1f pt text", t.fontSize),
+                        trim,
+                        marginPt,
+                        hits);
+            }
+        }
+        if (!hits.isEmpty()) {
+            out.put(pageNum, hits);
+        }
+    }
+
+    private static void addIfNearEdge(
+            int page,
+            float[] b,
+            String label,
+            PDRectangle trim,
+            float marginPt,
+            List<FindingArea> hits) {
+        if (hits.size() >= 64
+                || b[0] < trim.getLowerLeftX()
+                || b[2] > trim.getUpperRightX()
+                || b[1] < trim.getLowerLeftY()
+                || b[3] > trim.getUpperRightY()) {
+            return;
+        }
+        float dist =
+                Math.min(
+                        Math.min(b[0] - trim.getLowerLeftX(), trim.getUpperRightX() - b[2]),
+                        Math.min(b[1] - trim.getLowerLeftY(), trim.getUpperRightY() - b[3]));
+        if (dist >= marginPt) {
+            return;
+        }
+        String detail = Math.round(dist / PT_PER_MM * 10) / 10f + " mm to trim";
+        if (label != null) {
+            detail += " · " + label;
+        }
+        hits.add(
+                new FindingArea(
+                        page,
+                        b[0],
+                        b[1],
+                        Math.max(b[2] - b[0], 0.5f),
+                        Math.max(b[3] - b[1], 0.5f),
+                        detail));
+    }
+
+    private static boolean rectEquals(PDRectangle a, PDRectangle b) {
+        return a != null
+                && b != null
+                && Math.abs(a.getLowerLeftX() - b.getLowerLeftX()) < 0.5f
+                && Math.abs(a.getLowerLeftY() - b.getLowerLeftY()) < 0.5f
+                && Math.abs(a.getUpperRightX() - b.getUpperRightX()) < 0.5f
+                && Math.abs(a.getUpperRightY() - b.getUpperRightY()) < 0.5f;
+    }
+
+    /**
+     * Spot names that differ only in spelling — "PANTONE 485 C" vs "pms-485cv" — each become a
+     * separate plate although the ink is the same.
+     */
+    private static List<List<String>> spotAliasGroups(Set<String> spotColors) {
+        Map<String, Set<String>> byNormalized = new LinkedHashMap<>();
+        for (String name : spotColors) {
+            String norm = normalizeSpotName(name);
+            if (!norm.isEmpty()) {
+                byNormalized.computeIfAbsent(norm, k -> new LinkedHashSet<>()).add(name);
+            }
+        }
+        List<List<String>> groups = new ArrayList<>();
+        for (Set<String> raws : byNormalized.values()) {
+            if (raws.size() > 1) {
+                groups.add(new ArrayList<>(raws));
+            }
+        }
+        return groups;
+    }
+
+    private static String normalizeSpotName(String name) {
+        String n = name.trim().toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "");
+        n = n.replaceFirst("^(pantone|pms|hks|toyo|dic|focoltone|ral)", "");
+        n = n.replaceFirst("(cvu?|up|uc|coated|uncoated|matte?|gloss|c|u|m|k)$", "");
+        return n;
+    }
+
+    /**
+     * Document-level facts that need no page pass: output intent, Trapped flag, attachments,
+     * forms/signatures, JavaScript and layers switched off for print.
+     */
+    private static void collectDocumentFacts(PDDocument document, Facts facts) {
+        try {
+            PDDocumentCatalog catalog = document.getDocumentCatalog();
+            List<PDOutputIntent> intents = catalog.getOutputIntents();
+            if (!intents.isEmpty()) {
+                PDOutputIntent oi = intents.get(0);
+                facts.setOutputIntent(
+                        new OutputIntentFact(
+                                oi.getOutputCondition(),
+                                oi.getRegistryName(),
+                                oi.getInfo(),
+                                oi.getOutputConditionIdentifier()));
+            }
+            PDDocumentInformation info = document.getDocumentInformation();
+            if (info != null) {
+                facts.setTrapped(info.getTrapped());
+            }
+            PDDocumentNameDictionary names = catalog.getNames();
+            if (names != null) {
+                if (names.getEmbeddedFiles() != null) {
+                    Map<String, ?> embedded = names.getEmbeddedFiles().getNames();
+                    facts.setEmbeddedFileCount(embedded != null ? embedded.size() : 1);
+                }
+                facts.setHasJavascript(names.getJavaScript() != null);
+            }
+            if (catalog.getOpenAction() instanceof PDActionJavaScript) {
+                facts.setHasJavascript(true);
+            }
+            PDAcroForm form = catalog.getAcroForm();
+            if (form != null) {
+                List<PDField> fields = form.getFields();
+                facts.setHasAcroForm(!fields.isEmpty());
+                facts.setFormFieldCount(fields.size());
+                int signatures = 0;
+                for (PDField field : fields) {
+                    if (field instanceof PDSignatureField) {
+                        signatures++;
+                    }
+                }
+                facts.setSignatureCount(signatures);
+                facts.setHasXfa(form.hasXFA());
+            }
+            PDOptionalContentProperties ocProps = catalog.getOCProperties();
+            if (ocProps != null) {
+                List<String> off = new ArrayList<>();
+                for (PDOptionalContentGroup group : ocProps.getOptionalContentGroups()) {
+                    try {
+                        if (RenderState.OFF.equals(group.getRenderState(RenderDestination.PRINT))) {
+                            String name = group.getName();
+                            off.add(name != null ? name : "(unnamed layer)");
+                        }
+                    } catch (RuntimeException ignored) {
+                        // a state name outside the RenderState enum must not sink the fact pass
+                    }
+                }
+                facts.setLayersDisabledForPrint(off);
+            }
+        } catch (IOException | RuntimeException e) {
+            log.debug("Document-level preflight facts failed", e);
+        }
     }
 
     /** Areas from painted-content records: map key is the 1-based page. */

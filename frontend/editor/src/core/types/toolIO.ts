@@ -791,6 +791,11 @@ export const TOOL_IO: ToolIOTable = {
     produces: "PDF",
     arity: "SISO",
   },
+  "/api/v1/security/print-preflight-report": {
+    accepts: ["PDF"],
+    produces: "PDF",
+    arity: "SISO",
+  },
   "/api/v1/security/redact": {
     accepts: ["PDF"],
     produces: "PDF",

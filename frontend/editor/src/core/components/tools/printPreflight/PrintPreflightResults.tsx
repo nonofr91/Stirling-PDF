@@ -402,6 +402,25 @@ const PrintPreflightResults = ({
                         </Group>
                       </Stack>
                     )}
+                    {report.facts.spotColors.length > 0 && (
+                      <Stack gap={2}>
+                        <Text size="sm" fw={600}>
+                          {t("printPreflight.facts.spotColors", "Spot colours")}
+                        </Text>
+                        <Group gap="xs">
+                          {report.facts.spotColors.map((s) => (
+                            <Badge
+                              key={s}
+                              variant="outline"
+                              size="sm"
+                              color="grape"
+                            >
+                              {s}
+                            </Badge>
+                          ))}
+                        </Group>
+                      </Stack>
+                    )}
                     {report.facts.technicalSeparations.length > 0 && (
                       <Stack gap={2}>
                         <Text size="sm" fw={600}>
@@ -424,6 +443,39 @@ const PrintPreflightResults = ({
                         </Group>
                       </Stack>
                     )}
+                    {report.facts.pageSizes.length > 0 && (
+                      <Stack gap={2}>
+                        <Text size="sm" fw={600}>
+                          {t(
+                            "printPreflight.facts.pageSizes",
+                            "Page dimensions",
+                          )}
+                        </Text>
+                        {report.facts.pageSizes.map((size) => (
+                          <Text
+                            size="xs"
+                            key={
+                              size.widthPt +
+                              "x" +
+                              size.heightPt +
+                              "r" +
+                              size.rotation
+                            }
+                          >
+                            {((size.widthPt / 72) * 25.4).toFixed(1)} ×{" "}
+                            {((size.heightPt / 72) * 25.4).toFixed(1)} mm
+                            {size.rotation !== 0 &&
+                              " · " +
+                                t(
+                                  "printPreflight.facts.rotated",
+                                  "rotated {{deg}}°",
+                                  { deg: size.rotation },
+                                )}
+                            {size.count > 1 && " · ×" + size.count}
+                          </Text>
+                        ))}
+                      </Stack>
+                    )}
                     <Text size="sm">
                       <strong>
                         {t("printPreflight.facts.images", "Images")}:
@@ -437,14 +489,195 @@ const PrintPreflightResults = ({
                             { count: report.facts.lowResImageCount },
                           ) +
                           ")"}
+                      {report.facts.oversampledImageCount > 0 &&
+                        " (" +
+                          t(
+                            "printPreflight.facts.oversampled",
+                            "{{count}} oversampled",
+                            { count: report.facts.oversampledImageCount },
+                          ) +
+                          ")"}
+                      {Number.isFinite(report.facts.minEffectiveDpi) &&
+                        " · " +
+                          t(
+                            "printPreflight.facts.dpiRange",
+                            "{{min}}–{{max}} dpi",
+                            {
+                              min: Math.round(report.facts.minEffectiveDpi),
+                              max: Math.round(report.facts.maxEffectiveDpi),
+                            },
+                          )}
                     </Text>
+                    {report.facts.maxInkCoverageSeen > 0 && (
+                      <Text size="sm">
+                        <strong>
+                          {t(
+                            "printPreflight.facts.inkCoverage",
+                            "Max ink coverage",
+                          )}
+                          :
+                        </strong>{" "}
+                        {Math.round(report.facts.maxInkCoverageSeen)}%
+                      </Text>
+                    )}
                     <Text size="sm">
                       <strong>
                         {t("printPreflight.facts.boxes", "Page boxes")}:
                       </strong>{" "}
                       {report.facts.hasTrimBox ? "TrimBox" : "—"} ·{" "}
-                      {report.facts.hasBleedBox ? "BleedBox" : "—"}
+                      {report.facts.hasBleedBox ? "BleedBox" : "—"} ·{" "}
+                      {report.facts.hasCropBox ? "CropBox" : "—"} ·{" "}
+                      {report.facts.hasArtBox ? "ArtBox" : "—"}
                     </Text>
+                    <Text size="sm">
+                      <strong>
+                        {t(
+                          "printPreflight.facts.outputIntent",
+                          "Output intent",
+                        )}
+                        :
+                      </strong>{" "}
+                      {report.facts.outputIntent
+                        ? (report.facts.outputIntent.conditionIdentifier ??
+                          report.facts.outputIntent.name ??
+                          "—")
+                        : t("printPreflight.facts.none", "none")}
+                      {report.facts.trapped &&
+                        " · " +
+                          t(
+                            "printPreflight.facts.trapped",
+                            "trapped: {{value}}",
+                            { value: report.facts.trapped },
+                          )}
+                    </Text>
+                    {(report.facts.transparencyUsed ||
+                      report.facts.patternUsed ||
+                      report.facts.shadingUsed) && (
+                      <Text size="sm">
+                        <strong>
+                          {t("printPreflight.facts.effects", "Effects")}:
+                        </strong>{" "}
+                        {[
+                          report.facts.transparencyUsed &&
+                            t(
+                              "printPreflight.facts.transparency",
+                              "transparency",
+                            ),
+                          report.facts.patternUsed &&
+                            t("printPreflight.facts.patterns", "patterns"),
+                          report.facts.shadingUsed &&
+                            t("printPreflight.facts.shadings", "shadings"),
+                        ]
+                          .filter(Boolean)
+                          .join(", ")}
+                      </Text>
+                    )}
+                    {(report.facts.signatureCount > 0 ||
+                      report.facts.hasAcroForm ||
+                      report.facts.hasXfa ||
+                      report.facts.embeddedFileCount > 0 ||
+                      report.facts.hasJavascript) && (
+                      <Text size="sm">
+                        <strong>
+                          {t(
+                            "printPreflight.facts.extras",
+                            "Interactive & extras",
+                          )}
+                          :
+                        </strong>{" "}
+                        {[
+                          report.facts.signatureCount > 0 &&
+                            t(
+                              "printPreflight.facts.signatures",
+                              "{{count}} signature(s)",
+                              { count: report.facts.signatureCount },
+                            ),
+                          report.facts.hasAcroForm &&
+                            t(
+                              "printPreflight.facts.formFields",
+                              "{{count}} form field(s)",
+                              { count: report.facts.formFieldCount },
+                            ),
+                          report.facts.hasXfa &&
+                            t("printPreflight.facts.xfa", "XFA"),
+                          report.facts.embeddedFileCount > 0 &&
+                            t(
+                              "printPreflight.facts.embedded",
+                              "{{count}} embedded file(s)",
+                              { count: report.facts.embeddedFileCount },
+                            ),
+                          report.facts.hasJavascript &&
+                            t("printPreflight.facts.javascript", "JavaScript"),
+                        ]
+                          .filter(Boolean)
+                          .join(", ")}
+                      </Text>
+                    )}
+                    {report.facts.layersDisabledForPrint.length > 0 && (
+                      <Text size="sm">
+                        <strong>
+                          {t(
+                            "printPreflight.facts.layersOff",
+                            "Layers off for print",
+                          )}
+                          :
+                        </strong>{" "}
+                        {report.facts.layersDisabledForPrint.join(", ")}
+                      </Text>
+                    )}
+                    {(report.facts.emptyPages.length > 0 ||
+                      report.facts.invisibleTextPages.length > 0 ||
+                      report.facts.registrationPaintPages.length > 0 ||
+                      report.facts.nonStandardUserUnitPages.length > 0) && (
+                      <Text size="sm">
+                        <strong>
+                          {t("printPreflight.facts.flags", "Notices")}:
+                        </strong>{" "}
+                        {[
+                          report.facts.emptyPages.length > 0 &&
+                            t(
+                              "printPreflight.facts.emptyPages",
+                              "empty page(s) {{pages}}",
+                              {
+                                pages: report.facts.emptyPages.join(", "),
+                              },
+                            ),
+                          report.facts.invisibleTextPages.length > 0 &&
+                            t(
+                              "printPreflight.facts.invisibleText",
+                              "invisible text on page(s) {{pages}}",
+                              {
+                                pages:
+                                  report.facts.invisibleTextPages.join(", "),
+                              },
+                            ),
+                          report.facts.registrationPaintPages.length > 0 &&
+                            t(
+                              "printPreflight.facts.registration",
+                              "registration colour on page(s) {{pages}}",
+                              {
+                                pages:
+                                  report.facts.registrationPaintPages.join(
+                                    ", ",
+                                  ),
+                              },
+                            ),
+                          report.facts.nonStandardUserUnitPages.length > 0 &&
+                            t(
+                              "printPreflight.facts.userUnit",
+                              "UserUnit on page(s) {{pages}}",
+                              {
+                                pages:
+                                  report.facts.nonStandardUserUnitPages.join(
+                                    ", ",
+                                  ),
+                              },
+                            ),
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </Text>
+                    )}
                   </Stack>
                 </Accordion.Panel>
               </Accordion.Item>
@@ -457,18 +690,32 @@ const PrintPreflightResults = ({
         {operation.results
           .filter((entry) => !entry.error && entry.report)
           .map((entry) => (
-            <Button
-              key={entry.fileId}
-              variant="secondary"
-              loading={operation.annotatedLoading === entry.fileId}
-              disabled={
-                operation.annotatedLoading != null &&
-                operation.annotatedLoading !== entry.fileId
-              }
-              onClick={() => void operation.downloadAnnotated(entry.fileId)}
-            >
-              {t("printPreflight.downloadAnnotated", "Annotated PDF")}
-            </Button>
+            <Stack key={entry.fileId} gap="xs">
+              <Button
+                variant="secondary"
+                loading={operation.annotatedLoading === entry.fileId}
+                disabled={
+                  (operation.annotatedLoading != null &&
+                    operation.annotatedLoading !== entry.fileId) ||
+                  operation.reportLoading != null
+                }
+                onClick={() => void operation.downloadAnnotated(entry.fileId)}
+              >
+                {t("printPreflight.downloadAnnotated", "Annotated PDF")}
+              </Button>
+              <Button
+                variant="secondary"
+                loading={operation.reportLoading === entry.fileId}
+                disabled={
+                  (operation.reportLoading != null &&
+                    operation.reportLoading !== entry.fileId) ||
+                  operation.annotatedLoading != null
+                }
+                onClick={() => void operation.downloadReport(entry.fileId)}
+              >
+                {t("printPreflight.downloadReport", "Report PDF")}
+              </Button>
+            </Stack>
           ))}
         {jsonFile && (
           <Button onClick={() => handleDownload(jsonFile)}>

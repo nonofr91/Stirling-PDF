@@ -1,5 +1,7 @@
 package stirling.software.SPDF.model.api.security;
 
+import java.util.List;
+
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import lombok.Data;
@@ -40,4 +42,66 @@ public class PrintPreflightRequest extends PDFFile {
             type = "boolean",
             defaultValue = "true")
     private boolean checkBleedCoverage = true;
+
+    @Schema(
+            description =
+                    "Text rendered smaller than this size in points is reported as too small to"
+                            + " print reliably",
+            minimum = "0",
+            defaultValue = "5")
+    private float minFontSizePt = 5f;
+
+    @Schema(
+            description =
+                    "Content inside the trim but closer than this distance in millimetres to the"
+                            + " trim edge is reported as at risk of being cut off",
+            minimum = "0",
+            defaultValue = "3")
+    private float safetyMarginMm = 3;
+
+    @Schema(
+            description =
+                    "Painted colours whose total ink coverage exceeds this percentage are reported"
+                            + " — drying and registration problems above ~320% in offset",
+            minimum = "0",
+            defaultValue = "320")
+    private int maxInkCoveragePercent = 320;
+
+    @Schema(
+            description =
+                    "1-bit (bitmap) images rendered below this effective resolution are reported —"
+                            + " line art needs far more resolution than continuous tone",
+            minimum = "1",
+            defaultValue = "1200")
+    private int minImage1BitDpi = 1200;
+
+    @Schema(
+            description =
+                    "Images rendered above this effective resolution are reported as oversampled —"
+                            + " heavier than print can use",
+            minimum = "1",
+            defaultValue = "600")
+    private int maxImageDpi = 600;
+
+    @Schema(
+            description =
+                    "More spot separations than this are reported — each plate costs makeready;"
+                            + " 0 disables the limit",
+            minimum = "0",
+            defaultValue = "0")
+    private int maxSpotCount = 0;
+
+    @Schema(
+            description =
+                    "Prepend summary pages (verdict, document facts, fonts, colours, findings) to"
+                            + " the annotated PDF",
+            type = "boolean",
+            defaultValue = "true")
+    private boolean includeSummaryPage = true;
+
+    @Schema(
+            description =
+                    "Finding codes to skip (e.g. SAFETY_MARGIN, INK_COVERAGE_HIGH); empty runs"
+                            + " every check")
+    private List<String> disabledChecks;
 }
