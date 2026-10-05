@@ -35,7 +35,9 @@ class TomlBackend implements BackendModule<TomlBackendOptions> {
         ? loadPath([language], [namespace])
         : loadPath.replace("{{lng}}", language).replace("{{ns}}", namespace);
 
-    fetch(url)
+    // no-cache forces revalidation: a cached TOML missing recently added keys
+    // renders English fallbacks while the rest of the UI is translated.
+    fetch(url, { cache: "no-cache" })
       .then((response) => {
         if (!response.ok) {
           throw new Error(
