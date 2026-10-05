@@ -69,6 +69,7 @@ export function FolderAppearancePicker({
             <IconButton
               key={icon.id}
               icon={icon}
+              label={t(icon.labelKey, icon.label)}
               disabled={disabled}
               selected={
                 (icon.id === "none" && !folder.icon) || folder.icon === icon.id
@@ -101,23 +102,25 @@ function Section({
 
 function IconButton({
   icon,
+  label,
   selected,
   onClick,
   disabled = false,
 }: {
   icon: FolderIconOption;
+  label: string;
   selected: boolean;
   onClick: () => void;
   disabled?: boolean;
 }) {
   return (
-    <Tooltip label={icon.label} withinPortal>
+    <Tooltip label={label} withinPortal>
       <button
         type="button"
         className="folder-appearance-icon"
         disabled={disabled}
         aria-pressed={selected}
-        aria-label={icon.label}
+        aria-label={label}
         onClick={(e) => {
           e.stopPropagation();
           onClick();
