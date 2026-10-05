@@ -74,7 +74,15 @@ public class WebMvcConfig implements WebMvcConfigurer {
                 .resourceChain(true)
                 .addResolver(new EncodedResourceResolver());
 
-        // 4. Branding and stable non-fingerprinted assets (1 day + SWR)
+        // 4. Locale files change with every release and are not fingerprinted:
+        // stale copies render missing keys as English fallbacks for days.
+        registry.addResourceHandler("/locales/**")
+                .addResourceLocations(staticPath + "locales/", "classpath:/static/locales/")
+                .setCacheControl(NO_CACHE)
+                .resourceChain(true)
+                .addResolver(new EncodedResourceResolver());
+
+        // 5. Branding and stable non-fingerprinted assets (1 day + SWR)
         // Use stale-while-revalidate to improve perceived performance.
         registry.addResourceHandler(
                         "/favicon.*",
@@ -87,7 +95,6 @@ public class WebMvcConfig implements WebMvcConfigurer {
                         "/3rdPartyLicenses.json",
                         "/pdfjs/**",
                         "/pdfium/**",
-                        "/locales/**",
                         "/css/**",
                         "/js/**",
                         "/vendor/**",
@@ -126,7 +133,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
                 .resourceChain(true)
                 .addResolver(new EncodedResourceResolver());
 
-        // 5. Catch-all (SPA fallback)
+        // 6. Catch-all (SPA fallback)
         // Must check with server to ensure index.html is always fresh.
         registry.addResourceHandler("/**")
                 .addResourceLocations(staticPath, "classpath:/static/")
