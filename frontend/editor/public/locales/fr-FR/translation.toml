@@ -14276,6 +14276,7 @@ label = "Corrections à appliquer"
 placeholder = "Toutes les corrections applicables"
 
 [printPreflight.fixups.codes]
+CLIP_TO_CROPBOX = "Rogner le contenu au CropBox"
 DISCARD_CROPBOX = "Supprimer les CropBox"
 DOWNSAMPLE_IMAGES = "Rééchantillonner les images surdimensionnées"
 ENABLE_LAYER_PRINTING = "Activer l'impression des calques"

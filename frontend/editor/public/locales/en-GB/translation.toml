@@ -11103,6 +11103,7 @@ label = "Fixups to apply"
 placeholder = "All applicable fixups"
 
 [printPreflight.fixups.codes]
+CLIP_TO_CROPBOX = "Clip content to the crop box"
 DISCARD_CROPBOX = "Discard crop boxes"
 DOWNSAMPLE_IMAGES = "Downsample oversampled images"
 ENABLE_LAYER_PRINTING = "Enable printing on layers"

@@ -284,6 +284,18 @@ final class PreflightGraphicsEngine extends PDFGraphicsStreamEngine {
     private boolean pathHasPoints;
 
     /**
+     * Bounding box of the active clipping path, in page space; null when unclipped. The box
+     * approximates the path (a polygonal clip over-estimates, which only makes outside-page
+     * reporting conservative). Saved and restored with the graphics state.
+     */
+    private float[] clipBounds;
+
+    /** A clip that intersected to nothing — distinct from {@code null} (no clip at all). */
+    private static final float[] EMPTY_CLIP = new float[0];
+
+    private final Deque<float[]> clipStack = new LinkedList<>();
+
+    /**
      * @param inkRecordFloor request's TAC threshold — the recording floor must sit at or under it
      *     so objects just over the user limit are not filtered out before the check runs
      */
@@ -708,7 +720,24 @@ final class PreflightGraphicsEngine extends PDFGraphicsStreamEngine {
 
     @Override
     public void clip(int windingRule) throws IOException {
+        if (pathHasPoints) {
+            float[] narrowed =
+                    intersect(clipBounds, new float[] {pathMinX, pathMinY, pathMaxX, pathMaxY});
+            clipBounds = narrowed == null ? EMPTY_CLIP : narrowed;
+        }
         pathHasPoints = false;
+    }
+
+    @Override
+    public void saveGraphicsState() {
+        super.saveGraphicsState();
+        clipStack.push(clipBounds);
+    }
+
+    @Override
+    public void restoreGraphicsState() {
+        super.restoreGraphicsState();
+        clipBounds = clipStack.isEmpty() ? null : clipStack.pop();
     }
 
     @Override
@@ -887,12 +916,36 @@ final class PreflightGraphicsEngine extends PDFGraphicsStreamEngine {
                 && REGISTRATION_COLORANTS.contains(name.trim().toLowerCase(Locale.ROOT));
     }
 
+    /**
+     * Only paint that survives the clipping path can land outside the CropBox: an object clipped
+     * away to nothing cannot print, and a clip nested inside the crop makes every op safe. That is
+     * also what makes {@code CLIP_TO_CROPBOX} auditable — the finding clears once the clip exists.
+     */
     private boolean outsideCrop(float[] b) {
-        return cropBox != null
-                && (b[2] < cropBox.getLowerLeftX()
-                        || b[0] > cropBox.getUpperRightX()
-                        || b[3] < cropBox.getLowerLeftY()
-                        || b[1] > cropBox.getUpperRightY());
+        if (cropBox == null) {
+            return false;
+        }
+        float[] painted = clipBounds == null ? b : intersect(b, clipBounds);
+        return painted != null
+                && (painted[2] < cropBox.getLowerLeftX()
+                        || painted[0] > cropBox.getUpperRightX()
+                        || painted[3] < cropBox.getLowerLeftY()
+                        || painted[1] > cropBox.getUpperRightY());
+    }
+
+    /** Bounds intersection in page space; null when either side is empty or they are disjoint. */
+    private static float[] intersect(float[] a, float[] b) {
+        if (a == null) {
+            return b;
+        }
+        if (a.length < 4 || b.length < 4) {
+            return null;
+        }
+        float x0 = Math.max(a[0], b[0]);
+        float y0 = Math.max(a[1], b[1]);
+        float x1 = Math.min(a[2], b[2]);
+        float y1 = Math.min(a[3], b[3]);
+        return x1 < x0 || y1 < y0 ? null : new float[] {x0, y0, x1, y1};
     }
 
     private static boolean overlaps(float[] a, float[] b) {
