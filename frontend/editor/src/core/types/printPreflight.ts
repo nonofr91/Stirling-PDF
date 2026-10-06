@@ -140,6 +140,7 @@ export interface PrintPreflightProfile {
   minFontSizePt?: number | null;
   safetyMarginMm?: number | null;
   maxInkCoveragePercent?: number | null;
+  renderedInkCoverage?: boolean | null;
   minImage1BitDpi?: number | null;
   maxImageDpi?: number | null;
   maxSpotCount?: number | null;

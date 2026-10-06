@@ -87,6 +87,10 @@ const buildFormData = (
     }
   }
   formData.append("checkBleedCoverage", String(params.checkBleedCoverage));
+  formData.append(
+    "renderedInkCoverage",
+    String(params.renderedInkCoverage ?? false),
+  );
   formData.append("includeSummaryPage", String(params.includeSummaryPage));
   if (i18n.language) {
     formData.append("reportLanguage", i18n.language);

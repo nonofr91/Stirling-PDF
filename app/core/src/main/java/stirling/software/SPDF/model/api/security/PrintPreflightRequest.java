@@ -71,6 +71,15 @@ public class PrintPreflightRequest extends PDFFile {
 
     @Schema(
             description =
+                    "Measure total ink coverage from a Ghostscript-rendered CMYK raster instead of"
+                            + " painted fills — sees real stacking and knockouts but adds render"
+                            + " time (requires the Ghostscript endpoint group)",
+            type = "boolean",
+            defaultValue = "false")
+    private boolean renderedInkCoverage = false;
+
+    @Schema(
+            description =
                     "1-bit (bitmap) images rendered below this effective resolution are reported —"
                             + " line art needs far more resolution than continuous tone",
             minimum = "1",

@@ -14314,6 +14314,10 @@ label = "Page de synthèse dans le PDF annoté"
 help = "Les images rendues au-dessus de cette résolution effective sont signalées comme suréchantillonnées — du poids mort pour la presse."
 label = "Résolution maximale des images (dpi)"
 
+[printPreflight.renderedInkCoverage]
+desc = "Rasterise avec Ghostscript et mesure l'encrage total réel — voit l'empilement, les images et les superpositions. Plus lent que l'estimation sur les remplissages peints."
+label = "Mesurer l'encre sur la page rendue"
+
 [printPreflight.maxInkCoveragePercent]
 help = "Les couleurs dépassant ce taux de couverture total sont signalées — problèmes de séchage et de repérage au-delà de ~320 % en offset."
 label = "Couverture d'encre max (%)"

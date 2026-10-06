@@ -1487,6 +1487,10 @@ class PrintPreflightAnnotatedParams(ApiModel):
         description="Named preflight profile to run with — the profile supplies every threshold, fixups and disabledChecks; request-level parameters for those are ignored. Built-ins ship with the app, customs live in configs/preflight-profiles.json",
         examples=["offset-press"],
     )
+    rendered_ink_coverage: bool = Field(
+        False,
+        description="Measure total ink coverage from a Ghostscript-rendered CMYK raster instead of painted fills — sees real stacking and knockouts but adds render time (requires the Ghostscript endpoint group)",
+    )
     report_language: str | None = Field(
         None,
         description="BCP-47 tag for the language of generated report text and finding messages (e.g. fr-FR); falls back to the session locale, then English",
@@ -1559,6 +1563,10 @@ class PrintPreflightFixParams(ApiModel):
         None,
         description="Named preflight profile to run with — the profile supplies every threshold, fixups and disabledChecks; request-level parameters for those are ignored. Built-ins ship with the app, customs live in configs/preflight-profiles.json",
         examples=["offset-press"],
+    )
+    rendered_ink_coverage: bool = Field(
+        False,
+        description="Measure total ink coverage from a Ghostscript-rendered CMYK raster instead of painted fills — sees real stacking and knockouts but adds render time (requires the Ghostscript endpoint group)",
     )
     report_language: str | None = Field(
         None,
@@ -1633,6 +1641,10 @@ class PrintPreflightFixPreviewParams(ApiModel):
         description="Named preflight profile to run with — the profile supplies every threshold, fixups and disabledChecks; request-level parameters for those are ignored. Built-ins ship with the app, customs live in configs/preflight-profiles.json",
         examples=["offset-press"],
     )
+    rendered_ink_coverage: bool = Field(
+        False,
+        description="Measure total ink coverage from a Ghostscript-rendered CMYK raster instead of painted fills — sees real stacking and knockouts but adds render time (requires the Ghostscript endpoint group)",
+    )
     report_language: str | None = Field(
         None,
         description="BCP-47 tag for the language of generated report text and finding messages (e.g. fr-FR); falls back to the session locale, then English",
@@ -1706,6 +1718,10 @@ class PrintPreflightParams(ApiModel):
         description="Named preflight profile to run with — the profile supplies every threshold, fixups and disabledChecks; request-level parameters for those are ignored. Built-ins ship with the app, customs live in configs/preflight-profiles.json",
         examples=["offset-press"],
     )
+    rendered_ink_coverage: bool = Field(
+        False,
+        description="Measure total ink coverage from a Ghostscript-rendered CMYK raster instead of painted fills — sees real stacking and knockouts but adds render time (requires the Ghostscript endpoint group)",
+    )
     report_language: str | None = Field(
         None,
         description="BCP-47 tag for the language of generated report text and finding messages (e.g. fr-FR); falls back to the session locale, then English",
@@ -1755,6 +1771,9 @@ class PrintPreflightProfilesParams(ApiModel):
     min_image_dpi: int | None = Field(None, description="Images rendered below this effective resolution are reported")
     name: str | None = Field(
         None, description="Unique profile name — the key used in profileName", examples=["offset-press"]
+    )
+    rendered_ink_coverage: bool | None = Field(
+        None, description="Measure ink coverage from a rendered CMYK raster instead of painted fills"
     )
     required_bleed_mm: float | None = Field(
         None, description="Bleed width in millimetres required on every side beyond the TrimBox"
@@ -1821,6 +1840,10 @@ class PrintPreflightReportParams(ApiModel):
         None,
         description="Named preflight profile to run with — the profile supplies every threshold, fixups and disabledChecks; request-level parameters for those are ignored. Built-ins ship with the app, customs live in configs/preflight-profiles.json",
         examples=["offset-press"],
+    )
+    rendered_ink_coverage: bool = Field(
+        False,
+        description="Measure total ink coverage from a Ghostscript-rendered CMYK raster instead of painted fills — sees real stacking and knockouts but adds render time (requires the Ghostscript endpoint group)",
     )
     report_language: str | None = Field(
         None,

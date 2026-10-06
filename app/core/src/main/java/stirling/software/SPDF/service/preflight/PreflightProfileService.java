@@ -96,6 +96,8 @@ public class PreflightProfileService {
             request.setSafetyMarginMm(profile.getSafetyMarginMm());
         if (profile.getMaxInkCoveragePercent() != null)
             request.setMaxInkCoveragePercent(profile.getMaxInkCoveragePercent());
+        if (profile.getRenderedInkCoverage() != null)
+            request.setRenderedInkCoverage(profile.getRenderedInkCoverage());
         if (profile.getMinImage1BitDpi() != null)
             request.setMinImage1BitDpi(profile.getMinImage1BitDpi());
         if (profile.getMaxImageDpi() != null) request.setMaxImageDpi(profile.getMaxImageDpi());

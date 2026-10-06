@@ -37,6 +37,7 @@ import org.apache.pdfbox.pdmodel.interactive.form.PDField;
 import org.apache.pdfbox.pdmodel.interactive.form.PDSignatureField;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.apache.pdfbox.rendering.RenderDestination;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import lombok.extern.slf4j.Slf4j;
@@ -73,6 +74,14 @@ public class PrintPreflightService {
     private static final int WHITE_RGB_THRESHOLD = 245;
     private static final float BLEED_TOLERANCE_PT = 0.5f;
     private static final float PAGE_SIZE_TOLERANCE_PT = 0.5f;
+
+    /** Optional rendered-TAC collaborator; null keeps the painted-area approximation. */
+    @Autowired(required = false)
+    private RenderedInkCoverage renderedInkCoverage;
+
+    void setRenderedInkCoverage(RenderedInkCoverage renderedInkCoverage) {
+        this.renderedInkCoverage = renderedInkCoverage;
+    }
 
     public PrintPreflightReport analyze(
             PDDocument document, String fileName, long fileSizeBytes, PrintPreflightRequest request)
@@ -754,18 +763,50 @@ public class PrintPreflightService {
             addImageAreas(finding, lowRes1BitByPage, " dpi");
             report.addFinding(finding);
         }
+        // When the rendered pass is on and Ghostscript answers, its composite measurement is
+        // authoritative: paint hidden under later knockouts or stacked overprints reads true.
+        RenderedInkCoverage.Result renderedTac = null;
+        if (request.isRenderedInkCoverage()
+                && renderedInkCoverage != null
+                && !disabled.contains(PreflightCheck.INK_COVERAGE_HIGH)) {
+            renderedTac = renderedInkCoverage.measure(document, request.getMaxInkCoveragePercent());
+        }
+        if (renderedTac != null) {
+            if (!renderedTac.areasByPage().isEmpty()) {
+                List<Integer> pages = new ArrayList<>(renderedTac.areasByPage().keySet());
+                Finding finding =
+                        new Finding(
+                                Severity.WARNING,
+                                Category.COLOR,
+                                "INK_COVERAGE_HIGH_RENDERED",
+                                PreflightReportText.msg(
+                                        bundle,
+                                        "finding.INK_COVERAGE_HIGH_RENDERED",
+                                        request.getMaxInkCoveragePercent(),
+                                        Math.round(renderedTac.peakPercent())),
+                                pages);
+                for (List<FindingArea> areas : renderedTac.areasByPage().values()) {
+                    for (FindingArea area : areas) {
+                        finding.addArea(area);
+                    }
+                }
+                report.addFinding(finding);
+            }
+        }
         List<Map.Entry<Integer, List<PaintedArea>>> inkHits = new ArrayList<>();
         float maxTacHit = 0;
-        for (Map.Entry<Integer, List<PaintedArea>> e : inkAreasByPage.entrySet()) {
-            List<PaintedArea> over = new ArrayList<>();
-            for (PaintedArea a : e.getValue()) {
-                if (a.totalInk > request.getMaxInkCoveragePercent()) {
-                    over.add(a);
-                    maxTacHit = Math.max(maxTacHit, a.totalInk);
+        if (renderedTac == null) {
+            for (Map.Entry<Integer, List<PaintedArea>> e : inkAreasByPage.entrySet()) {
+                List<PaintedArea> over = new ArrayList<>();
+                for (PaintedArea a : e.getValue()) {
+                    if (a.totalInk > request.getMaxInkCoveragePercent()) {
+                        over.add(a);
+                        maxTacHit = Math.max(maxTacHit, a.totalInk);
+                    }
                 }
-            }
-            if (!over.isEmpty()) {
-                inkHits.add(Map.entry(e.getKey(), over));
+                if (!over.isEmpty()) {
+                    inkHits.add(Map.entry(e.getKey(), over));
+                }
             }
         }
         if (!inkHits.isEmpty() && !disabled.contains(PreflightCheck.INK_COVERAGE_HIGH)) {

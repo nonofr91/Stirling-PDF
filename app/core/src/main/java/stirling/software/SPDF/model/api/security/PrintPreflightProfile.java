@@ -54,6 +54,11 @@ public class PrintPreflightProfile {
                     "Painted colours whose total ink coverage exceeds this percentage are reported")
     private Integer maxInkCoveragePercent;
 
+    @Schema(
+            description =
+                    "Measure ink coverage from a rendered CMYK raster instead of painted fills")
+    private Boolean renderedInkCoverage;
+
     @Schema(description = "1-bit images rendered below this effective resolution are reported")
     private Integer minImage1BitDpi;
 

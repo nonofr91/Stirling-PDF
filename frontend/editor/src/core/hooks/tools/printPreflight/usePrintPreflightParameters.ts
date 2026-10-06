@@ -13,6 +13,12 @@ export interface PrintPreflightParameters extends BaseParameters {
   minFontSizePt?: number;
   safetyMarginMm?: number;
   maxInkCoveragePercent?: number;
+  /**
+   * Measure total ink coverage from a Ghostscript-rendered CMYK raster rather
+   * than painted fills — sees true stacking/knockouts, at the cost of one
+   * render pass per document.
+   */
+  renderedInkCoverage?: boolean;
   minImage1BitDpi?: number;
   maxImageDpi?: number;
   /** Maximum real spot separations before a warning; 0 disables the limit. */
@@ -78,6 +84,7 @@ export const defaultParameters: PrintPreflightParameters = {
   minFontSizePt: undefined,
   safetyMarginMm: undefined,
   maxInkCoveragePercent: undefined,
+  renderedInkCoverage: false,
   minImage1BitDpi: undefined,
   maxImageDpi: undefined,
   maxSpotCount: undefined,
