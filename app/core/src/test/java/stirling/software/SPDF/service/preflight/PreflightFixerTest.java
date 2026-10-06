@@ -455,6 +455,242 @@ class PreflightFixerTest {
         }
     }
 
+    private List<String> findingCodes(byte[] pdf) throws IOException {
+        stirling.software.SPDF.model.api.security.PrintPreflightReport report =
+                controller.printPreflight(request(pdf)).getBody();
+        assertNotNull(report);
+        return report.getFindings().stream()
+                .map(
+                        stirling.software.SPDF.model.api.security.PrintPreflightReport.Finding
+                                ::getCode)
+                .toList();
+    }
+
+    private static byte[] invisibleTextPdf() throws IOException {
+        PDDocument doc = new PDDocument();
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
+        PDType1Font font = new PDType1Font(Standard14Fonts.FontName.HELVETICA);
+        try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+            cs.beginText();
+            cs.setFont(font, 10);
+            cs.newLineAtOffset(60, 150);
+            cs.showText("visible");
+            cs.setRenderingMode(org.apache.pdfbox.pdmodel.graphics.state.RenderingMode.NEITHER);
+            cs.showText("hidden-ocr-layer");
+            cs.endText();
+        }
+        return toBytes(doc);
+    }
+
+    /** Black text over a coloured underlay — the knockout-black check's case. */
+    private static byte[] knockoutBlackTextPdf() throws IOException {
+        PDDocument doc = new PDDocument();
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
+        PDType1Font font = new PDType1Font(Standard14Fonts.FontName.HELVETICA);
+        try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+            cs.setNonStrokingColor(0.2f, 0.5f, 0.8f, 0.1f);
+            cs.addRect(40, 40, 400, 200);
+            cs.fill();
+            cs.beginText();
+            cs.setFont(font, 10);
+            cs.setNonStrokingColor(0f, 0f, 0f, 1f);
+            cs.newLineAtOffset(60, 100);
+            cs.showText("Black");
+            cs.endText();
+        }
+        return toBytes(doc);
+    }
+
+    private static byte[] whiteOverprintPdf() throws IOException {
+        PDDocument doc = new PDDocument();
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
+        try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+            org.apache.pdfbox.pdmodel.graphics.state.PDExtendedGraphicsState gs =
+                    new org.apache.pdfbox.pdmodel.graphics.state.PDExtendedGraphicsState();
+            gs.setNonStrokingOverprintControl(true);
+            cs.setGraphicsStateParameters(gs);
+            cs.setNonStrokingColor(0f, 0f, 0f, 0f);
+            cs.addRect(50, 50, 100, 100);
+            cs.fill();
+        }
+        return toBytes(doc);
+    }
+
+    private static byte[] richBlackTextPdf() throws IOException {
+        PDDocument doc = new PDDocument();
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
+        PDType1Font font = new PDType1Font(Standard14Fonts.FontName.HELVETICA);
+        try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+            cs.beginText();
+            cs.setFont(font, 10);
+            cs.setNonStrokingColor(0.6f, 0.5f, 0.4f, 0.9f);
+            cs.newLineAtOffset(60, 100);
+            cs.showText("Rich black");
+            cs.endText();
+        }
+        return toBytes(doc);
+    }
+
+    private static byte[] registrationSeparationPdf() throws IOException {
+        PDDocument doc = new PDDocument();
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
+        try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+            cs.setNonStrokingColor(new PDColor(new float[] {1f}, separation("All")));
+            cs.addRect(50, 50, 100, 100);
+            cs.fill();
+        }
+        return toBytes(doc);
+    }
+
+    private static byte[] printOffLayerPdf() throws IOException {
+        PDDocument doc = new PDDocument();
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
+        org.apache.pdfbox.pdmodel.graphics.optionalcontent.PDOptionalContentGroup ocg =
+                new org.apache.pdfbox.pdmodel.graphics.optionalcontent.PDOptionalContentGroup(
+                        "Finishing");
+        COSDictionary usage = new COSDictionary();
+        COSDictionary print = new COSDictionary();
+        print.setItem(COSName.PRINT_STATE, COSName.OFF);
+        usage.setItem(COSName.PRINT, print);
+        ocg.getCOSObject().setItem(COSName.USAGE, usage);
+        org.apache.pdfbox.pdmodel.graphics.optionalcontent.PDOptionalContentProperties ocProps =
+                new org.apache.pdfbox.pdmodel.graphics.optionalcontent
+                        .PDOptionalContentProperties();
+        ocProps.addGroup(ocg);
+        doc.getDocumentCatalog().setOCProperties(ocProps);
+        try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+            cs.addRect(10, 10, 50, 50);
+            cs.fill();
+        }
+        return toBytes(doc);
+    }
+
+    @Test
+    void testRemoveInvisibleTextDropsHiddenGlyphs() throws Exception {
+        byte[] pdf = invisibleTextPdf();
+        assertTrue(
+                findingCodes(pdf).contains("INVISIBLE_TEXT"),
+                "the OCR remnant is flagged before the fix");
+        assertTrue(
+                new org.apache.pdfbox.text.PDFTextStripper()
+                        .getText(Loader.loadPDF(pdf))
+                        .contains("hidden-ocr-layer"));
+
+        PrintPreflightRequest req = request(pdf);
+        req.setFixups(List.of("REMOVE_INVISIBLE_TEXT"));
+        byte[] fixed = responseBytes(controller.printPreflightFix(req));
+        try (PDDocument result = Loader.loadPDF(fixed)) {
+            String text = new org.apache.pdfbox.text.PDFTextStripper().getText(result);
+            assertTrue(text.contains("visible"), "real text survives");
+            assertFalse(text.contains("hidden-ocr-layer"), "invisible text is gone");
+        }
+        assertFalse(
+                findingCodes(fixed).contains("INVISIBLE_TEXT"),
+                "a re-preflight no longer reports invisible text");
+    }
+
+    @Test
+    void testOverprintBlackTextWrapsShowOp() throws Exception {
+        byte[] pdf = knockoutBlackTextPdf();
+        assertTrue(
+                findingCodes(pdf).contains("OVERPRINT_BLACK"),
+                "knockout black text is flagged before the fix");
+
+        PrintPreflightRequest req = request(pdf);
+        req.setFixups(List.of("OVERPRINT_BLACK_TEXT"));
+        byte[] fixed = responseBytes(controller.printPreflightFix(req));
+        try (PDDocument result = Loader.loadPDF(fixed)) {
+            PDResources resources = result.getPage(0).getResources();
+            boolean hasOverprintState = false;
+            for (COSName name : resources.getExtGStateNames()) {
+                org.apache.pdfbox.pdmodel.graphics.state.PDExtendedGraphicsState gs =
+                        resources.getExtGState(name);
+                if (gs != null && gs.getNonStrokingOverprintControl()) {
+                    hasOverprintState = true;
+                }
+            }
+            assertTrue(hasOverprintState, "the wrap injected an overprinting ExtGState");
+        }
+        assertFalse(
+                findingCodes(fixed).contains("OVERPRINT_BLACK"),
+                "a re-preflight no longer reports knockout black text");
+    }
+
+    @Test
+    void testKnockoutWhiteClearsOverprint() throws Exception {
+        byte[] pdf = whiteOverprintPdf();
+        assertTrue(
+                findingCodes(pdf).contains("OVERPRINT_WHITE"),
+                "white overprinting is flagged before the fix");
+
+        PrintPreflightRequest req = request(pdf);
+        req.setFixups(List.of("KNOCKOUT_WHITE"));
+        byte[] fixed = responseBytes(controller.printPreflightFix(req));
+        assertFalse(
+                findingCodes(fixed).contains("OVERPRINT_WHITE"),
+                "a re-preflight no longer reports the white overprint");
+    }
+
+    @Test
+    void testPureBlackTextRewritesFill() throws Exception {
+        byte[] pdf = richBlackTextPdf();
+        assertTrue(
+                findingCodes(pdf).contains("TEXT_RICH_BLACK"),
+                "rich black text is flagged before the fix");
+
+        PrintPreflightRequest req = request(pdf);
+        req.setFixups(List.of("PURE_BLACK_TEXT"));
+        byte[] fixed = responseBytes(controller.printPreflightFix(req));
+        assertFalse(
+                findingCodes(fixed).contains("TEXT_RICH_BLACK"),
+                "a re-preflight no longer reports rich black text");
+    }
+
+    @Test
+    void testRegistrationToBlackRewritesPaint() throws Exception {
+        byte[] pdf = registrationSeparationPdf();
+        assertTrue(
+                findingCodes(pdf).contains("REGISTRATION_PAINT"),
+                "painting the All colorant is flagged before the fix");
+
+        PrintPreflightRequest req = request(pdf);
+        req.setFixups(List.of("REGISTRATION_TO_BLACK"));
+        byte[] fixed = responseBytes(controller.printPreflightFix(req));
+        assertFalse(
+                findingCodes(fixed).contains("REGISTRATION_PAINT"),
+                "a re-preflight no longer reports registration paint");
+    }
+
+    @Test
+    void testEnableLayerPrintingFlipsPrintState() throws Exception {
+        byte[] pdf = printOffLayerPdf();
+        assertTrue(
+                findingCodes(pdf).contains("LAYERS_PRINT_OFF"),
+                "the print-off layer is flagged before the fix");
+
+        PrintPreflightRequest req = request(pdf);
+        req.setFixups(List.of("ENABLE_LAYER_PRINTING"));
+        try (PDDocument result = Loader.loadPDF(responseBytes(controller.printPreflightFix(req)))) {
+            org.apache.pdfbox.pdmodel.graphics.optionalcontent.PDOptionalContentGroup group =
+                    result.getDocumentCatalog()
+                            .getOCProperties()
+                            .getOptionalContentGroups()
+                            .iterator()
+                            .next();
+            assertEquals(
+                    org.apache.pdfbox.pdmodel.graphics.optionalcontent.PDOptionalContentGroup
+                            .RenderState.ON,
+                    group.getRenderState(org.apache.pdfbox.rendering.RenderDestination.PRINT),
+                    "the layer prints again");
+        }
+    }
+
     @Test
     void testNoApplicableFixupReturnsUnchangedDocument() throws Exception {
         PrintPreflightRequest req = request(basePdf());

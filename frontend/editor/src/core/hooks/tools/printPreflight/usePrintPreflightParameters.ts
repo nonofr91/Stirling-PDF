@@ -49,6 +49,12 @@ export const FIXUP_CODES = [
   "SET_MISSING_BOXES",
   "REMOVE_EMPTY_PAGES",
   "DISCARD_CROPBOX",
+  "ENABLE_LAYER_PRINTING",
+  "REMOVE_INVISIBLE_TEXT",
+  "REGISTRATION_TO_BLACK",
+  "OVERPRINT_BLACK_TEXT",
+  "KNOCKOUT_WHITE",
+  "PURE_BLACK_TEXT",
 ] as const;
 
 export const defaultParameters: PrintPreflightParameters = {

@@ -34,6 +34,8 @@ import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
 import org.apache.pdfbox.pdmodel.graphics.image.JPEGFactory;
 import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
+import org.apache.pdfbox.pdmodel.graphics.optionalcontent.PDOptionalContentGroup;
+import org.apache.pdfbox.pdmodel.graphics.optionalcontent.PDOptionalContentProperties;
 import org.apache.pdfbox.pdmodel.graphics.pattern.PDAbstractPattern;
 import org.apache.pdfbox.pdmodel.graphics.pattern.PDTilingPattern;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotation;
@@ -54,9 +56,9 @@ import stirling.software.common.util.PageBleedGenerator.BleedMethod;
  * opt-in via {@code request.fixups}; an empty list applies every fixup that finds work to do.
  * Fixups mutate the document — this endpoint returns a new copy, never the source bytes.
  *
- * <p>Deliberately not implemented (they need content-stream rewriting or colour-engine work, not
- * dictionary surgery): overprint/knockout changes, rich-black text conversion, invisible-text
- * removal, ink-coverage remapping, layer deletion, clipping objects outside the page.
+ * <p>Deliberately not implemented (they need colour-engine work, not token rewriting): spot→CMYK
+ * remapping, TAC/ink-coverage reduction, RGB→CMYK conversion, transparency flattening, font
+ * embedding, clipping objects outside the page.
  */
 @Slf4j
 public final class PreflightFixer {
@@ -76,8 +78,23 @@ public final class PreflightFixer {
         EXTEND_BLEED,
         SET_MISSING_BOXES,
         REMOVE_EMPTY_PAGES,
-        DISCARD_CROPBOX
+        DISCARD_CROPBOX,
+        ENABLE_LAYER_PRINTING,
+        REMOVE_INVISIBLE_TEXT,
+        REGISTRATION_TO_BLACK,
+        OVERPRINT_BLACK_TEXT,
+        KNOCKOUT_WHITE,
+        PURE_BLACK_TEXT
     }
+
+    /** Fixups implemented by {@link PreflightStreamFixer} — they share one token pass. */
+    private static final Set<Code> STREAM_FIXUPS =
+            Set.of(
+                    Code.REMOVE_INVISIBLE_TEXT,
+                    Code.REGISTRATION_TO_BLACK,
+                    Code.OVERPRINT_BLACK_TEXT,
+                    Code.KNOCKOUT_WHITE,
+                    Code.PURE_BLACK_TEXT);
 
     private PreflightFixer() {}
 
@@ -124,6 +141,15 @@ public final class PreflightFixer {
         }
         if (wanted.contains(Code.DOWNSAMPLE_IMAGES) && downsampleImages(document, request)) {
             applied.add(Code.DOWNSAMPLE_IMAGES.name());
+        }
+        if (wanted.contains(Code.ENABLE_LAYER_PRINTING) && enableLayerPrinting(document)) {
+            applied.add(Code.ENABLE_LAYER_PRINTING.name());
+        }
+        // One token pass applies every wanted stream-level fixup.
+        Set<Code> streamWanted = new LinkedHashSet<>(wanted);
+        streamWanted.retainAll(STREAM_FIXUPS);
+        if (!streamWanted.isEmpty() && PreflightStreamFixer.apply(document, streamWanted)) {
+            streamWanted.forEach(code -> applied.add(code.name()));
         }
         // Destructive page removal runs last so every other fixup sees stable page indexes.
         if (wanted.contains(Code.REMOVE_EMPTY_PAGES) && removeEmptyPages(document, report)) {
@@ -386,6 +412,27 @@ public final class PreflightFixer {
             return true;
         }
         return false;
+    }
+
+    /**
+     * Flips every OCG whose print usage is OFF back to ON — the check's "layers disabled for print"
+     * means the press room layer would silently drop out of the plates.
+     */
+    private static boolean enableLayerPrinting(PDDocument document) {
+        PDOptionalContentProperties ocProps = document.getDocumentCatalog().getOCProperties();
+        if (ocProps == null) {
+            return false;
+        }
+        boolean changed = false;
+        for (PDOptionalContentGroup group : ocProps.getOptionalContentGroups()) {
+            COSDictionary usage = group.getCOSObject().getCOSDictionary(COSName.USAGE);
+            COSDictionary print = usage == null ? null : usage.getCOSDictionary(COSName.PRINT);
+            if (print != null && COSName.OFF.equals(print.getCOSName(COSName.PRINT_STATE))) {
+                print.setItem(COSName.PRINT_STATE, COSName.ON);
+                changed = true;
+            }
+        }
+        return changed;
     }
 
     /** Declares TrimBox = CropBox where the page never said otherwise — the check's fallback. */
