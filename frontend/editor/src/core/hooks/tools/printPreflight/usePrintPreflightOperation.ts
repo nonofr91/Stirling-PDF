@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import i18n from "@app/i18n";
+import i18n from "i18next";
 import apiClient from "@app/services/apiClient";
 import { downloadFile } from "@app/services/downloadService";
 import {
@@ -76,7 +76,9 @@ const buildFormData = (
   }
   formData.append("checkBleedCoverage", String(params.checkBleedCoverage));
   formData.append("includeSummaryPage", String(params.includeSummaryPage));
-  formData.append("reportLanguage", i18n.language);
+  if (i18n.language) {
+    formData.append("reportLanguage", i18n.language);
+  }
   if (params.disabledChecks && params.disabledChecks.length > 0) {
     formData.append("disabledChecks", params.disabledChecks.join(","));
   }
