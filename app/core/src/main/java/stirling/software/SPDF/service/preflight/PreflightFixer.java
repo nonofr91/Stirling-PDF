@@ -25,6 +25,7 @@ import org.apache.pdfbox.pdmodel.PDDocumentNameDictionary;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDResources;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
+import org.apache.pdfbox.pdmodel.common.PDStream;
 import org.apache.pdfbox.pdmodel.graphics.PDXObject;
 import org.apache.pdfbox.pdmodel.graphics.color.PDDeviceGray;
 import org.apache.pdfbox.pdmodel.graphics.color.PDDeviceRGB;
@@ -56,9 +57,8 @@ import stirling.software.common.util.PageBleedGenerator.BleedMethod;
  * opt-in via {@code request.fixups}; an empty list applies every fixup that finds work to do.
  * Fixups mutate the document — this endpoint returns a new copy, never the source bytes.
  *
- * <p>Deliberately not implemented (they need geometry work, not token rewriting): transparency
- * flattening is delegated to Ghostscript, but clipping objects outside the page and embedding
- * licensed substitute fonts stay pending.
+ * <p>Deliberately not implemented (they need more than token rewriting): transparency flattening is
+ * delegated to Ghostscript, and embedding licensed substitute fonts stays pending.
  */
 @Slf4j
 public final class PreflightFixer {
@@ -79,6 +79,7 @@ public final class PreflightFixer {
         SET_MISSING_BOXES,
         REMOVE_EMPTY_PAGES,
         DISCARD_CROPBOX,
+        CLIP_TO_CROPBOX,
         ENABLE_LAYER_PRINTING,
         REMOVE_INVISIBLE_TEXT,
         REGISTRATION_TO_BLACK,
@@ -171,6 +172,13 @@ public final class PreflightFixer {
                         document, streamWanted, request.getMaxInkCoveragePercent())) {
             streamWanted.forEach(code -> applied.add(code.name()));
         }
+        // Clip runs after every geometry fixup has settled (boxes, bleed), and only when the
+        // analysis saw paint out there — a clean page keeps its original content stream untouched.
+        if (wanted.contains(Code.CLIP_TO_CROPBOX)
+                && hasFinding(report, "OBJECT_OUTSIDE_PAGE")
+                && clipToCropBox(document)) {
+            applied.add(Code.CLIP_TO_CROPBOX.name());
+        }
         // Destructive page removal runs last so every other fixup sees stable page indexes.
         if (wanted.contains(Code.REMOVE_EMPTY_PAGES) && removeEmptyPages(document, report)) {
             applied.add(Code.REMOVE_EMPTY_PAGES.name());
@@ -196,6 +204,60 @@ public final class PreflightFixer {
         }
         wanted.removeIf(code -> !findings.contains(GS_FIXUP_FINDINGS.get(code)));
         return wanted;
+    }
+
+    private static boolean hasFinding(PrintPreflightReport report, String code) {
+        for (PrintPreflightReport.Finding f : report.getFindings()) {
+            if (code.equals(f.getCode())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Wraps each page's content in {@code q <CropBox> re W n … Q} so paint beyond the crop edge can
+     * no longer render. Objects stay in the file — hidden, not deleted — and the analyser's clip
+     * tracking then clears OBJECT_OUTSIDE_PAGE, which keeps the fix preview honest.
+     */
+    private static boolean clipToCropBox(PDDocument document) {
+        boolean changed = false;
+        for (PDPage page : document.getPages()) {
+            PDRectangle clip = page.getCropBox();
+            if (clip == null) {
+                continue;
+            }
+            try {
+                if (page.getContents() == null) {
+                    continue;
+                }
+                PDStream wrapped = new PDStream(document);
+                try (java.io.OutputStream out = wrapped.createOutputStream(COSName.FLATE_DECODE)) {
+                    String head =
+                            String.format(
+                                    Locale.ROOT,
+                                    "q%n%.4f %.4f %.4f %.4f re%nW%nn%n",
+                                    clip.getLowerLeftX(),
+                                    clip.getLowerLeftY(),
+                                    clip.getWidth(),
+                                    clip.getHeight());
+                    out.write(head.getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+                    java.util.Iterator<PDStream> contents = page.getContentStreams();
+                    while (contents.hasNext()) {
+                        try (InputStream in = contents.next().createInputStream()) {
+                            in.transferTo(out);
+                        }
+                        out.write('\n');
+                    }
+                    out.write("Q\n".getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+                }
+                page.setContents(wrapped);
+                changed = true;
+            } catch (IOException | RuntimeException e) {
+                log.debug("Clip-to-CropBox skipped a page: {}", e.getMessage());
+            }
+        }
+        return changed;
     }
 
     static Set<Code> resolveWanted(List<String> requested) {

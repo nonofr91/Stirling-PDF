@@ -953,4 +953,78 @@ class PreflightFixerTest {
                                 ::getCode)
                 .toList();
     }
+
+    /** A rect painted fully left of the page — dead content the crop edge never shows. */
+    private static byte[] outsidePagePdf() throws IOException {
+        PDDocument doc = new PDDocument();
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
+        writeContent(doc, page, "-500 -500 100 100 re\nf\n");
+        return toBytes(doc);
+    }
+
+    /** Same off-page rect, already wrapped in a CropBox clip — nothing outside can paint. */
+    private static byte[] clippedOutsidePagePdf() throws IOException {
+        PDDocument doc = new PDDocument();
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
+        PDRectangle crop = page.getCropBox();
+        String wrapped =
+                String.format(
+                        java.util.Locale.ROOT,
+                        "q%n%.4f %.4f %.4f %.4f re%nW%nn%n-500 -500 100 100 re%nf%nQ%n",
+                        crop.getLowerLeftX(),
+                        crop.getLowerLeftY(),
+                        crop.getWidth(),
+                        crop.getHeight());
+        writeContent(doc, page, wrapped);
+        return toBytes(doc);
+    }
+
+    private static void writeContent(PDDocument doc, PDPage page, String tokens)
+            throws IOException {
+        org.apache.pdfbox.pdmodel.common.PDStream stream =
+                new org.apache.pdfbox.pdmodel.common.PDStream(doc);
+        try (java.io.OutputStream out = stream.createOutputStream()) {
+            out.write(tokens.getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+        }
+        page.setContents(stream);
+    }
+
+    @Test
+    void testClipToCropBoxSuppressesOutsidePageFinding() throws Exception {
+        assertTrue(
+                findingCodes(outsidePagePdf()).contains("OBJECT_OUTSIDE_PAGE"),
+                "baseline: off-page paint is flagged");
+
+        PrintPreflightRequest req = request(outsidePagePdf());
+        req.setFixups(List.of("CLIP_TO_CROPBOX"));
+        ResponseEntity<Resource> response = controller.printPreflightFix(req);
+        assertEquals(
+                List.of("CLIP_TO_CROPBOX"),
+                response.getHeaders().get("X-Preflight-Fixups"),
+                "the clip fixup reports itself applied");
+
+        assertFalse(
+                findingCodes(responseBytes(response)).contains("OBJECT_OUTSIDE_PAGE"),
+                "clipped content can no longer paint outside the crop");
+    }
+
+    @Test
+    void testPreClippedContentDoesNotFlag() throws Exception {
+        assertFalse(
+                findingCodes(clippedOutsidePagePdf()).contains("OBJECT_OUTSIDE_PAGE"),
+                "an explicit CropBox clip suppresses the finding without any fixup");
+    }
+
+    @Test
+    void testClipToCropBoxSkippedOnCleanPage() throws Exception {
+        PrintPreflightRequest req = request(basePdf());
+        req.setFixups(List.of("CLIP_TO_CROPBOX"));
+        ResponseEntity<Resource> response = controller.printPreflightFix(req);
+        assertEquals(
+                "",
+                response.getHeaders().getFirst("X-Preflight-Fixups"),
+                "nothing outside the crop — the clip is not added");
+    }
 }

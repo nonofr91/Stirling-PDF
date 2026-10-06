@@ -57,7 +57,7 @@ mutated PDF. Exposed as "Preview fixes" in the results pane and as the
 | `LAYERS_PRINT_OFF` | `ENABLE_LAYER_PRINTING` | Done: flips `/Usage/Print/PrintState` back to `ON` on every OCG. |
 | `INVISIBLE_TEXT` | `REMOVE_INVISIBLE_TEXT` | Done: drops `Tj`/`TJ`/`'`/`"` while `Tr`=3; `'`/`"` keep their line move via `T*`. |
 | `USER_UNIT` | `NORMALIZE_USER_UNIT` | Done: scales every declared page box by the unit, drops `/UserUnit`. |
-| `OBJECT_OUTSIDE_PAGE` | — | Pending: clip or drop fully-outside objects. |
+| `OBJECT_OUTSIDE_PAGE` | `CLIP_TO_CROPBOX` | Done: wraps each page stream in `q <CropBox> re W n … Q` — paint beyond the crop can no longer render. The analyser tracks clip bounds (with q/Q save-restore) so clipped-away objects clear the finding; objects stay in the file (hidden, not deleted). |
 | `OUTPUT_INTENT_MISSING` | `SET_OUTPUT_INTENT` | Done: attaches uploaded `iccProfile` or bundled sRGB2014 when no intent exists. |
 | `REGISTRATION_PAINT` | `REGISTRATION_TO_BLACK` | Done: Separation `All`/`Registration` and all-process DeviceN `cs` ops become `DeviceCMYK`, the following `scn` becomes `k`/`K` keeping the tint. |
 | `EMPTY_PAGE` | `REMOVE_EMPTY_PAGES` | Done: deletes pages the analysis counted as empty (never the last page). |
