@@ -121,4 +121,11 @@ public class PrintPreflightRequest extends PDFFile {
             type = "string",
             format = "binary")
     private MultipartFile iccProfile;
+
+    @Schema(
+            description =
+                    "BCP-47 tag for the language of generated report text and finding messages"
+                            + " (e.g. fr-FR); falls back to the session locale, then English",
+            example = "fr-FR")
+    private String reportLanguage;
 }

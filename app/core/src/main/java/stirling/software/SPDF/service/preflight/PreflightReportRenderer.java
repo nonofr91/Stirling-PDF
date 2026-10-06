@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.ResourceBundle;
 
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
@@ -74,7 +75,7 @@ public final class PreflightReportRenderer {
     public static List<PDPage> render(
             PDDocument target, PrintPreflightReport report, PrintPreflightRequest request)
             throws IOException {
-        Writer w = new Writer(target);
+        Writer w = new Writer(target, PreflightReportText.bundleFor(request));
         w.startPage();
         header(w, report);
         verdictBanner(w, report);
@@ -101,15 +102,16 @@ public final class PreflightReportRenderer {
     }
 
     private static void header(Writer w, PrintPreflightReport report) throws IOException {
-        w.text("PRINT PREFLIGHT REPORT", BOLD, 18, INK);
+        w.text(w.t("report.title"), BOLD, 18, INK);
         w.gap(6);
-        String name = report.getFileName() != null ? report.getFileName() : "document";
+        String name =
+                report.getFileName() != null ? report.getFileName() : w.t("report.defaultName");
         w.text(name + "  ·  " + fileSize(report.getFileSizeBytes()), REGULAR, 10, DIM);
         w.text(
-                "Generated "
-                        + LocalDateTime.now()
-                                .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
-                        + " by Stirling-PDF",
+                w.t(
+                        "report.generated",
+                        LocalDateTime.now()
+                                .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))),
                 REGULAR,
                 8,
                 DIM);
@@ -123,27 +125,24 @@ public final class PreflightReportRenderer {
         float[] color = errors > 0 ? RED : warnings > 0 ? ORANGE : GREEN;
         String verdict =
                 errors > 0
-                        ? "NOT READY FOR PRINT"
-                        : warnings > 0 ? "PRINTABLE WITH WARNINGS" : "READY FOR PRINT";
+                        ? w.t("verdict.error")
+                        : warnings > 0 ? w.t("verdict.warning") : w.t("verdict.ok");
         w.banner(color, verdict);
-        w.text(
-                errors + " error(s) · " + warnings + " warning(s) · " + infos + " info",
-                REGULAR,
-                10,
-                INK);
+        w.text(w.t("verdict.counts", errors, warnings, infos), REGULAR, 10, INK);
         w.gap(14);
     }
 
     private static void documentSection(
             Writer w, PrintPreflightReport report, PrintPreflightRequest request)
             throws IOException {
-        w.section("Document");
+        w.section(w.t("section.document"));
         Facts facts = report.getFacts();
-        w.kv("Pages", String.valueOf(report.getPageCount()));
-        w.kv("PDF version", report.getPdfVersion());
+        w.kv(w.t("kv.pages"), String.valueOf(report.getPageCount()));
+        w.kv(w.t("kv.pdfVersion"), report.getPdfVersion());
         for (PageSize size : facts.getPageSizes()) {
             String label =
-                    "Page size" + (size.getCount() > 1 ? " ×" + size.getCount() + " pages" : "");
+                    w.t("kv.pageSize")
+                            + (size.getCount() > 1 ? w.t("kv.pageSizeTimes", size.getCount()) : "");
             String value =
                     String.format(
                             Locale.ROOT,
@@ -153,82 +152,87 @@ public final class PreflightReportRenderer {
                             size.getWidthPt(),
                             size.getHeightPt());
             if (size.getRotation() != 0) {
-                value += " · rotated " + size.getRotation() + "°";
+                value += w.t("kv.rotated", size.getRotation());
             }
             w.kv(label, value);
         }
         w.kv(
-                "Page boxes",
+                w.t("kv.pageBoxes"),
                 "TrimBox "
-                        + yesNo(facts.isHasTrimBox())
+                        + yesNo(w, facts.isHasTrimBox())
                         + " · BleedBox "
-                        + yesNo(facts.isHasBleedBox())
+                        + yesNo(w, facts.isHasBleedBox())
                         + " · ArtBox "
-                        + yesNo(facts.isHasArtBox()));
-        w.kv("Required bleed", request.getRequiredBleedMm() + " mm per side");
+                        + yesNo(w, facts.isHasArtBox()));
+        w.kv(w.t("kv.requiredBleed"), w.t("kv.bleedPerSide", request.getRequiredBleedMm()));
         if (facts.getOutputIntent() != null) {
             OutputIntentFact oi = facts.getOutputIntent();
             StringBuilder oiText = new StringBuilder();
-            oiText.append(oi.getName() != null ? oi.getName() : "present");
+            oiText.append(oi.getName() != null ? oi.getName() : w.t("kv.outputIntentPresent"));
             if (oi.getConditionIdentifier() != null && !oi.getConditionIdentifier().isEmpty()) {
                 oiText.append(" (").append(oi.getConditionIdentifier()).append(")");
             }
             if (oi.getRegistry() != null && !oi.getRegistry().isEmpty()) {
                 oiText.append(" · ").append(oi.getRegistry());
             }
-            w.kv("Output intent", oiText.toString());
+            w.kv(w.t("kv.outputIntent"), oiText.toString());
         } else {
-            w.kv("Output intent", "none declared");
+            w.kv(w.t("kv.outputIntent"), w.t("kv.outputIntentNone"));
         }
-        w.kv("Trapped", facts.getTrapped() != null ? facts.getTrapped() : "not set");
+        w.kv(
+                w.t("kv.trapped"),
+                facts.getTrapped() != null ? facts.getTrapped() : w.t("kv.trappedNotSet"));
         if (!facts.getNonStandardUserUnitPages().isEmpty()) {
-            w.kv("UserUnit", "non-default on page(s) " + facts.getNonStandardUserUnitPages());
+            w.kv(
+                    w.t("kv.userUnit"),
+                    w.t("kv.userUnitNonDefault", facts.getNonStandardUserUnitPages()));
         }
         w.gap(8);
     }
 
     private static void colourSection(Writer w, PrintPreflightReport report) throws IOException {
         Facts facts = report.getFacts();
-        w.section("Colours & separations");
-        w.kv("Colour spaces", joinOrDash(facts.getColorSpaces()));
-        w.kv("Spot inks", joinOrDash(facts.getSpotColors()));
+        w.section(w.t("section.colours"));
+        w.kv(w.t("kv.colourSpaces"), joinOrDash(facts.getColorSpaces()));
+        w.kv(w.t("kv.spotInks"), joinOrDash(facts.getSpotColors()));
         if (!facts.getTechnicalSeparations().isEmpty()) {
-            w.kv("Technical separations", joinOrDash(facts.getTechnicalSeparations()));
+            w.kv(w.t("kv.techSeparations"), joinOrDash(facts.getTechnicalSeparations()));
         }
-        w.kv("Transparency", yesNo(facts.isTransparencyUsed()));
+        w.kv(w.t("kv.transparency"), yesNo(w, facts.isTransparencyUsed()));
         if (facts.isPatternUsed() || facts.isShadingUsed()) {
             w.kv(
-                    "Special paint",
-                    (facts.isPatternUsed() ? "patterns" : "")
+                    w.t("kv.specialPaint"),
+                    (facts.isPatternUsed() ? w.t("kv.patterns") : "")
                             + (facts.isPatternUsed() && facts.isShadingUsed() ? " · " : "")
-                            + (facts.isShadingUsed() ? "smooth shadings" : ""));
+                            + (facts.isShadingUsed() ? w.t("kv.shadings") : ""));
         }
         if (facts.getMaxInkCoverageSeen() > 0) {
             w.kv(
-                    "Max ink coverage",
-                    Math.round(facts.getMaxInkCoverageSeen()) + "% on a painted object");
+                    w.t("kv.maxInkCoverage"),
+                    w.t("kv.maxInkCoverageValue", Math.round(facts.getMaxInkCoverageSeen())));
         }
         if (!facts.getLayersDisabledForPrint().isEmpty()) {
-            w.kv("Layers off for print", joinOrDash(facts.getLayersDisabledForPrint()));
+            w.kv(w.t("kv.layersOffPrint"), joinOrDash(facts.getLayersDisabledForPrint()));
         }
         w.gap(8);
     }
 
     private static void fontSection(Writer w, PrintPreflightReport report) throws IOException {
         Facts facts = report.getFacts();
-        w.section("Fonts");
+        w.section(w.t("section.fonts"));
         if (facts.getFonts().isEmpty()) {
-            w.text("No fonts used.", REGULAR, 9, DIM);
+            w.text(w.t("fonts.none"), REGULAR, 9, DIM);
         } else {
-            w.tableHeader(FONT_TABLE_FRACTIONS, "Name", "Type", "Embedded", "Type 3");
+            w.tableHeader(
+                    FONT_TABLE_FRACTIONS,
+                    w.t("col.name"),
+                    w.t("col.type"),
+                    w.t("col.embedded"),
+                    w.t("col.type3"));
             int shown = 0;
             for (FontFact font : facts.getFonts()) {
                 if (shown >= MAX_FONT_ROWS) {
-                    w.text(
-                            "… + " + (facts.getFonts().size() - shown) + " more font(s)",
-                            ITALIC,
-                            8,
-                            DIM);
+                    w.text(w.t("fonts.more", facts.getFonts().size() - shown), ITALIC, 8, DIM);
                     break;
                 }
                 w.tableRow(
@@ -236,14 +240,14 @@ public final class PreflightReportRenderer {
                         FONT_TABLE_FRACTIONS,
                         font.getName(),
                         font.getSubType(),
-                        font.isEmbedded() ? "yes" : "NO",
-                        font.isType3() ? "yes" : "—");
+                        font.isEmbedded() ? w.t("common.yes") : w.t("common.no").toUpperCase(),
+                        font.isType3() ? w.t("common.yes") : "—");
                 shown++;
             }
         }
         if (!Float.isNaN(facts.getMinFontSizeSeen())) {
             w.kv(
-                    "Smallest text",
+                    w.t("kv.smallestText"),
                     String.format(Locale.ROOT, "%.1f pt", facts.getMinFontSizeSeen()));
         }
         w.gap(8);
@@ -251,13 +255,13 @@ public final class PreflightReportRenderer {
 
     private static void imageSection(Writer w, PrintPreflightReport report) throws IOException {
         Facts facts = report.getFacts();
-        w.section("Images");
-        w.kv("Images", String.valueOf(facts.getImageCount()));
+        w.section(w.t("section.images"));
+        w.kv(w.t("kv.images"), String.valueOf(facts.getImageCount()));
         if (facts.getLowResImageCount() > 0) {
-            w.kv("Below resolution threshold", String.valueOf(facts.getLowResImageCount()));
+            w.kv(w.t("kv.belowThreshold"), String.valueOf(facts.getLowResImageCount()));
         }
         if (facts.getOversampledImageCount() > 0) {
-            w.kv("Oversampled", String.valueOf(facts.getOversampledImageCount()));
+            w.kv(w.t("kv.oversampled"), String.valueOf(facts.getOversampledImageCount()));
         }
         if (!Double.isNaN(facts.getMinEffectiveDpi())
                 || !Double.isNaN(facts.getMaxEffectiveDpi())) {
@@ -270,7 +274,7 @@ public final class PreflightReportRenderer {
                                     ? "—"
                                     : String.valueOf(Math.round(facts.getMaxEffectiveDpi())))
                             + " dpi";
-            w.kv("Effective resolution range", range);
+            w.kv(w.t("kv.resRange"), range);
         }
         w.gap(8);
     }
@@ -278,9 +282,9 @@ public final class PreflightReportRenderer {
     private static void findingsSection(Writer w, PrintPreflightReport report) throws IOException {
         List<Finding> findings = new ArrayList<>(report.getFindings());
         findings.sort(Comparator.comparingInt(f -> f.getSeverity().ordinal()));
-        w.section("Findings (" + findings.size() + ")");
+        w.section(w.t("section.findings", findings.size()));
         if (findings.isEmpty()) {
-            w.text("No issues detected by the enabled checks.", REGULAR, 9, DIM);
+            w.text(w.t("findings.none"), REGULAR, 9, DIM);
             return;
         }
         for (Finding finding : findings) {
@@ -295,8 +299,8 @@ public final class PreflightReportRenderer {
         return Math.round(bytes / 1024f) + " KB";
     }
 
-    private static String yesNo(boolean b) {
-        return b ? "yes" : "no";
+    private static String yesNo(Writer w, boolean b) {
+        return w.t(b ? "common.yes" : "common.no");
     }
 
     private static String joinOrDash(List<String> items) {
@@ -325,13 +329,23 @@ public final class PreflightReportRenderer {
     /** Cursor-based page writer: flows content down, paginating as needed. */
     private static final class Writer implements Closeable {
         final PDDocument doc;
+        final ResourceBundle bundle;
         final List<PDPage> pages = new ArrayList<>();
         PDPage page;
         PDPageContentStream cs;
         float y;
 
-        Writer(PDDocument doc) {
+        Writer(PDDocument doc, ResourceBundle bundle) {
             this.doc = doc;
+            this.bundle = bundle;
+        }
+
+        String t(String key) {
+            return PreflightReportText.t(bundle, key, key);
+        }
+
+        String t(String key, Object... args) {
+            return PreflightReportText.msg(bundle, key, args);
         }
 
         void startPage() throws IOException {
@@ -363,7 +377,7 @@ public final class PreflightReportRenderer {
                     footer.setFont(REGULAR, 7);
                     footer.setNonStrokingColor(DIM[0], DIM[1], DIM[2]);
                     footer.newLineAtOffset(MARGIN, FOOTER_Y);
-                    footer.showText(safe("Stirling-PDF — print preflight"));
+                    footer.showText(safe(t("footer")));
                     footer.endText();
                     String pageNum = (i + 1) + " / " + pages.size();
                     footer.beginText();
@@ -469,8 +483,8 @@ public final class PreflightReportRenderer {
             List<String> msgLines = wrap(finding.getMessage(), REGULAR, 9, CONTENT_W - 16);
             String pages =
                     finding.getPages() != null && !finding.getPages().isEmpty()
-                            ? "Pages: " + joinPages(finding.getPages())
-                            : "Document-wide";
+                            ? t("finding.pages", joinPages(finding.getPages()))
+                            : t("finding.documentWide");
             ensure(14 + msgLines.size() * 12 + 14);
             cs.setNonStrokingColor(color[0], color[1], color[2]);
             cs.addRect(MARGIN, y - 7, 8, 8);
@@ -487,9 +501,9 @@ public final class PreflightReportRenderer {
 
         private String sevName(Severity severity) {
             return switch (severity) {
-                case ERROR -> "Error";
-                case WARNING -> "Warning";
-                case INFO -> "Info";
+                case ERROR -> t("severity.ERROR");
+                case WARNING -> t("severity.WARNING");
+                case INFO -> t("severity.INFO");
             };
         }
 

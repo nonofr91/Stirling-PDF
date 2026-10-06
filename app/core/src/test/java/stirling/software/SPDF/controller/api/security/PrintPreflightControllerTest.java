@@ -79,6 +79,8 @@ class PrintPreflightControllerTest {
     private static PrintPreflightRequest request(byte[] pdf) {
         PrintPreflightRequest req = new PrintPreflightRequest();
         req.setFileInput(new MockMultipartFile("fileInput", "test.pdf", "application/pdf", pdf));
+        // English report text keeps assertions independent of the test JVM's default locale.
+        req.setReportLanguage("en");
         return req;
     }
 

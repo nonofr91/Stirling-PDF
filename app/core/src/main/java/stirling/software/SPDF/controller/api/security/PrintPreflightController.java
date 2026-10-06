@@ -21,6 +21,7 @@ import stirling.software.SPDF.model.api.security.PrintPreflightRequest;
 import stirling.software.SPDF.service.preflight.PreflightAnnotator;
 import stirling.software.SPDF.service.preflight.PreflightFixer;
 import stirling.software.SPDF.service.preflight.PreflightReportRenderer;
+import stirling.software.SPDF.service.preflight.PreflightReportText;
 import stirling.software.SPDF.service.preflight.PrintPreflightService;
 import stirling.software.common.annotations.AutoJobPostMapping;
 import stirling.software.common.annotations.api.SecurityApi;
@@ -95,7 +96,8 @@ public class PrintPreflightController {
             PrintPreflightReport report =
                     printPreflightService.analyze(
                             document, file.getOriginalFilename(), file.getSize(), request);
-            PreflightAnnotator.annotate(document, report.getFindings());
+            PreflightAnnotator.annotate(
+                    document, report.getFindings(), PreflightReportText.bundleFor(request));
             if (request.isIncludeSummaryPage()) {
                 // Only after annotating: report pages would shift every finding's page index.
                 List<PDPage> summaryPages =

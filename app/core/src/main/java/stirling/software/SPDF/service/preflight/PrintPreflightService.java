@@ -8,6 +8,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.ResourceBundle;
 import java.util.Set;
 import java.util.TreeSet;
 
@@ -84,6 +85,7 @@ public class PrintPreflightService {
         report.setPageCount(document.getNumberOfPages());
 
         Set<PreflightCheck> disabled = PreflightCheck.disabledSet(request.getDisabledChecks());
+        ResourceBundle bundle = PreflightReportText.bundleFor(request);
 
         Map<String, FontUse> fonts = new LinkedHashMap<>();
         Map<String, Integer> colorSpaceCounts = new LinkedHashMap<>();
@@ -161,7 +163,8 @@ public class PrintPreflightService {
                                     Severity.WARNING,
                                     Category.CONTENT,
                                     "CONTENT_PARSE_ERROR",
-                                    "Page content could not be fully analyzed: " + e.getMessage(),
+                                    PreflightReportText.msg(
+                                            bundle, "finding.CONTENT_PARSE_ERROR", e.getMessage()),
                                     List.of(pageNum)));
                 }
             }
@@ -301,7 +304,8 @@ public class PrintPreflightService {
                 nonStandardUserUnitPages.add(pageNum);
             }
             if (hasTrim && !disabled.contains(PreflightCheck.SAFETY_MARGIN) && safetyMarginPt > 0) {
-                collectSafetyMargin(pageNum, trim, safetyMarginPt, engine, safetyMarginAreas);
+                collectSafetyMargin(
+                        bundle, pageNum, trim, safetyMarginPt, engine, safetyMarginAreas);
             }
             if (!hasTrim) {
                 missingTrimPages.add(pageNum);
@@ -315,7 +319,13 @@ public class PrintPreflightService {
                     if (sides[side] < requiredBleedPt - BLEED_TOLERANCE_PT) {
                         gaps.add(
                                 bleedGapArea(
-                                        pageNum, trim, bleed, side, sides[side], requiredBleedPt));
+                                        bundle,
+                                        pageNum,
+                                        trim,
+                                        bleed,
+                                        side,
+                                        sides[side],
+                                        requiredBleedPt));
                     }
                 }
                 if (!gaps.isEmpty()) {
@@ -324,7 +334,7 @@ public class PrintPreflightService {
                             .addAll(gaps);
                 } else if (renderer != null && requiredBleedPt > 0) {
                     BleedCoverage coverage =
-                            bleedCoveragePercent(page, trim, bleed, renderer, pageNum);
+                            bleedCoveragePercent(bundle, page, trim, bleed, renderer, pageNum);
                     if (coverage != null && coverage.percent < COVERAGE_MIN_PERCENT) {
                         unpaintedBleedPages.add(pageNum);
                         unpaintedCoverage.add(Math.round(coverage.percent));
@@ -397,7 +407,7 @@ public class PrintPreflightService {
         facts.setInvisibleTextPages(new ArrayList<>(invisibleTextPages));
         facts.setRegistrationPaintPages(new ArrayList<>(registrationByPage.keySet()));
         facts.setNonStandardUserUnitPages(new ArrayList<>(nonStandardUserUnitPages));
-        collectDocumentFacts(document, facts);
+        collectDocumentFacts(bundle, document, facts);
         for (Map.Entry<String, Integer> e : pageSizeCounts.entrySet()) {
             String[] parts = e.getKey().split("[x@]");
             facts.getPageSizes()
@@ -442,9 +452,10 @@ public class PrintPreflightService {
                             Severity.ERROR,
                             Category.FONTS,
                             "FONT_NOT_EMBEDDED",
-                            "Fonts not embedded: "
-                                    + String.join(", ", unembeddedNames)
-                                    + ". Print output cannot be guaranteed without them",
+                            PreflightReportText.msg(
+                                    bundle,
+                                    "finding.FONT_NOT_EMBEDDED",
+                                    String.join(", ", unembeddedNames)),
                             unembeddedPages);
             unembeddedAreas.forEach(finding::addArea);
             report.addFinding(finding);
@@ -455,9 +466,8 @@ public class PrintPreflightService {
                             Severity.WARNING,
                             Category.FONTS,
                             "FONT_TYPE3",
-                            "Type 3 fonts in use: "
-                                    + String.join(", ", type3Names)
-                                    + " — they may print as bitmaps or be refused",
+                            PreflightReportText.msg(
+                                    bundle, "finding.FONT_TYPE3", String.join(", ", type3Names)),
                             type3Pages);
             type3Areas.forEach(finding::addArea);
             report.addFinding(finding);
@@ -472,8 +482,7 @@ public class PrintPreflightService {
                             Severity.WARNING,
                             Category.COLOR,
                             "COLOR_RGB_USED",
-                            "RGB content is painted — offset printing needs CMYK; convert or accept"
-                                    + " a color shift",
+                            PreflightReportText.msg(bundle, "finding.COLOR_RGB_USED"),
                             new ArrayList<>(rgbAreasByPage.keySet()));
             addPaintAreas(finding, rgbAreasByPage);
             report.addFinding(finding);
@@ -484,7 +493,8 @@ public class PrintPreflightService {
                             Severity.INFO,
                             Category.COLOR,
                             "COLOR_SPOT",
-                            "Spot colors in use: " + String.join(", ", printSpots),
+                            PreflightReportText.msg(
+                                    bundle, "finding.COLOR_SPOT", String.join(", ", printSpots)),
                             new ArrayList<>(spotAreasByPage.keySet()));
             addPaintAreas(finding, spotAreasByPage);
             report.addFinding(finding);
@@ -496,12 +506,12 @@ public class PrintPreflightService {
                             Severity.WARNING,
                             Category.IMAGES,
                             "IMAGE_LOW_RES",
-                            lowResByPage.size()
-                                    + " page(s) contain images below "
-                                    + request.getMinImageDpi()
-                                    + " dpi effective (lowest: "
-                                    + Math.round(minImageDpi)
-                                    + " dpi)",
+                            PreflightReportText.msg(
+                                    bundle,
+                                    "finding.IMAGE_LOW_RES",
+                                    lowResByPage.size(),
+                                    request.getMinImageDpi(),
+                                    Math.round(minImageDpi)),
                             new ArrayList<>(lowResByPage.keySet()));
             for (Map.Entry<Integer, List<ImageUse>> e : lowResByPage.entrySet()) {
                 for (ImageUse img : e.getValue()) {
@@ -526,7 +536,7 @@ public class PrintPreflightService {
                             Severity.WARNING,
                             Category.GEOMETRY,
                             "TRIMBOX_MISSING",
-                            "No TrimBox — the finished cut size is undefined",
+                            PreflightReportText.msg(bundle, "finding.TRIMBOX_MISSING"),
                             new ArrayList<>(missingTrimPages)));
         }
         if (!missingBleedPages.isEmpty() && !disabled.contains(PreflightCheck.BLEED_MISSING)) {
@@ -535,8 +545,7 @@ public class PrintPreflightService {
                             Severity.ERROR,
                             Category.GEOMETRY,
                             "BLEED_MISSING",
-                            "No BleedBox beyond the trim — cutting tolerance will expose white"
-                                    + " edges",
+                            PreflightReportText.msg(bundle, "finding.BLEED_MISSING"),
                             new ArrayList<>(missingBleedPages));
             // The trim edge is where bleed would have to extend past.
             for (int p : missingBleedPages) {
@@ -549,7 +558,7 @@ public class PrintPreflightService {
                                     trim.getLowerLeftY(),
                                     trim.getWidth(),
                                     trim.getHeight(),
-                                    "trim edge"));
+                                    PreflightReportText.msg(bundle, "label.trimEdge")));
                 }
             }
             report.addFinding(finding);
@@ -561,9 +570,10 @@ public class PrintPreflightService {
                             Severity.ERROR,
                             Category.GEOMETRY,
                             "BLEED_INSUFFICIENT",
-                            "Bleed is under "
-                                    + request.getRequiredBleedMm()
-                                    + " mm on at least one side",
+                            PreflightReportText.msg(
+                                    bundle,
+                                    "finding.BLEED_INSUFFICIENT",
+                                    request.getRequiredBleedMm()),
                             new ArrayList<>(insufficientBleedAreas.keySet()));
             insufficientBleedAreas.values().forEach(list -> list.forEach(finding::addArea));
             report.addFinding(finding);
@@ -574,9 +584,8 @@ public class PrintPreflightService {
                             Severity.WARNING,
                             Category.GEOMETRY,
                             "BLEED_UNPAINTED",
-                            "Bleed area declared but not painted — as low as "
-                                    + minInt(unpaintedCoverage)
-                                    + "% coverage; white slivers may show after trimming",
+                            PreflightReportText.msg(
+                                    bundle, "finding.BLEED_UNPAINTED", minInt(unpaintedCoverage)),
                             new ArrayList<>(unpaintedBleedPages));
             unpaintedBleedAreas.values().forEach(list -> list.forEach(finding::addArea));
             report.addFinding(finding);
@@ -588,7 +597,7 @@ public class PrintPreflightService {
                             Severity.WARNING,
                             Category.CONTENT,
                             "ANNOTATION_IN_TRIM",
-                            "Annotations sit inside the trim area and may print",
+                            PreflightReportText.msg(bundle, "finding.ANNOTATION_IN_TRIM"),
                             new ArrayList<>(annotationAreasByPage.keySet()));
             annotationAreasByPage.values().forEach(list -> list.forEach(finding::addArea));
             report.addFinding(finding);
@@ -605,11 +614,11 @@ public class PrintPreflightService {
                             Severity.WARNING,
                             Category.CONTENT,
                             "HAIRLINE",
-                            "Strokes thinner than "
-                                    + request.getHairlineThresholdPt()
-                                    + " pt (thinnest: "
-                                    + String.format(Locale.ROOT, "%.3f", min)
-                                    + " pt) may drop out in print",
+                            PreflightReportText.msg(
+                                    bundle,
+                                    "finding.HAIRLINE",
+                                    request.getHairlineThresholdPt(),
+                                    String.format(Locale.ROOT, "%.3f", min)),
                             new ArrayList<>(hairlinesByPage.keySet()));
             for (Map.Entry<Integer, List<StrokeUse>> e : hairlinesByPage.entrySet()) {
                 for (StrokeUse s : e.getValue()) {
@@ -633,7 +642,7 @@ public class PrintPreflightService {
                             Severity.INFO,
                             Category.CONTENT,
                             "TRANSPARENCY",
-                            "Live transparency present — flatten for PDF/X-1a workflows",
+                            PreflightReportText.msg(bundle, "finding.TRANSPARENCY"),
                             new ArrayList<>(transparencyPages));
             addPaintAreas(finding, alphaAreasByPage);
             report.addFinding(finding);
@@ -645,8 +654,7 @@ public class PrintPreflightService {
                             Severity.INFO,
                             Category.CONTENT,
                             "OPTIONAL_CONTENT",
-                            "Optional content groups (layers) — hidden layers may print or be"
-                                    + " dropped depending on the RIP",
+                            PreflightReportText.msg(bundle, "finding.OPTIONAL_CONTENT"),
                             new ArrayList<>(optionalContentPages)));
         }
         if (pageSizeCounts.size() > 1 && !disabled.contains(PreflightCheck.MIXED_PAGE_SIZES)) {
@@ -659,8 +667,8 @@ public class PrintPreflightService {
                             Severity.INFO,
                             Category.DOCUMENT,
                             "MIXED_PAGE_SIZES",
-                            pageSizeCounts.size()
-                                    + " distinct page sizes/rotations — check they are intended",
+                            PreflightReportText.msg(
+                                    bundle, "finding.MIXED_PAGE_SIZES", pageSizeCounts.size()),
                             allPages));
         }
 
@@ -670,8 +678,7 @@ public class PrintPreflightService {
                             Severity.ERROR,
                             Category.COLOR,
                             "OVERPRINT_WHITE",
-                            "White objects set to overprint print nothing — they are invisible on"
-                                    + " press",
+                            PreflightReportText.msg(bundle, "finding.OVERPRINT_WHITE"),
                             new ArrayList<>(whiteOverprintByPage.keySet()));
             addPaintAreas(finding, whiteOverprintByPage);
             report.addFinding(finding);
@@ -682,22 +689,20 @@ public class PrintPreflightService {
                             Severity.WARNING,
                             Category.COLOR,
                             "OVERPRINT_BLACK",
-                            "Black objects knock out the colour beneath — set them to overprint to"
-                                    + " avoid white slivers when registration slips",
+                            PreflightReportText.msg(bundle, "finding.OVERPRINT_BLACK"),
                             new ArrayList<>(knockoutBlackByPage.keySet()));
             addPaintAreas(finding, knockoutBlackByPage);
             report.addFinding(finding);
         }
-        collectTextFindings(report, disabled, request, textUsesByPage);
+        collectTextFindings(report, disabled, request, textUsesByPage, bundle);
         if (!safetyMarginAreas.isEmpty() && !disabled.contains(PreflightCheck.SAFETY_MARGIN)) {
             Finding finding =
                     new Finding(
                             Severity.WARNING,
                             Category.GEOMETRY,
                             "SAFETY_MARGIN",
-                            "Content sits within "
-                                    + request.getSafetyMarginMm()
-                                    + " mm of the trim edge — trimming tolerance may cut it",
+                            PreflightReportText.msg(
+                                    bundle, "finding.SAFETY_MARGIN", request.getSafetyMarginMm()),
                             new ArrayList<>(safetyMarginAreas.keySet()));
             safetyMarginAreas.values().forEach(list -> list.forEach(finding::addArea));
             report.addFinding(finding);
@@ -708,7 +713,8 @@ public class PrintPreflightService {
                             Severity.INFO,
                             Category.DOCUMENT,
                             "EMPTY_PAGE",
-                            emptyPages.size() + " page(s) carry no painted content",
+                            PreflightReportText.msg(
+                                    bundle, "finding.EMPTY_PAGE", emptyPages.size()),
                             new ArrayList<>(emptyPages)));
         }
         if (!oversampledByPage.isEmpty() && !disabled.contains(PreflightCheck.IMAGE_OVERSAMPLED)) {
@@ -717,12 +723,12 @@ public class PrintPreflightService {
                             Severity.INFO,
                             Category.IMAGES,
                             "IMAGE_OVERSAMPLED",
-                            oversampledByPage.size()
-                                    + " page(s) hold images above "
-                                    + request.getMaxImageDpi()
-                                    + " dpi effective (highest: "
-                                    + Math.round(maxImageDpi)
-                                    + " dpi) — heavier than print can use",
+                            PreflightReportText.msg(
+                                    bundle,
+                                    "finding.IMAGE_OVERSAMPLED",
+                                    oversampledByPage.size(),
+                                    request.getMaxImageDpi(),
+                                    Math.round(maxImageDpi)),
                             new ArrayList<>(oversampledByPage.keySet()));
             addImageAreas(finding, oversampledByPage, " dpi");
             report.addFinding(finding);
@@ -739,12 +745,11 @@ public class PrintPreflightService {
                             Severity.WARNING,
                             Category.IMAGES,
                             "IMAGE_1BIT_LOW_RES",
-                            "1-bit images below "
-                                    + request.getMinImage1BitDpi()
-                                    + " dpi effective (lowest: "
-                                    + Math.round(min1Bit)
-                                    + " dpi) — line art needs far more resolution than continuous"
-                                    + " tone",
+                            PreflightReportText.msg(
+                                    bundle,
+                                    "finding.IMAGE_1BIT_LOW_RES",
+                                    request.getMinImage1BitDpi(),
+                                    Math.round(min1Bit)),
                             new ArrayList<>(lowRes1BitByPage.keySet()));
             addImageAreas(finding, lowRes1BitByPage, " dpi");
             report.addFinding(finding);
@@ -770,11 +775,11 @@ public class PrintPreflightService {
                             Severity.WARNING,
                             Category.COLOR,
                             "INK_COVERAGE_HIGH",
-                            "Paint exceeds "
-                                    + request.getMaxInkCoveragePercent()
-                                    + "% total ink coverage (max: "
-                                    + Math.round(maxTacHit)
-                                    + "%) — drying and registration problems on press",
+                            PreflightReportText.msg(
+                                    bundle,
+                                    "finding.INK_COVERAGE_HIGH",
+                                    request.getMaxInkCoveragePercent(),
+                                    Math.round(maxTacHit)),
                             pages);
             for (Map.Entry<Integer, List<PaintedArea>> e : inkHits) {
                 pages.add(e.getKey());
@@ -803,8 +808,8 @@ public class PrintPreflightService {
                             Severity.WARNING,
                             Category.COLOR,
                             "SPOT_ALIAS",
-                            "Spot names that normalize to the same ink make duplicate plates: "
-                                    + String.join("; ", lines),
+                            PreflightReportText.msg(
+                                    bundle, "finding.SPOT_ALIAS", String.join("; ", lines)),
                             new ArrayList<>(spotAreasByPage.keySet())));
         }
         if (request.getMaxSpotCount() > 0
@@ -815,10 +820,11 @@ public class PrintPreflightService {
                             Severity.INFO,
                             Category.COLOR,
                             "SPOT_COUNT",
-                            printSpots.size()
-                                    + " spot separations (> "
-                                    + request.getMaxSpotCount()
-                                    + " allowed) — each adds a plate to the press run",
+                            PreflightReportText.msg(
+                                    bundle,
+                                    "finding.SPOT_COUNT",
+                                    printSpots.size(),
+                                    request.getMaxSpotCount()),
                             new ArrayList<>(spotAreasByPage.keySet())));
         }
         if (!registrationByPage.isEmpty()
@@ -828,8 +834,7 @@ public class PrintPreflightService {
                             Severity.INFO,
                             Category.COLOR,
                             "REGISTRATION_PAINT",
-                            "Registration/All colorant painted — hits every plate; expected on"
-                                    + " printer's marks only",
+                            PreflightReportText.msg(bundle, "finding.REGISTRATION_PAINT"),
                             new ArrayList<>(registrationByPage.keySet()));
             addPaintAreas(finding, registrationByPage);
             report.addFinding(finding);
@@ -840,8 +845,7 @@ public class PrintPreflightService {
                             Severity.INFO,
                             Category.CONTENT,
                             "INVISIBLE_TEXT",
-                            "Invisible text present (OCR/search layer) — never prints but affects"
-                                    + " extraction",
+                            PreflightReportText.msg(bundle, "finding.INVISIBLE_TEXT"),
                             new ArrayList<>(invisibleTextPages)));
         }
         if (!patternPages.isEmpty() && !disabled.contains(PreflightCheck.PATTERN_USED)) {
@@ -850,7 +854,7 @@ public class PrintPreflightService {
                             Severity.INFO,
                             Category.COLOR,
                             "PATTERN_USED",
-                            "Pattern fills in use — tiling and flattening vary across RIPs",
+                            PreflightReportText.msg(bundle, "finding.PATTERN_USED"),
                             new ArrayList<>(patternPages)));
         }
         if (!shadingPages.isEmpty() && !disabled.contains(PreflightCheck.SHADING_USED)) {
@@ -859,7 +863,7 @@ public class PrintPreflightService {
                             Severity.INFO,
                             Category.COLOR,
                             "SHADING_USED",
-                            "Smooth shadings in use — flattening behaviour varies across RIPs",
+                            PreflightReportText.msg(bundle, "finding.SHADING_USED"),
                             new ArrayList<>(shadingPages)));
         }
         if (!outsidePageByPage.isEmpty()
@@ -869,8 +873,7 @@ public class PrintPreflightService {
                             Severity.INFO,
                             Category.GEOMETRY,
                             "OBJECT_OUTSIDE_PAGE",
-                            "Content painted entirely outside the crop area — dead weight or a"
-                                    + " misplaced object",
+                            PreflightReportText.msg(bundle, "finding.OBJECT_OUTSIDE_PAGE"),
                             new ArrayList<>(outsidePageByPage.keySet()));
             addPaintAreas(finding, outsidePageByPage);
             report.addFinding(finding);
@@ -882,8 +885,7 @@ public class PrintPreflightService {
                             Severity.WARNING,
                             Category.COLOR,
                             "OUTPUT_INTENT_MISSING",
-                            "No output intent — the target printing condition is undeclared;"
-                                    + " colour conversion will guess",
+                            PreflightReportText.msg(bundle, "finding.OUTPUT_INTENT_MISSING"),
                             null));
         }
         if (facts.getEmbeddedFileCount() > 0 && !disabled.contains(PreflightCheck.EMBEDDED_FILES)) {
@@ -892,9 +894,8 @@ public class PrintPreflightService {
                             Severity.WARNING,
                             Category.DOCUMENT,
                             "EMBEDDED_FILES",
-                            facts.getEmbeddedFileCount()
-                                    + " embedded file(s) — attachments travel with the PDF and may"
-                                    + " not be wanted in print",
+                            PreflightReportText.msg(
+                                    bundle, "finding.EMBEDDED_FILES", facts.getEmbeddedFileCount()),
                             null));
         }
         if (facts.isHasAcroForm() && !disabled.contains(PreflightCheck.FORM_FIELDS)) {
@@ -903,9 +904,8 @@ public class PrintPreflightService {
                             Severity.WARNING,
                             Category.DOCUMENT,
                             "FORM_FIELDS",
-                            facts.getFormFieldCount()
-                                    + " form field(s) — interactive widgets may print or be dropped"
-                                    + " depending on the RIP",
+                            PreflightReportText.msg(
+                                    bundle, "finding.FORM_FIELDS", facts.getFormFieldCount()),
                             null));
         }
         if (facts.isHasXfa() && !disabled.contains(PreflightCheck.XFA_FORM)) {
@@ -914,8 +914,7 @@ public class PrintPreflightService {
                             Severity.WARNING,
                             Category.DOCUMENT,
                             "XFA_FORM",
-                            "XFA form content — poorly supported outside Acrobat; flatten before"
-                                    + " print",
+                            PreflightReportText.msg(bundle, "finding.XFA_FORM"),
                             null));
         }
         if (facts.getSignatureCount() > 0 && !disabled.contains(PreflightCheck.SIGNATURES)) {
@@ -924,8 +923,8 @@ public class PrintPreflightService {
                             Severity.INFO,
                             Category.DOCUMENT,
                             "SIGNATURES",
-                            facts.getSignatureCount()
-                                    + " signature field(s) — signing after edit invalidates them",
+                            PreflightReportText.msg(
+                                    bundle, "finding.SIGNATURES", facts.getSignatureCount()),
                             null));
         }
         if (facts.isHasJavascript() && !disabled.contains(PreflightCheck.JAVASCRIPT)) {
@@ -934,7 +933,7 @@ public class PrintPreflightService {
                             Severity.INFO,
                             Category.DOCUMENT,
                             "JAVASCRIPT",
-                            "JavaScript actions present — ignored by print RIPs",
+                            PreflightReportText.msg(bundle, "finding.JAVASCRIPT"),
                             null));
         }
         if (!nonStandardUserUnitPages.isEmpty() && !disabled.contains(PreflightCheck.USER_UNIT)) {
@@ -943,8 +942,7 @@ public class PrintPreflightService {
                             Severity.WARNING,
                             Category.GEOMETRY,
                             "USER_UNIT",
-                            "Non-default /UserUnit scaling on page(s) — real-world size differs"
-                                    + " from raw coordinates",
+                            PreflightReportText.msg(bundle, "finding.USER_UNIT"),
                             new ArrayList<>(nonStandardUserUnitPages)));
         }
         if (!facts.getLayersDisabledForPrint().isEmpty()
@@ -954,8 +952,10 @@ public class PrintPreflightService {
                             Severity.INFO,
                             Category.CONTENT,
                             "LAYERS_PRINT_OFF",
-                            "Layers configured off for print: "
-                                    + String.join(", ", facts.getLayersDisabledForPrint()),
+                            PreflightReportText.msg(
+                                    bundle,
+                                    "finding.LAYERS_PRINT_OFF",
+                                    String.join(", ", facts.getLayersDisabledForPrint())),
                             new ArrayList<>(optionalContentPages)));
         }
         if (!cropBoxDiffersPages.isEmpty() && !disabled.contains(PreflightCheck.CROPBOX_NE_MEDIA)) {
@@ -964,8 +964,7 @@ public class PrintPreflightService {
                             Severity.INFO,
                             Category.GEOMETRY,
                             "CROPBOX_NE_MEDIA",
-                            "CropBox differs from MediaBox — usually a slug margin for printer's"
-                                    + " marks",
+                            PreflightReportText.msg(bundle, "finding.CROPBOX_NE_MEDIA"),
                             new ArrayList<>(cropBoxDiffersPages)));
         }
 
@@ -1002,7 +1001,8 @@ public class PrintPreflightService {
             PrintPreflightReport report,
             Set<PreflightCheck> disabled,
             PrintPreflightRequest request,
-            Map<Integer, List<TextUse>> textUsesByPage) {
+            Map<Integer, List<TextUse>> textUsesByPage,
+            ResourceBundle bundle) {
         Map<Integer, List<TextUse>> smallByPage = new LinkedHashMap<>();
         Map<Integer, List<TextUse>> richByPage = new LinkedHashMap<>();
         float smallest = Float.MAX_VALUE;
@@ -1023,11 +1023,11 @@ public class PrintPreflightService {
                             Severity.WARNING,
                             Category.CONTENT,
                             "TEXT_SMALL",
-                            "Text under "
-                                    + request.getMinFontSizePt()
-                                    + " pt (smallest: "
-                                    + String.format(Locale.ROOT, "%.1f", smallest)
-                                    + " pt) may fill in or drop out on press",
+                            PreflightReportText.msg(
+                                    bundle,
+                                    "finding.TEXT_SMALL",
+                                    request.getMinFontSizePt(),
+                                    String.format(Locale.ROOT, "%.1f", smallest)),
                             new ArrayList<>(smallByPage.keySet()));
             addTextAreas(finding, smallByPage);
             report.addFinding(finding);
@@ -1038,8 +1038,7 @@ public class PrintPreflightService {
                             Severity.WARNING,
                             Category.COLOR,
                             "TEXT_RICH_BLACK",
-                            "Text painted in rich/composite black — registration drift makes small"
-                                    + " type fuzzy and hard to read",
+                            PreflightReportText.msg(bundle, "finding.TEXT_RICH_BLACK"),
                             new ArrayList<>(richByPage.keySet()));
             addTextAreas(finding, richByPage);
             report.addFinding(finding);
@@ -1104,6 +1103,7 @@ public class PrintPreflightService {
      * safety margin to it — the zone where cutting tolerance can bite.
      */
     private static void collectSafetyMargin(
+            ResourceBundle bundle,
             int pageNum,
             PDRectangle trim,
             float marginPt,
@@ -1112,20 +1112,25 @@ public class PrintPreflightService {
         List<FindingArea> hits = new ArrayList<>();
         for (PaintedArea a : engine.getPaintAreas()) {
             if (!a.technical && a.bounds != null) {
-                addIfNearEdge(pageNum, a.bounds, a.label, trim, marginPt, hits);
+                addIfNearEdge(bundle, pageNum, a.bounds, a.label, trim, marginPt, hits);
             }
         }
         for (ImageUse img : engine.getImages()) {
             if (!img.technical && img.bounds != null) {
-                addIfNearEdge(pageNum, img.bounds, img.colorSpaceLabel, trim, marginPt, hits);
+                addIfNearEdge(
+                        bundle, pageNum, img.bounds, img.colorSpaceLabel, trim, marginPt, hits);
             }
         }
         for (TextUse t : engine.getTextUses()) {
             if (t.bounds != null) {
                 addIfNearEdge(
+                        bundle,
                         pageNum,
                         t.bounds,
-                        String.format(Locale.ROOT, "%.1f pt text", t.fontSize),
+                        PreflightReportText.msg(
+                                bundle,
+                                "label.ptText",
+                                String.format(Locale.ROOT, "%.1f", t.fontSize)),
                         trim,
                         marginPt,
                         hits);
@@ -1137,6 +1142,7 @@ public class PrintPreflightService {
     }
 
     private static void addIfNearEdge(
+            ResourceBundle bundle,
             int page,
             float[] b,
             String label,
@@ -1157,7 +1163,9 @@ public class PrintPreflightService {
         if (dist >= marginPt) {
             return;
         }
-        String detail = Math.round(dist / PT_PER_MM * 10) / 10f + " mm to trim";
+        String detail =
+                PreflightReportText.msg(
+                        bundle, "label.nearTrim", Math.round(dist / PT_PER_MM * 10) / 10f);
         if (label != null) {
             detail += " · " + label;
         }
@@ -1212,7 +1220,8 @@ public class PrintPreflightService {
      * Document-level facts that need no page pass: output intent, Trapped flag, attachments,
      * forms/signatures, JavaScript and layers switched off for print.
      */
-    private static void collectDocumentFacts(PDDocument document, Facts facts) {
+    private static void collectDocumentFacts(
+            ResourceBundle bundle, PDDocument document, Facts facts) {
         try {
             PDDocumentCatalog catalog = document.getDocumentCatalog();
             List<PDOutputIntent> intents = catalog.getOutputIntents();
@@ -1261,7 +1270,11 @@ public class PrintPreflightService {
                     try {
                         if (RenderState.OFF.equals(group.getRenderState(RenderDestination.PRINT))) {
                             String name = group.getName();
-                            off.add(name != null ? name : "(unnamed layer)");
+                            off.add(
+                                    name != null
+                                            ? name
+                                            : PreflightReportText.msg(
+                                                    bundle, "label.unnamedLayer"));
                         }
                     } catch (RuntimeException ignored) {
                         // a state name outside the RenderState enum must not sink the fact pass
@@ -1297,6 +1310,7 @@ public class PrintPreflightService {
      * the zone that should be painted but falls outside the declared bleed.
      */
     private static FindingArea bleedGapArea(
+            ResourceBundle bundle,
             int pageNum,
             PDRectangle trim,
             PDRectangle bleed,
@@ -1305,10 +1319,11 @@ public class PrintPreflightService {
             float requiredPt) {
         float gap = requiredPt - actualPt;
         String label =
-                sideLabel(side)
-                        + ": "
-                        + Math.round(actualPt / PT_PER_MM * 10) / 10f
-                        + " mm declared";
+                PreflightReportText.msg(
+                        bundle,
+                        "label.bleedDeclared",
+                        sideLabel(bundle, side),
+                        Math.round(actualPt / PT_PER_MM * 10) / 10f);
         return switch (side) {
             case 0 -> // left
                     new FindingArea(
@@ -1345,13 +1360,15 @@ public class PrintPreflightService {
         };
     }
 
-    private static String sideLabel(int side) {
-        return switch (side) {
-            case 0 -> "left";
-            case 1 -> "bottom";
-            case 2 -> "right";
-            default -> "top";
-        };
+    private static String sideLabel(ResourceBundle bundle, int side) {
+        String key =
+                switch (side) {
+                    case 0 -> "label.side.left";
+                    case 1 -> "label.side.bottom";
+                    case 2 -> "label.side.right";
+                    default -> "label.side.top";
+                };
+        return PreflightReportText.msg(bundle, key);
     }
 
     /** Bleed width on each side: left, bottom, right, top; null when bleed does not cover trim. */
@@ -1388,7 +1405,12 @@ public class PrintPreflightService {
      * the report can point at the gap. Returns null when the area cannot be measured.
      */
     private static BleedCoverage bleedCoveragePercent(
-            PDPage page, PDRectangle trim, PDRectangle bleed, PDFRenderer renderer, int pageIndex) {
+            ResourceBundle bundle,
+            PDPage page,
+            PDRectangle trim,
+            PDRectangle bleed,
+            PDFRenderer renderer,
+            int pageIndex) {
         int rotation = page.getRotation();
         try {
             page.setRotation(0);
@@ -1444,7 +1466,6 @@ public class PrintPreflightService {
                 return null;
             }
             List<FindingArea> zones = new ArrayList<>();
-            String[] names = {"left", "bottom", "right", "top"};
             for (int band = 0; band < white.length; band++) {
                 float[] w = white[band];
                 if (w == null) {
@@ -1460,7 +1481,8 @@ public class PrintPreflightService {
                                 py,
                                 (w[2] - w[0] + COVERAGE_STRIDE) / scale,
                                 (w[3] - w[1] + COVERAGE_STRIDE) / scale,
-                                names[band] + " unpainted"));
+                                PreflightReportText.msg(
+                                        bundle, "label.unpainted", sideLabel(bundle, band))));
             }
             return new BleedCoverage(painted * 100f / total, zones);
         } catch (Exception e) {

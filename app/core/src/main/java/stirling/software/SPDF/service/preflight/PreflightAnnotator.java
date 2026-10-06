@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.ResourceBundle;
 
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
@@ -46,9 +47,15 @@ public final class PreflightAnnotator {
     private PreflightAnnotator() {}
 
     public static void annotate(PDDocument document, List<Finding> findings) throws IOException {
+        annotate(document, findings, null);
+    }
+
+    public static void annotate(PDDocument document, List<Finding> findings, ResourceBundle bundle)
+            throws IOException {
         if (document.getNumberOfPages() == 0) {
             return;
         }
+        String popupTitle = PreflightReportText.t(bundle, "annotator.title", "Print preflight");
         // Findings without geometry land as one sticky note per affected page.
         Map<Integer, List<String>> notesByPage = new LinkedHashMap<>();
         // One frame per physical spot: distinct findings can pin the same object (e.g. an image
@@ -92,7 +99,7 @@ public final class PreflightAnnotator {
             square.setRectangle(marker.rect);
             square.setColor(colorOf(marker.severity));
             square.setContents(String.join("\n", marker.contents));
-            square.setTitlePopup("Print preflight");
+            square.setTitlePopup(popupTitle);
             square.setPrinted(true);
             PDBorderStyleDictionary border = new PDBorderStyleDictionary();
             border.setWidth(BORDER_PT);
@@ -114,7 +121,7 @@ public final class PreflightAnnotator {
             for (String contents : e.getValue()) {
                 PDAnnotationText note = new PDAnnotationText();
                 note.setName(PDAnnotationText.NAME_NOTE);
-                note.setTitlePopup("Print preflight");
+                note.setTitlePopup(popupTitle);
                 note.setContents(contents);
                 note.setRectangle(
                         new PDRectangle(
@@ -135,8 +142,12 @@ public final class PreflightAnnotator {
             PDRectangle crop = page.getCropBox();
             PDAnnotationText note = new PDAnnotationText();
             note.setName(PDAnnotationText.NAME_CHECK);
-            note.setTitlePopup("Print preflight");
-            note.setContents("No blocking print issues detected by preflight.");
+            note.setTitlePopup(popupTitle);
+            note.setContents(
+                    PreflightReportText.t(
+                            bundle,
+                            "annotator.clean",
+                            "No blocking print issues detected by preflight."));
             note.setRectangle(
                     new PDRectangle(
                             crop.getUpperRightX() - NOTE_OFFSET_PT,
