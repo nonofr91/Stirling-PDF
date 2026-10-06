@@ -35,6 +35,7 @@ interface FilesModalOptions {
   insertAfterPage?: number;
   customHandler?: CustomFileHandler;
   maxSelectable?: number | null;
+  supportedFormats?: string[];
 }
 
 interface FilesModalContextType {
@@ -42,6 +43,8 @@ interface FilesModalContextType {
   openFilesModal: (options?: FilesModalOptions) => void;
   closeFilesModal: () => void;
   maxSelectable: number | null;
+  /** A caller's format restriction takes precedence over the currently selected tool. */
+  supportedFormats?: string[];
   /** Closes the picker before ingestion; rejects on import failure. */
   onFileUpload: (files: File[]) => Promise<void>;
   /** Imports readable selections before rejecting with unavailable filenames; leaves modal state unchanged. */
@@ -75,6 +78,7 @@ export const FilesModalProvider: React.FC<{ children: React.ReactNode }> = ({
   const [insertAfterPage, setInsertAfterPage] = useState<number | undefined>();
   const [customHandler, setCustomHandler] = useState<CustomFileHandler>();
   const [maxSelectable, setMaxSelectable] = useState<number | null>(null);
+  const [supportedFormats, setSupportedFormats] = useState<string[]>();
 
   const importBundleToWorkbench = useCallback(
     async (
@@ -103,10 +107,7 @@ export const FilesModalProvider: React.FC<{ children: React.ReactNode }> = ({
 
         const idMap = new Map<string, FileId>();
         for (let i = 0; i < stirlingFiles.length; i += 1) {
-          idMap.set(
-            sortedEntries[i].logicalId,
-            stirlingFiles[i].fileId as FileId,
-          );
+          idMap.set(sortedEntries[i].logicalId, stirlingFiles[i].fileId);
         }
 
         const rootIdMap = new Map<string, FileId>();
@@ -218,6 +219,7 @@ export const FilesModalProvider: React.FC<{ children: React.ReactNode }> = ({
     setInsertAfterPage(options?.insertAfterPage);
     setCustomHandler(() => options?.customHandler);
     setMaxSelectable(options?.maxSelectable ?? null);
+    setSupportedFormats(options?.supportedFormats);
     setIsFilesModalOpen(true);
   }, []);
 
@@ -367,6 +369,7 @@ export const FilesModalProvider: React.FC<{ children: React.ReactNode }> = ({
       onModalClose,
       setOnModalClose: setModalCloseCallback,
       maxSelectable,
+      supportedFormats,
     }),
     [
       isFilesModalOpen,
@@ -378,6 +381,7 @@ export const FilesModalProvider: React.FC<{ children: React.ReactNode }> = ({
       onModalClose,
       setModalCloseCallback,
       maxSelectable,
+      supportedFormats,
     ],
   );
 
