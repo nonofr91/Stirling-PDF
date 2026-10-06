@@ -70,9 +70,10 @@ mutated PDF. Exposed as "Preview fixes" in the results pane and as the
 - Rendered TAC is available via `renderedInkCoverage` (opt-in): Ghostscript
   rasterises each page with `pamcmyk32` and the pass sums real CMYK pixels —
   authoritative over the painted-fill estimate, which it replaces when the
-  render succeeds (finding `INK_COVERAGE_HIGH_RENDERED`). It adds one render
-  pass per document, so it stays off by default; fixup-side TAC reduction from
-  the raster remains open.
+  render succeeds (finding `INK_COVERAGE_HIGH_RENDERED`). `REDUCE_INK_COVERAGE`
+  also reaches image pixels now: DeviceCMYK XObjects get the same UCR/GCR
+  reduction as painted fills, so the rendered measurement confirms the fix
+  (ICC-destination re-distill for exotic spaces remains open).
 - Fixups that change geometry (bleed extension, UserUnit rescale) must keep the
   annotated/report page indexes aligned — run analysis before mutation, or
   re-map areas after.

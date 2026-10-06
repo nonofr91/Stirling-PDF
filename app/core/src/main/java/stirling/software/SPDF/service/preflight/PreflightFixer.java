@@ -29,6 +29,7 @@ import org.apache.pdfbox.pdmodel.common.PDStream;
 import org.apache.pdfbox.pdmodel.common.function.PDFunction;
 import org.apache.pdfbox.pdmodel.graphics.PDXObject;
 import org.apache.pdfbox.pdmodel.graphics.color.PDColorSpace;
+import org.apache.pdfbox.pdmodel.graphics.color.PDDeviceCMYK;
 import org.apache.pdfbox.pdmodel.graphics.color.PDDeviceGray;
 import org.apache.pdfbox.pdmodel.graphics.color.PDDeviceN;
 import org.apache.pdfbox.pdmodel.graphics.color.PDDeviceRGB;
@@ -188,6 +189,13 @@ public final class PreflightFixer {
                 && !applied.contains(Code.SPOT_TO_CMYK.name())) {
             applied.add(Code.SPOT_TO_CMYK.name());
         }
+        // CMYK image pixels get the same UCR reduction as painted fills — photos are where press
+        // TAC actually blows past the limit, and no token rewrite can reach them.
+        if (wanted.contains(Code.REDUCE_INK_COVERAGE)
+                && reduceImageInkCoverage(document, request.getMaxInkCoveragePercent())
+                && !applied.contains(Code.REDUCE_INK_COVERAGE.name())) {
+            applied.add(Code.REDUCE_INK_COVERAGE.name());
+        }
         // Clip runs after every geometry fixup has settled (boxes, bleed), and only when the
         // analysis saw paint out there — a clean page keeps its original content stream untouched.
         if (wanted.contains(Code.CLIP_TO_CROPBOX)
@@ -234,7 +242,8 @@ public final class PreflightFixer {
         Set<COSBase> visited = new LinkedHashSet<>();
         for (PDPage page : document.getPages()) {
             try {
-                collectSpotImages(page.getResources(), visited, images);
+                collectImages(
+                        page.getResources(), visited, images, PreflightFixer::isSpotColorSpace);
             } catch (IOException e) {
                 log.debug("Spot image scan skipped a page: {}", e.getMessage());
             }
@@ -253,23 +262,26 @@ public final class PreflightFixer {
         return changed;
     }
 
-    private static void collectSpotImages(
-            PDResources resources, Set<COSBase> visited, Map<COSBase, PDImageXObject> out)
+    private static void collectImages(
+            PDResources resources,
+            Set<COSBase> visited,
+            Map<COSBase, PDImageXObject> out,
+            java.util.function.Predicate<PDImageXObject> keep)
             throws IOException {
         if (resources == null || !visited.add(resources.getCOSObject())) {
             return;
         }
         for (COSName name : resources.getXObjectNames()) {
             PDXObject xo = resources.getXObject(name);
-            if (xo instanceof PDImageXObject image && isSpotColorSpace(image)) {
+            if (xo instanceof PDImageXObject image && keep.test(image)) {
                 out.putIfAbsent(image.getCOSObject(), image);
             } else if (xo instanceof PDFormXObject form) {
-                collectSpotImages(form.getResources(), visited, out);
+                collectImages(form.getResources(), visited, out, keep);
             }
         }
         for (COSName name : resources.getPatternNames()) {
             if (resources.getPattern(name) instanceof PDTilingPattern tiling) {
-                collectSpotImages(tiling.getResources(), visited, out);
+                collectImages(tiling.getResources(), visited, out, keep);
             }
         }
     }
@@ -407,6 +419,119 @@ public final class PreflightFixer {
             q[i] = (byte) Math.round(Math.max(0, Math.min(1, v)) * 255);
         }
         return q;
+    }
+
+    /**
+     * Pixel-wise TAC reduction on DeviceCMYK image XObjects, the image counterpart of the painted
+     * fill rewrite: samples decode through {@code /Decode}, pass through the same {@link
+     * PreflightStreamFixer#reduceTac} the stream fixer uses, and re-encode at 8-bit with a default
+     * decode. Images under the limit keep their original bytes. Colour-key masks, matte entries,
+     * stencils, non-8-bit samples and non-CMYK spaces stay untouched; soft masks and explicit bit
+     * masks follow the rebuilt image.
+     */
+    private static boolean reduceImageInkCoverage(PDDocument document, int maxInkCoveragePercent) {
+        Map<COSBase, PDImageXObject> images = new LinkedHashMap<>();
+        Set<COSBase> visited = new LinkedHashSet<>();
+        for (PDPage page : document.getPages()) {
+            try {
+                collectImages(
+                        page.getResources(), visited, images, PreflightFixer::isDeviceCmykImage);
+            } catch (IOException e) {
+                log.debug("Image TAC scan skipped a page: {}", e.getMessage());
+            }
+        }
+        boolean changed = false;
+        for (Map.Entry<COSBase, PDImageXObject> entry : images.entrySet()) {
+            try {
+                PDImageXObject reduced =
+                        reduceCmykImage(document, entry.getValue(), maxInkCoveragePercent);
+                if (reduced != null) {
+                    changed |= replaceImageReferences(document, entry.getKey(), reduced);
+                }
+            } catch (IOException | RuntimeException e) {
+                log.debug("Image TAC reduction skipped an image: {}", e.getMessage());
+            }
+        }
+        return changed;
+    }
+
+    private static boolean isDeviceCmykImage(PDImageXObject image) {
+        try {
+            return image.getColorSpace() instanceof PDDeviceCMYK;
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    private static PDImageXObject reduceCmykImage(
+            PDDocument document, PDImageXObject image, int maxInkCoveragePercent)
+            throws IOException {
+        if (image.getBitsPerComponent() != 8 || image.isStencil()) {
+            return null;
+        }
+        COSDictionary srcDict =
+                dereference(image.getCOSObject()) instanceof COSDictionary dict ? dict : null;
+        if (srcDict != null && maskOrMatteBlocksConversion(srcDict)) {
+            return null;
+        }
+        int w = image.getWidth();
+        int h = image.getHeight();
+        long pixels = (long) w * h;
+        if (pixels <= 0 || pixels > MAX_REMAP_BYTES / 4) {
+            return null;
+        }
+        int expected = (int) (pixels * 4);
+        byte[] raw;
+        try (InputStream in = image.getCOSObject().createInputStream()) {
+            raw = in.readNBytes(expected);
+        }
+        if (raw.length < expected) {
+            return null;
+        }
+        byte[] out = reduceCmykSamples(image, raw, maxInkCoveragePercent / 100f);
+        if (out == null) {
+            return null;
+        }
+        return rebuildImage(document, image, out, w, h, PDDeviceCMYK.INSTANCE);
+    }
+
+    /**
+     * Per-pixel UCR over raw CMYK samples; {@code /Decode} ranges decode before reduction so
+     * inverted scales stay honest, and the result re-quantises onto the default range (the rebuilt
+     * image drops the custom {@code /Decode}). {@code null} when no pixel exceeds the limit —
+     * unchanged bytes are not worth a fresh stream.
+     */
+    private static byte[] reduceCmykSamples(PDImageXObject image, byte[] raw, float tacLimit)
+            throws IOException {
+        COSArray decode = image.getDecode();
+        float[] dMin = new float[4];
+        float[] dMax = new float[4];
+        java.util.Arrays.fill(dMax, 1f);
+        if (decode != null) {
+            float[] range = decode.toFloatArray();
+            for (int i = 0; i < 4 && 2 * i + 1 < range.length; i++) {
+                dMin[i] = range[2 * i];
+                dMax[i] = range[2 * i + 1];
+            }
+        }
+        int pixels = raw.length / 4;
+        byte[] out = new byte[pixels * 4];
+        boolean reduced = false;
+        float[] px = new float[4];
+        for (int p = 0; p < pixels; p++) {
+            int base = p * 4;
+            for (int i = 0; i < 4; i++) {
+                px[i] = dMin[i] + (raw[base + i] & 0xFF) / 255f * (dMax[i] - dMin[i]);
+            }
+            float[] fixed = PreflightStreamFixer.reduceTac(px, tacLimit);
+            for (int i = 0; i < 4; i++) {
+                if (fixed[i] != px[i]) {
+                    reduced = true;
+                }
+                out[base + i] = (byte) Math.round(Math.max(0, Math.min(1, fixed[i])) * 255);
+            }
+        }
+        return reduced ? out : null;
     }
 
     private static PDImageXObject rebuildImage(

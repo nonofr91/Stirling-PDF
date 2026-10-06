@@ -537,6 +537,15 @@ final class PreflightStreamFixer {
 
     /** Returns the reduced CMYK values, or the input unchanged when nothing needs to happen. */
     private float[] applyTac(float[] cmyk) {
+        return reduceTac(cmyk, tacLimit);
+    }
+
+    /**
+     * Grey-component replacement toward {@code tacLimit} (0–4 scale): the achromatic part of C,M,Y
+     * folds into K first — visually neutral — and only the remainder is scaled down. Shared with
+     * the image-pixel pass so a pixel and a painted fill reduce identically.
+     */
+    static float[] reduceTac(float[] cmyk, float tacLimit) {
         if (tacLimit <= 0 || tacLimit >= 4f) {
             return cmyk;
         }

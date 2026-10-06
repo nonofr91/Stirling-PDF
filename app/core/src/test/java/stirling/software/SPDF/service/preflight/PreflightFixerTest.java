@@ -1474,4 +1474,82 @@ class PreflightFixerTest {
         List<String> codes = findingCodes(richBlackPdf());
         assertFalse(codes.contains("INK_COVERAGE_HIGH_RENDERED"), "the rendered pass is opt-in");
     }
+
+    /** A 4×4 DeviceCMYK image whose every pixel is a 400% rich black. */
+    private static byte[] cmykImagePdf(byte fillC, byte fillM, byte fillY, byte fillK)
+            throws IOException {
+        PDDocument doc = new PDDocument();
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
+        org.apache.pdfbox.pdmodel.common.PDStream img =
+                new org.apache.pdfbox.pdmodel.common.PDStream(doc);
+        img.getCOSObject().setItem(COSName.SUBTYPE, COSName.IMAGE);
+        img.getCOSObject().setInt(COSName.WIDTH, 4);
+        img.getCOSObject().setInt(COSName.HEIGHT, 4);
+        img.getCOSObject().setInt(COSName.BITS_PER_COMPONENT, 8);
+        img.getCOSObject().setItem(COSName.COLORSPACE, COSName.DEVICECMYK);
+        try (java.io.OutputStream out = img.createOutputStream()) {
+            byte[] samples = new byte[4 * 4 * 4];
+            for (int i = 0; i < samples.length; i += 4) {
+                samples[i] = fillC;
+                samples[i + 1] = fillM;
+                samples[i + 2] = fillY;
+                samples[i + 3] = fillK;
+            }
+            out.write(samples);
+        }
+        PDImageXObject xo = new PDImageXObject(img, null);
+        if (page.getResources() == null) {
+            page.setResources(new PDResources());
+        }
+        page.getResources().put(COSName.getPDFName("ImCmyk"), xo);
+        try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+            cs.drawImage(xo, 100, 100, 200, 200);
+        }
+        return toBytes(doc);
+    }
+
+    private static byte[] cmykImagePixels(byte[] pdf) throws IOException {
+        try (PDDocument doc = Loader.loadPDF(pdf)) {
+            PDImageXObject img =
+                    (PDImageXObject)
+                            doc.getPage(0).getResources().getXObject(COSName.getPDFName("ImCmyk"));
+            try (java.io.InputStream in = img.getCOSObject().createInputStream()) {
+                return in.readAllBytes();
+            }
+        }
+    }
+
+    @Test
+    void testReduceInkCoverageRewritesCmykImagePixels() throws Exception {
+        byte[] pdf = cmykImagePdf((byte) 255, (byte) 255, (byte) 255, (byte) 255);
+
+        PrintPreflightRequest req = request(pdf);
+        req.setFixups(List.of("REDUCE_INK_COVERAGE"));
+        ResponseEntity<Resource> response = controller.printPreflightFix(req);
+        assertEquals(
+                List.of("REDUCE_INK_COVERAGE"), response.getHeaders().get("X-Preflight-Fixups"));
+
+        byte[] raw = cmykImagePixels(responseBytes(response));
+        int tac = (raw[0] & 0xFF) + (raw[1] & 0xFF) + (raw[2] & 0xFF) + (raw[3] & 0xFF);
+        assertTrue(tac <= 320 * 255 / 100 + 4, "image TAC lands under the 320% limit");
+        // UCR: the equal C,M,Y component folds into K rather than a flat scale — K stays 255.
+        assertEquals(255, raw[3] & 0xFF, "grey component replacement keeps K saturated");
+        assertTrue((raw[0] & 0xFF) > 0 && (raw[0] & 0xFF) < 255, "C/M/Y carry the leftover chroma");
+    }
+
+    @Test
+    void testReduceInkCoverageLeavesCompliantImageAlone() throws Exception {
+        byte[] pdf = cmykImagePdf((byte) 64, (byte) 64, (byte) 64, (byte) 64);
+
+        PrintPreflightRequest req = request(pdf);
+        req.setFixups(List.of("REDUCE_INK_COVERAGE"));
+        ResponseEntity<Resource> response = controller.printPreflightFix(req);
+
+        byte[] raw = cmykImagePixels(responseBytes(response));
+        assertArrayEquals(
+                new byte[] {64, 64, 64, 64},
+                new byte[] {raw[0], raw[1], raw[2], raw[3]},
+                "a compliant image keeps its original samples");
+    }
 }
