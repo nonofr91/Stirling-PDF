@@ -15,11 +15,6 @@
       "title": "Sign PDF - Stirling PDF",
       "description": "Adds signature to PDF by drawing, text or image"
     },
-    "sharedSign": {
-      "image": "/og_images/shared-sign.png",
-      "title": "Shared Signing - Stirling PDF",
-      "description": "Request signatures from others and track signing sessions"
-    },
     "addText": {
       "image": "/og_images/add-text.png",
       "title": "Add Text to PDF - Stirling PDF",
@@ -237,8 +232,8 @@
     },
     "addAttachments": {
       "image": "/og_images/add-attachments.png",
-      "title": "Add Attachments to PDF - Stirling PDF",
-      "description": "Add or remove embedded files (attachments) to/from a PDF"
+      "title": "Manage PDF Attachments - Stirling PDF",
+      "description": "View, add, extract, rename, or delete embedded PDF attachments"
     },
     "createPortfolio": {
       "image": "/og_images/home.png",
@@ -792,7 +787,6 @@
   "byPath": {
     "/cert-sign": "certSign",
     "/sign": "sign",
-    "/shared-sign": "sharedSign",
     "/add-text": "addText",
     "/add-password": "addPassword",
     "/remove-password": "removePassword",
@@ -1005,10 +999,6 @@
   },
   "navLinks": [
     {
-      "path": "/add-attachments",
-      "label": "Add Attachments to PDF"
-    },
-    {
       "path": "/add-image",
       "label": "Add Image to PDF"
     },
@@ -1139,6 +1129,10 @@
     {
       "path": "/img-to-pdf",
       "label": "Image to PDF Converter"
+    },
+    {
+      "path": "/add-attachments",
+      "label": "Manage PDF Attachments"
     },
     {
       "path": "/markdown-to-pdf",
@@ -1287,10 +1281,6 @@
     {
       "path": "/set-page-boxes",
       "label": "Set Page Boxes"
-    },
-    {
-      "path": "/shared-sign",
-      "label": "Shared Signing"
     },
     {
       "path": "/show-js",

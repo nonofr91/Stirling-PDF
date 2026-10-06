@@ -82,7 +82,7 @@ export function profileToParameters(
 export function usePreflightProfiles(): PreflightProfilesHook {
   const [profiles, setProfiles] = useState<PrintPreflightProfile[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<PreflightProfileError | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);

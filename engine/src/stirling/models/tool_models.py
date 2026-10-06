@@ -307,6 +307,16 @@ class AutoSplitPdfParams(ApiModel):
     )
 
 
+class BatchProcessAttachmentsParams(ApiModel):
+    """
+    This endpoint applies batch renames, deletions, and additions to PDF attachments in a single pass. Unknown rename or delete targets are skipped, so re-list attachments afterwards to reconcile. Input:PDF Output:PDF Type:SISO
+    """
+
+    attachments: list[bytes] | None = None
+    convert_to_pdf_a3b: bool | None = None
+    ops_json: str | None = None
+
+
 class DuplexPass(StrEnum):
     """
     For manual duplex: which pass to generate
@@ -819,10 +829,20 @@ class ExtractImagesParams(ApiModel):
     format: Format = Field(Format.png, description="The output image format e.g., 'png', 'jpeg', or 'gif'")
 
 
+class ExtractSingleAttachmentParams(ApiModel):
+    """
+    This endpoint extracts a single embedded attachment from a PDF by name. Input:PDF Output:ANY Type:SISO
+    """
+
+    attachment_name: str = Field(..., description="Name of the embedded attachment to extract")
+
+
 class FileToPdfParams(ApiModel):
     """
-    This endpoint converts a given file to a PDF using LibreOffice API Input:ANY Output:PDF Type:SISO
+    This endpoint converts a given file to a PDF using Stirling Office Convert or LibreOffice Input:ANY Output:PDF Type:SISO
     """
+
+    use_stirling_office_convert: bool | None = None
 
 
 class FlattenParams(ApiModel):
@@ -1253,6 +1273,7 @@ class PdfToPresentationParams(ApiModel):
     """
 
     output_format: OutputFormat2 = Field(..., description="The output Presentation format")
+    use_stirling_office_convert: bool | None = None
 
 
 class PdfToSinglePageParams(ApiModel):
@@ -1276,6 +1297,7 @@ class PdfToTextParams(ApiModel):
     """
 
     output_format: OutputFormat3 = Field(..., description="The output Text or RTF format")
+    use_stirling_office_convert: bool | None = None
 
 
 class ExistingTags(StrEnum):
@@ -1386,6 +1408,7 @@ class PdfToWordParams(ApiModel):
     """
 
     output_format: OutputFormat5 = Field(..., description="The output Word document format")
+    use_stirling_office_convert: bool | None = None
 
 
 class PdfToXlsxParams(ApiModel):
@@ -1397,6 +1420,7 @@ class PdfToXlsxParams(ApiModel):
         "all",
         description="The pages to select, Supports ranges (e.g., '1,3,5-9'), or 'all' or functions in the format 'an+b' where 'a' is the multiplier of the page number 'n', and 'b' is a constant (e.g., '2n+1', '3n', '6n-5')",
     )
+    use_stirling_office_convert: bool | None = None
 
 
 class PdfToXmlParams(ApiModel):
@@ -1419,7 +1443,7 @@ class PrintPreflightAnnotatedParams(ApiModel):
     )
     fixups: list[str] | None = Field(
         None,
-        description="Fixup codes to apply on the print-preflight-fix endpoint (e.g. EXTEND_BLEED, FLATTEN_FORM, REMOVE_JAVASCRIPT); empty or absent applies every supported fixup that has something to correct",
+        description="Fixup codes to apply on the print-preflight-fix endpoint (e.g. EXTEND_BLEED, FLATTEN_FORM, REMOVE_JAVASCRIPT); empty or absent applies every supported fixup that has something to correct, the sentinel NONE applies none",
     )
     hairline_threshold_pt: float = Field(
         0.25,
@@ -1457,6 +1481,16 @@ class PrintPreflightAnnotatedParams(ApiModel):
     )
     min_image_dpi: int = Field(
         150, description="Images rendered below this effective resolution are reported as low resolution", ge=1
+    )
+    profile_name: str | None = Field(
+        None,
+        description="Named preflight profile to run with — the profile supplies every threshold, fixups and disabledChecks; request-level parameters for those are ignored. Built-ins ship with the app, customs live in configs/preflight-profiles.json",
+        examples=["offset-press"],
+    )
+    report_language: str | None = Field(
+        None,
+        description="BCP-47 tag for the language of generated report text and finding messages (e.g. fr-FR); falls back to the session locale, then English",
+        examples=["fr-FR"],
     )
     required_bleed_mm: float = Field(
         3, description="Bleed width in millimetres required on every side beyond the TrimBox", ge=0.0
@@ -1482,7 +1516,7 @@ class PrintPreflightFixParams(ApiModel):
     )
     fixups: list[str] | None = Field(
         None,
-        description="Fixup codes to apply on the print-preflight-fix endpoint (e.g. EXTEND_BLEED, FLATTEN_FORM, REMOVE_JAVASCRIPT); empty or absent applies every supported fixup that has something to correct",
+        description="Fixup codes to apply on the print-preflight-fix endpoint (e.g. EXTEND_BLEED, FLATTEN_FORM, REMOVE_JAVASCRIPT); empty or absent applies every supported fixup that has something to correct, the sentinel NONE applies none",
     )
     hairline_threshold_pt: float = Field(
         0.25,
@@ -1520,6 +1554,16 @@ class PrintPreflightFixParams(ApiModel):
     )
     min_image_dpi: int = Field(
         150, description="Images rendered below this effective resolution are reported as low resolution", ge=1
+    )
+    profile_name: str | None = Field(
+        None,
+        description="Named preflight profile to run with — the profile supplies every threshold, fixups and disabledChecks; request-level parameters for those are ignored. Built-ins ship with the app, customs live in configs/preflight-profiles.json",
+        examples=["offset-press"],
+    )
+    report_language: str | None = Field(
+        None,
+        description="BCP-47 tag for the language of generated report text and finding messages (e.g. fr-FR); falls back to the session locale, then English",
+        examples=["fr-FR"],
     )
     required_bleed_mm: float = Field(
         3, description="Bleed width in millimetres required on every side beyond the TrimBox", ge=0.0
@@ -1545,7 +1589,7 @@ class PrintPreflightParams(ApiModel):
     )
     fixups: list[str] | None = Field(
         None,
-        description="Fixup codes to apply on the print-preflight-fix endpoint (e.g. EXTEND_BLEED, FLATTEN_FORM, REMOVE_JAVASCRIPT); empty or absent applies every supported fixup that has something to correct",
+        description="Fixup codes to apply on the print-preflight-fix endpoint (e.g. EXTEND_BLEED, FLATTEN_FORM, REMOVE_JAVASCRIPT); empty or absent applies every supported fixup that has something to correct, the sentinel NONE applies none",
     )
     hairline_threshold_pt: float = Field(
         0.25,
@@ -1584,6 +1628,16 @@ class PrintPreflightParams(ApiModel):
     min_image_dpi: int = Field(
         150, description="Images rendered below this effective resolution are reported as low resolution", ge=1
     )
+    profile_name: str | None = Field(
+        None,
+        description="Named preflight profile to run with — the profile supplies every threshold, fixups and disabledChecks; request-level parameters for those are ignored. Built-ins ship with the app, customs live in configs/preflight-profiles.json",
+        examples=["offset-press"],
+    )
+    report_language: str | None = Field(
+        None,
+        description="BCP-47 tag for the language of generated report text and finding messages (e.g. fr-FR); falls back to the session locale, then English",
+        examples=["fr-FR"],
+    )
     required_bleed_mm: float = Field(
         3, description="Bleed width in millimetres required on every side beyond the TrimBox", ge=0.0
     )
@@ -1591,6 +1645,49 @@ class PrintPreflightParams(ApiModel):
         3,
         description="Content inside the trim but closer than this distance in millimetres to the trim edge is reported as at risk of being cut off",
         ge=0.0,
+    )
+
+
+class PrintPreflightProfilesParams(ApiModel):
+    """
+    Creates or replaces a custom preflight profile under its name. Built-in names are reserved.
+    """
+
+    builtin: bool | None = Field(None, description="Shipped with the application — true for built-ins, ignored on save")
+    check_bleed_coverage: bool | None = Field(
+        None, description="Render each page and check the bleed band is actually painted"
+    )
+    description: str | None = Field(None, description="Human-readable summary shown in the profile picker")
+    disabled_checks: list[str] | None = Field(None, description="Finding codes to skip entirely")
+    fixups: list[str] | None = Field(None, description='Fixup codes to apply; "NONE" disables all fixups')
+    hairline_threshold_pt: float | None = Field(
+        None, description="Strokes thinner than this width in points are reported as hairlines"
+    )
+    include_summary_page: bool | None = Field(None, description="Prepend summary pages to the annotated PDF")
+    max_image_dpi: int | None = Field(
+        None, description="Images rendered above this effective resolution are reported as oversampled"
+    )
+    max_ink_coverage_percent: int | None = Field(
+        None, description="Painted colours whose total ink coverage exceeds this percentage are reported"
+    )
+    max_spot_count: int | None = Field(
+        None, description="More spot separations than this are reported; 0 disables the limit"
+    )
+    min_font_size_pt: float | None = Field(
+        None, description="Text rendered smaller than this size in points is reported"
+    )
+    min_image1_bit_dpi: int | None = Field(
+        None, description="1-bit images rendered below this effective resolution are reported"
+    )
+    min_image_dpi: int | None = Field(None, description="Images rendered below this effective resolution are reported")
+    name: str | None = Field(
+        None, description="Unique profile name — the key used in profileName", examples=["offset-press"]
+    )
+    required_bleed_mm: float | None = Field(
+        None, description="Bleed width in millimetres required on every side beyond the TrimBox"
+    )
+    safety_margin_mm: float | None = Field(
+        None, description="Content closer than this distance in millimetres to the trim edge is reported"
     )
 
 
@@ -1608,7 +1705,7 @@ class PrintPreflightReportParams(ApiModel):
     )
     fixups: list[str] | None = Field(
         None,
-        description="Fixup codes to apply on the print-preflight-fix endpoint (e.g. EXTEND_BLEED, FLATTEN_FORM, REMOVE_JAVASCRIPT); empty or absent applies every supported fixup that has something to correct",
+        description="Fixup codes to apply on the print-preflight-fix endpoint (e.g. EXTEND_BLEED, FLATTEN_FORM, REMOVE_JAVASCRIPT); empty or absent applies every supported fixup that has something to correct, the sentinel NONE applies none",
     )
     hairline_threshold_pt: float = Field(
         0.25,
@@ -1646,6 +1743,16 @@ class PrintPreflightReportParams(ApiModel):
     )
     min_image_dpi: int = Field(
         150, description="Images rendered below this effective resolution are reported as low resolution", ge=1
+    )
+    profile_name: str | None = Field(
+        None,
+        description="Named preflight profile to run with — the profile supplies every threshold, fixups and disabledChecks; request-level parameters for those are ignored. Built-ins ship with the app, customs live in configs/preflight-profiles.json",
+        examples=["offset-press"],
+    )
+    report_language: str | None = Field(
+        None,
+        description="BCP-47 tag for the language of generated report text and finding messages (e.g. fr-FR); falls back to the session locale, then English",
+        examples=["fr-FR"],
     )
     required_bleed_mm: float = Field(
         3, description="Bleed width in millimetres required on every side beyond the TrimBox", ge=0.0
@@ -2415,12 +2522,14 @@ class Model(
         | AutoRenameParams
         | AutoRotatePdfParams
         | AutoSplitPdfParams
+        | BatchProcessAttachmentsParams
         | CompressPdfParams
         | CreatePortfolioParams
         | DeleteAttachmentParams
         | ExtractAttachmentsParams
         | ExtractImageScansParams
         | ExtractImagesParams
+        | ExtractSingleAttachmentParams
         | FlattenParams
         | FlattenPortfolioParams
         | OcrPdfParams
@@ -2439,6 +2548,7 @@ class Model(
         | PrintPreflightParams
         | PrintPreflightAnnotatedParams
         | PrintPreflightFixParams
+        | PrintPreflightProfilesParams
         | PrintPreflightReportParams
         | RedactParams
         | RedactExecuteParams
@@ -2502,12 +2612,14 @@ class Model(
         | AutoRenameParams
         | AutoRotatePdfParams
         | AutoSplitPdfParams
+        | BatchProcessAttachmentsParams
         | CompressPdfParams
         | CreatePortfolioParams
         | DeleteAttachmentParams
         | ExtractAttachmentsParams
         | ExtractImageScansParams
         | ExtractImagesParams
+        | ExtractSingleAttachmentParams
         | FlattenParams
         | FlattenPortfolioParams
         | OcrPdfParams
@@ -2526,6 +2638,7 @@ class Model(
         | PrintPreflightParams
         | PrintPreflightAnnotatedParams
         | PrintPreflightFixParams
+        | PrintPreflightProfilesParams
         | PrintPreflightReportParams
         | RedactParams
         | RedactExecuteParams
@@ -2590,12 +2703,14 @@ type ParamToolModel = (
     | AutoRenameParams
     | AutoRotatePdfParams
     | AutoSplitPdfParams
+    | BatchProcessAttachmentsParams
     | CompressPdfParams
     | CreatePortfolioParams
     | DeleteAttachmentParams
     | ExtractAttachmentsParams
     | ExtractImageScansParams
     | ExtractImagesParams
+    | ExtractSingleAttachmentParams
     | FlattenParams
     | FlattenPortfolioParams
     | OcrPdfParams
@@ -2614,6 +2729,7 @@ type ParamToolModel = (
     | PrintPreflightParams
     | PrintPreflightAnnotatedParams
     | PrintPreflightFixParams
+    | PrintPreflightProfilesParams
     | PrintPreflightReportParams
     | RedactParams
     | RedactExecuteParams
@@ -2679,12 +2795,14 @@ class ToolEndpoint(StrEnum):
     AUTO_RENAME = "/api/v1/misc/auto-rename"
     AUTO_ROTATE_PDF = "/api/v1/misc/auto-rotate-pdf"
     AUTO_SPLIT_PDF = "/api/v1/misc/auto-split-pdf"
+    BATCH_PROCESS_ATTACHMENTS = "/api/v1/misc/batch-process-attachments"
     COMPRESS_PDF = "/api/v1/misc/compress-pdf"
     CREATE_PORTFOLIO = "/api/v1/misc/create-portfolio"
     DELETE_ATTACHMENT = "/api/v1/misc/delete-attachment"
     EXTRACT_ATTACHMENTS = "/api/v1/misc/extract-attachments"
     EXTRACT_IMAGE_SCANS = "/api/v1/misc/extract-image-scans"
     EXTRACT_IMAGES = "/api/v1/misc/extract-images"
+    EXTRACT_SINGLE_ATTACHMENT = "/api/v1/misc/extract-single-attachment"
     FLATTEN = "/api/v1/misc/flatten"
     FLATTEN_PORTFOLIO = "/api/v1/misc/flatten-portfolio"
     OCR_PDF = "/api/v1/misc/ocr-pdf"
@@ -2703,6 +2821,7 @@ class ToolEndpoint(StrEnum):
     PRINT_PREFLIGHT = "/api/v1/security/print-preflight"
     PRINT_PREFLIGHT_ANNOTATED = "/api/v1/security/print-preflight-annotated"
     PRINT_PREFLIGHT_FIX = "/api/v1/security/print-preflight-fix"
+    PRINT_PREFLIGHT_PROFILES = "/api/v1/security/print-preflight-profiles"
     PRINT_PREFLIGHT_REPORT = "/api/v1/security/print-preflight-report"
     REDACT = "/api/v1/security/redact"
     REDACT_EXECUTE = "/api/v1/security/redact-execute"
@@ -2766,12 +2885,14 @@ OPERATIONS: dict[ToolEndpoint, ParamToolModelType] = {
     ToolEndpoint.AUTO_RENAME: AutoRenameParams,
     ToolEndpoint.AUTO_ROTATE_PDF: AutoRotatePdfParams,
     ToolEndpoint.AUTO_SPLIT_PDF: AutoSplitPdfParams,
+    ToolEndpoint.BATCH_PROCESS_ATTACHMENTS: BatchProcessAttachmentsParams,
     ToolEndpoint.COMPRESS_PDF: CompressPdfParams,
     ToolEndpoint.CREATE_PORTFOLIO: CreatePortfolioParams,
     ToolEndpoint.DELETE_ATTACHMENT: DeleteAttachmentParams,
     ToolEndpoint.EXTRACT_ATTACHMENTS: ExtractAttachmentsParams,
     ToolEndpoint.EXTRACT_IMAGE_SCANS: ExtractImageScansParams,
     ToolEndpoint.EXTRACT_IMAGES: ExtractImagesParams,
+    ToolEndpoint.EXTRACT_SINGLE_ATTACHMENT: ExtractSingleAttachmentParams,
     ToolEndpoint.FLATTEN: FlattenParams,
     ToolEndpoint.FLATTEN_PORTFOLIO: FlattenPortfolioParams,
     ToolEndpoint.OCR_PDF: OcrPdfParams,
@@ -2790,6 +2911,7 @@ OPERATIONS: dict[ToolEndpoint, ParamToolModelType] = {
     ToolEndpoint.PRINT_PREFLIGHT: PrintPreflightParams,
     ToolEndpoint.PRINT_PREFLIGHT_ANNOTATED: PrintPreflightAnnotatedParams,
     ToolEndpoint.PRINT_PREFLIGHT_FIX: PrintPreflightFixParams,
+    ToolEndpoint.PRINT_PREFLIGHT_PROFILES: PrintPreflightProfilesParams,
     ToolEndpoint.PRINT_PREFLIGHT_REPORT: PrintPreflightReportParams,
     ToolEndpoint.REDACT: RedactParams,
     ToolEndpoint.REDACT_EXECUTE: RedactExecuteParams,

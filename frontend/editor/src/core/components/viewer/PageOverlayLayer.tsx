@@ -122,7 +122,7 @@ export const PageOverlayLayer = memo(function PageOverlayLayer({
         zIndex: Z_INDEX_SIGNATURE_OVERLAY,
       }}
     >
-      {/* icon-lint-disable -- runtime geometry overlay, not a UI icon */}
+      {/* icon-lint-allow: runtime-generated-svg -- overlay polygons are computed from page geometry */}
       {(paths.length > 0 || drawRequest) && (
         <svg
           viewBox="0 0 1 1"
