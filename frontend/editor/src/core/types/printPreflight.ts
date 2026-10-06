@@ -106,3 +106,27 @@ export interface PrintPreflightReport {
 }
 
 export const PREFLIGHT_JSON_FILENAME = "print-preflight-report.json";
+
+/**
+ * A named preflight profile — snapshot of every threshold plus fixups and
+ * disabled checks. Served by /api/v1/security/print-preflight-profiles;
+ * built-ins ship with the backend, customs persist in configs/.
+ */
+export interface PrintPreflightProfile {
+  name: string;
+  description?: string | null;
+  builtin: boolean;
+  requiredBleedMm?: number | null;
+  minImageDpi?: number | null;
+  hairlineThresholdPt?: number | null;
+  checkBleedCoverage?: boolean | null;
+  minFontSizePt?: number | null;
+  safetyMarginMm?: number | null;
+  maxInkCoveragePercent?: number | null;
+  minImage1BitDpi?: number | null;
+  maxImageDpi?: number | null;
+  maxSpotCount?: number | null;
+  includeSummaryPage?: boolean | null;
+  disabledChecks?: string[] | null;
+  fixups?: string[] | null;
+}

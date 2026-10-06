@@ -8,6 +8,9 @@ import {
   Collapse,
   Divider,
   MultiSelect,
+  Select,
+  Group,
+  Modal,
 } from "@mantine/core";
 import { Button } from "@app/ui/Button";
 import { useTranslation } from "react-i18next";
@@ -15,6 +18,10 @@ import {
   PrintPreflightParameters,
   FIXUP_CODES,
 } from "@app/hooks/tools/printPreflight/usePrintPreflightParameters";
+import {
+  usePreflightProfiles,
+  profileToParameters,
+} from "@app/hooks/tools/printPreflight/usePreflightProfiles";
 
 interface PrintPreflightSettingsProps {
   parameters: PrintPreflightParameters;
@@ -22,25 +29,181 @@ interface PrintPreflightSettingsProps {
     key: K,
     value: PrintPreflightParameters[K],
   ) => void;
+  /** Atomic profile application; falls back to per-key updates when absent. */
+  onApplyParameters?: (parameters: PrintPreflightParameters) => void;
   disabled?: boolean;
 }
 
 const PrintPreflightSettings = ({
   parameters,
   onParameterChange,
+  onApplyParameters,
   disabled = false,
 }: PrintPreflightSettingsProps) => {
   const { t } = useTranslation();
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [fixesOpen, setFixesOpen] = useState(false);
+  const { profiles, loading, error, saveProfile, deleteProfile } =
+    usePreflightProfiles();
+  const [activeProfile, setActiveProfile] = useState<string | null>(null);
+  const [saveModalOpen, setSaveModalOpen] = useState(false);
+  const [saveName, setSaveName] = useState("");
+  const [saveDescription, setSaveDescription] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const selectedProfile = profiles.find((p) => p.name === activeProfile);
 
   const optionalNumber = (
     value: string | number | undefined,
   ): number | undefined =>
     value === "" || value === undefined ? undefined : Number(value);
 
+  const applyProfile = (name: string | null) => {
+    setActiveProfile(name);
+    const profile = profiles.find((p) => p.name === name);
+    if (!profile) {
+      return;
+    }
+    const next = profileToParameters(profile, parameters);
+    if (onApplyParameters) {
+      onApplyParameters(next);
+    } else {
+      (Object.keys(next) as (keyof PrintPreflightParameters)[]).forEach(
+        (key) => {
+          onParameterChange(key, next[key]);
+        },
+      );
+    }
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    const ok = await saveProfile(saveName.trim(), saveDescription, parameters);
+    setSaving(false);
+    if (ok) {
+      setActiveProfile(saveName.trim());
+      setSaveModalOpen(false);
+      setSaveName("");
+      setSaveDescription("");
+    }
+  };
+
+  const handleDelete = async () => {
+    if (activeProfile && (await deleteProfile(activeProfile))) {
+      setActiveProfile(null);
+    }
+  };
+
   return (
     <Stack gap="md">
+      <Select
+        label={t("printPreflight.profiles.label", "Preflight profile")}
+        description={t(
+          "printPreflight.profiles.help",
+          "A saved set of thresholds and fixes. Selecting one replaces every value below.",
+        )}
+        placeholder={t("printPreflight.profiles.custom", "Custom settings")}
+        data={profiles.map((p) => ({
+          value: p.name,
+          label: p.builtin
+            ? t(`printPreflight.profiles.builtin.${p.name}`, p.name)
+            : p.name,
+        }))}
+        value={activeProfile}
+        onChange={applyProfile}
+        clearable
+        searchable
+        disabled={disabled || loading}
+        comboboxProps={{ withinPortal: true }}
+      />
+
+      {selectedProfile && (
+        <Text size="xs" c="dimmed">
+          {selectedProfile.builtin
+            ? t(
+                `printPreflight.profiles.builtinDesc.${selectedProfile.name}`,
+                selectedProfile.description ?? "",
+              )
+            : selectedProfile.description}
+        </Text>
+      )}
+
+      <Group gap="xs">
+        <Button
+          variant="tertiary"
+          size="sm"
+          onClick={() => {
+            setSaveName(activeProfile ?? "");
+            setSaveDescription(selectedProfile?.description ?? "");
+            setSaveModalOpen(true);
+          }}
+          disabled={disabled}
+        >
+          {t("printPreflight.profiles.saveAs", "Save as profile…")}
+        </Button>
+        {selectedProfile && !selectedProfile.builtin && (
+          <Button
+            variant="tertiary"
+            size="sm"
+            accent="danger"
+            onClick={handleDelete}
+            disabled={disabled}
+          >
+            {t("printPreflight.profiles.delete", "Delete profile")}
+          </Button>
+        )}
+      </Group>
+
+      {error && (
+        <Text size="xs" c="red">
+          {t(`printPreflight.${error}`, error)}
+        </Text>
+      )}
+
+      <Modal
+        opened={saveModalOpen}
+        onClose={() => setSaveModalOpen(false)}
+        title={t("printPreflight.profiles.saveModalTitle", "Save profile")}
+        centered
+      >
+        <Stack gap="md">
+          <TextInput
+            label={t("printPreflight.profiles.nameLabel", "Profile name")}
+            value={saveName}
+            onChange={(event) => setSaveName(event.currentTarget.value)}
+            required
+            maxLength={100}
+            data-autofocus
+          />
+          <TextInput
+            label={t(
+              "printPreflight.profiles.descLabel",
+              "Description (optional)",
+            )}
+            value={saveDescription}
+            onChange={(event) => setSaveDescription(event.currentTarget.value)}
+          />
+          <Group justify="flex-end">
+            <Button
+              variant="tertiary"
+              onClick={() => setSaveModalOpen(false)}
+              disabled={saving}
+            >
+              {t("cancel", "Cancel")}
+            </Button>
+            <Button
+              onClick={handleSave}
+              loading={saving}
+              disabled={saveName.trim() === ""}
+            >
+              {t("save", "Save")}
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      <Divider />
+
       <NumberInput
         label={t("printPreflight.requiredBleedMm.label", "Required bleed (mm)")}
         description={t(
@@ -337,10 +500,19 @@ const PrintPreflightSettings = ({
                 "printPreflight.fixups.placeholder",
                 "All applicable fixups",
               )}
-              data={FIXUP_CODES.map((code) => ({
-                value: code,
-                label: t(`printPreflight.fixups.codes.${code}`, code),
-              }))}
+              data={[
+                {
+                  value: "NONE",
+                  label: t(
+                    "printPreflight.fixups.codes.NONE",
+                    "None — disable all fixups",
+                  ),
+                },
+                ...FIXUP_CODES.map((code) => ({
+                  value: code,
+                  label: t(`printPreflight.fixups.codes.${code}`, code),
+                })),
+              ]}
               value={parameters.fixups ?? []}
               onChange={(value) =>
                 onParameterChange(

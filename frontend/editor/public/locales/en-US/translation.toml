@@ -11079,6 +11079,7 @@ FLATTEN_FORM = "Flatten form fields"
 FLATTEN_TRANSPARENCY = "Flatten transparency"
 KNOCKOUT_WHITE = "Clear overprint on white objects"
 MERGE_SPOT_ALIASES = "Merge spot colour aliases"
+NONE = "None — disable all fixups"
 NORMALIZE_USER_UNIT = "Normalize page scale (UserUnit)"
 OVERPRINT_BLACK_TEXT = "Set black text to overprint"
 PURE_BLACK_TEXT = "Convert rich-black text to pure black"
@@ -11129,6 +11130,31 @@ label = "Minimum image resolution (dpi)"
 
 [printPreflight.options]
 stepTitle = "Check thresholds"
+
+[printPreflight.profiles]
+custom = "Custom settings"
+delete = "Delete profile"
+deleteFailed = "The profile could not be deleted"
+descLabel = "Description (optional)"
+help = "A saved set of thresholds and fixes. Selecting one replaces every value below."
+label = "Preflight profile"
+loadFailed = "Profiles could not be loaded"
+nameLabel = "Profile name"
+saveAs = "Save as profile…"
+saveFailed = "The profile could not be saved"
+saveModalTitle = "Save profile"
+
+[printPreflight.profiles.builtin]
+digital-press = "Digital press"
+inspect-only = "Inspect only"
+large-format = "Large format"
+offset-press = "Offset press"
+
+[printPreflight.profiles.builtinDesc]
+digital-press = "Digital presses (toner/inkjet) — more tolerant thresholds, keeps spot and RGB untouched"
+inspect-only = "Analysis with relaxed thresholds and no automatic corrections"
+large-format = "Posters, signage, banners — looser resolution limits, wider safety margin"
+offset-press = "Commercial offset printing — strict thresholds, converts everything to CMYK press-ready"
 
 [printPreflight.reportFormat]
 annotatedPdf = "Annotated PDF"

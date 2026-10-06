@@ -11079,6 +11079,7 @@ FLATTEN_FORM = "Aplatir les champs de formulaire"
 FLATTEN_TRANSPARENCY = "Aplatir la transparence"
 KNOCKOUT_WHITE = "Désactiver la surimpression des blancs"
 MERGE_SPOT_ALIASES = "Fusionner les alias de tons directs"
+NONE = "Aucune — désactive toutes les corrections"
 NORMALIZE_USER_UNIT = "Normaliser l'échelle de page (UserUnit)"
 OVERPRINT_BLACK_TEXT = "Surimprimer le texte noir"
 PURE_BLACK_TEXT = "Convertir le texte noir riche en noir pur"
@@ -11129,6 +11130,31 @@ label = "Résolution minimale des images (dpi)"
 
 [printPreflight.options]
 stepTitle = "Seuils de contrôle"
+
+[printPreflight.profiles]
+custom = "Réglages personnalisés"
+delete = "Supprimer le profil"
+deleteFailed = "Le profil n'a pas pu être supprimé"
+descLabel = "Description (facultative)"
+help = "Un jeu sauvegardé de seuils et de corrections. En sélectionner un remplace toutes les valeurs ci-dessous."
+label = "Profil de preflight"
+loadFailed = "Les profils n'ont pas pu être chargés"
+nameLabel = "Nom du profil"
+saveAs = "Enregistrer comme profil…"
+saveFailed = "Le profil n'a pas pu être enregistré"
+saveModalTitle = "Enregistrer le profil"
+
+[printPreflight.profiles.builtin]
+digital-press = "Presse numérique"
+inspect-only = "Inspection seule"
+large-format = "Grand format"
+offset-press = "Offset"
+
+[printPreflight.profiles.builtinDesc]
+digital-press = "Presses numériques (toner/jet d'encre) — seuils plus tolérants, conserve les tons directs et le RVB"
+inspect-only = "Analyse avec seuils assouplis et aucune correction automatique"
+large-format = "Affiches, signalétique, bâches — limites de résolution assouplies, marge de sécurité élargie"
+offset-press = "Impression offset commerciale — seuils stricts, conversion complète en CMJK"
 
 [printPreflight.reportFormat]
 annotatedPdf = "PDF annoté"

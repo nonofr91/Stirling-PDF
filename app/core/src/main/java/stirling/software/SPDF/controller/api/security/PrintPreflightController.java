@@ -9,7 +9,12 @@ import org.apache.pdfbox.pdmodel.PDPage;
 import org.springframework.core.io.Resource;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.multipart.MultipartFile;
 
 import io.swagger.v3.oas.annotations.Operation;
@@ -17,11 +22,13 @@ import io.swagger.v3.oas.annotations.Operation;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import stirling.software.SPDF.model.api.security.PrintPreflightProfile;
 import stirling.software.SPDF.model.api.security.PrintPreflightReport;
 import stirling.software.SPDF.model.api.security.PrintPreflightRequest;
 import stirling.software.SPDF.service.preflight.PreflightAnnotator;
 import stirling.software.SPDF.service.preflight.PreflightFixer;
 import stirling.software.SPDF.service.preflight.PreflightGhostscriptFixer;
+import stirling.software.SPDF.service.preflight.PreflightProfileService;
 import stirling.software.SPDF.service.preflight.PreflightReportRenderer;
 import stirling.software.SPDF.service.preflight.PreflightReportText;
 import stirling.software.SPDF.service.preflight.PrintPreflightService;
@@ -46,6 +53,43 @@ public class PrintPreflightController {
     private final CustomPDFDocumentFactory pdfDocumentFactory;
     private final TempFileManager tempFileManager;
     private final PreflightGhostscriptFixer ghostscriptFixer;
+    private final PreflightProfileService profileService;
+
+    @Operation(
+            summary = "List preflight profiles",
+            description =
+                    "Named snapshots of every preflight threshold plus fixups and disabled checks."
+                            + " Built-ins ship with the app; customs persist in"
+                            + " configs/preflight-profiles.json.")
+    @GetMapping("/print-preflight-profiles")
+    public ResponseEntity<List<PrintPreflightProfile>> listProfiles() {
+        return ResponseEntity.ok(profileService.list());
+    }
+
+    @Operation(
+            summary = "Save a preflight profile",
+            description =
+                    "Creates or replaces a custom preflight profile under its name. Built-in names"
+                            + " are reserved.")
+    @PostMapping(
+            value = "/print-preflight-profiles",
+            consumes = MediaType.APPLICATION_JSON_VALUE,
+            produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<PrintPreflightProfile> saveProfile(
+            @RequestBody PrintPreflightProfile profile) {
+        return ResponseEntity.ok(profileService.save(profile));
+    }
+
+    @Operation(
+            summary = "Delete a preflight profile",
+            description = "Deletes a custom preflight profile; built-ins cannot be deleted.")
+    @DeleteMapping("/print-preflight-profiles/{name}")
+    public ResponseEntity<Void> deleteProfile(@PathVariable String name) {
+        if (!profileService.delete(name)) {
+            return ResponseEntity.notFound().build();
+        }
+        return ResponseEntity.noContent().build();
+    }
 
     @ToolIO(produces = ToolFormat.JSON)
     @Operation(
@@ -63,6 +107,7 @@ public class PrintPreflightController {
             @ModelAttribute PrintPreflightRequest request) throws IOException {
 
         MultipartFile file = request.getFileInput();
+        profileService.applyProfile(request);
         validate(file, request);
 
         try (PDDocument document = pdfDocumentFactory.load(request)) {
@@ -94,6 +139,7 @@ public class PrintPreflightController {
             @ModelAttribute PrintPreflightRequest request) throws IOException {
 
         MultipartFile file = request.getFileInput();
+        profileService.applyProfile(request);
         validate(file, request);
 
         try (PDDocument document = pdfDocumentFactory.load(request)) {
@@ -130,6 +176,7 @@ public class PrintPreflightController {
             @ModelAttribute PrintPreflightRequest request) throws IOException {
 
         MultipartFile file = request.getFileInput();
+        profileService.applyProfile(request);
         validate(file, request);
 
         try (PDDocument document = pdfDocumentFactory.load(request);
@@ -164,6 +211,7 @@ public class PrintPreflightController {
             throws IOException {
 
         MultipartFile file = request.getFileInput();
+        profileService.applyProfile(request);
         validate(file, request);
 
         try (PDDocument document = pdfDocumentFactory.load(request)) {

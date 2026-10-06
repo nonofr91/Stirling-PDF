@@ -1149,6 +1149,72 @@ export interface PosterPdfRequest {
    */
   yFactor?: number;
 }
+export interface PrintPreflightProfile {
+  /**
+   * Shipped with the application — true for built-ins, ignored on save
+   */
+  builtin?: boolean;
+  /**
+   * Render each page and check the bleed band is actually painted
+   */
+  checkBleedCoverage?: boolean;
+  /**
+   * Human-readable summary shown in the profile picker
+   */
+  description?: string;
+  /**
+   * Finding codes to skip entirely
+   */
+  disabledChecks?: string[];
+  /**
+   * Fixup codes to apply; "NONE" disables all fixups
+   */
+  fixups?: string[];
+  /**
+   * Strokes thinner than this width in points are reported as hairlines
+   */
+  hairlineThresholdPt?: number;
+  /**
+   * Prepend summary pages to the annotated PDF
+   */
+  includeSummaryPage?: boolean;
+  /**
+   * Images rendered above this effective resolution are reported as oversampled
+   */
+  maxImageDpi?: number;
+  /**
+   * Painted colours whose total ink coverage exceeds this percentage are reported
+   */
+  maxInkCoveragePercent?: number;
+  /**
+   * More spot separations than this are reported; 0 disables the limit
+   */
+  maxSpotCount?: number;
+  /**
+   * Text rendered smaller than this size in points is reported
+   */
+  minFontSizePt?: number;
+  /**
+   * 1-bit images rendered below this effective resolution are reported
+   */
+  minImage1BitDpi?: number;
+  /**
+   * Images rendered below this effective resolution are reported
+   */
+  minImageDpi?: number;
+  /**
+   * Unique profile name — the key used in profileName
+   */
+  name?: string;
+  /**
+   * Bleed width in millimetres required on every side beyond the TrimBox
+   */
+  requiredBleedMm?: number;
+  /**
+   * Content closer than this distance in millimetres to the trim edge is reported
+   */
+  safetyMarginMm?: number;
+}
 export interface PrintPreflightRequest {
   /**
    * Render each page and check the bleed band between TrimBox and BleedBox is actually painted, so trimming cannot reveal white
@@ -1159,7 +1225,7 @@ export interface PrintPreflightRequest {
    */
   disabledChecks?: string[];
   /**
-   * Fixup codes to apply on the print-preflight-fix endpoint (e.g. EXTEND_BLEED, FLATTEN_FORM, REMOVE_JAVASCRIPT); empty or absent applies every supported fixup that has something to correct
+   * Fixup codes to apply on the print-preflight-fix endpoint (e.g. EXTEND_BLEED, FLATTEN_FORM, REMOVE_JAVASCRIPT); empty or absent applies every supported fixup that has something to correct, the sentinel NONE applies none
    */
   fixups?: string[];
   /**
@@ -1195,6 +1261,14 @@ export interface PrintPreflightRequest {
    * Images rendered below this effective resolution are reported as low resolution
    */
   minImageDpi?: number;
+  /**
+   * Named preflight profile to run with — the profile supplies every threshold, fixups and disabledChecks; request-level parameters for those are ignored. Built-ins ship with the app, customs live in configs/preflight-profiles.json
+   */
+  profileName?: string;
+  /**
+   * BCP-47 tag for the language of generated report text and finding messages (e.g. fr-FR); falls back to the session locale, then English
+   */
+  reportLanguage?: string;
   /**
    * Bleed width in millimetres required on every side beyond the TrimBox
    */
@@ -1902,6 +1976,7 @@ export type ToolEndpoint =
   | "/api/v1/security/print-preflight"
   | "/api/v1/security/print-preflight-annotated"
   | "/api/v1/security/print-preflight-fix"
+  | "/api/v1/security/print-preflight-profiles"
   | "/api/v1/security/print-preflight-report"
   | "/api/v1/security/redact"
   | "/api/v1/security/redact-execute"
@@ -2019,6 +2094,7 @@ export interface ToolApiParams {
   "/api/v1/security/print-preflight": PrintPreflightRequest;
   "/api/v1/security/print-preflight-annotated": PrintPreflightRequest;
   "/api/v1/security/print-preflight-fix": PrintPreflightRequest;
+  "/api/v1/security/print-preflight-profiles": PrintPreflightProfile;
   "/api/v1/security/print-preflight-report": PrintPreflightRequest;
   "/api/v1/security/redact": ManualRedactPdfRequest;
   "/api/v1/security/redact-execute": RedactExecuteRequest;
@@ -2137,6 +2213,7 @@ export const TOOL_ENDPOINTS = [
   "/api/v1/security/print-preflight",
   "/api/v1/security/print-preflight-annotated",
   "/api/v1/security/print-preflight-fix",
+  "/api/v1/security/print-preflight-profiles",
   "/api/v1/security/print-preflight-report",
   "/api/v1/security/redact",
   "/api/v1/security/redact-execute",

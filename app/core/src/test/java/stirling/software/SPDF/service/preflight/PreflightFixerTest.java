@@ -63,7 +63,8 @@ class PreflightFixerTest {
                         new PrintPreflightService(),
                         pdfDocumentFactory,
                         tempFileManager,
-                        new PreflightGhostscriptFixer(tempFileManager, endpointConfiguration));
+                        new PreflightGhostscriptFixer(tempFileManager, endpointConfiguration),
+                        new PreflightProfileService());
         lenient()
                 .when(tempFileManager.createTempFile(any()))
                 .thenAnswer(inv -> java.io.File.createTempFile("pf-fix", ".pdf"));

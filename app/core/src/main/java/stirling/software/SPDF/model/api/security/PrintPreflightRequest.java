@@ -111,7 +111,8 @@ public class PrintPreflightRequest extends PDFFile {
             description =
                     "Fixup codes to apply on the print-preflight-fix endpoint (e.g. EXTEND_BLEED,"
                             + " FLATTEN_FORM, REMOVE_JAVASCRIPT); empty or absent applies every"
-                            + " supported fixup that has something to correct")
+                            + " supported fixup that has something to correct, the sentinel NONE"
+                            + " applies none")
     private List<String> fixups;
 
     @Schema(
@@ -128,4 +129,13 @@ public class PrintPreflightRequest extends PDFFile {
                             + " (e.g. fr-FR); falls back to the session locale, then English",
             example = "fr-FR")
     private String reportLanguage;
+
+    @Schema(
+            description =
+                    "Named preflight profile to run with — the profile supplies every threshold,"
+                            + " fixups and disabledChecks; request-level parameters for those are"
+                            + " ignored. Built-ins ship with the app, customs live in"
+                            + " configs/preflight-profiles.json",
+            example = "offset-press")
+    private String profileName;
 }

@@ -35,6 +35,7 @@ import stirling.software.SPDF.model.api.security.PrintPreflightReport.FindingAre
 import stirling.software.SPDF.model.api.security.PrintPreflightReport.Severity;
 import stirling.software.SPDF.model.api.security.PrintPreflightRequest;
 import stirling.software.SPDF.service.preflight.PreflightGhostscriptFixer;
+import stirling.software.SPDF.service.preflight.PreflightProfileService;
 import stirling.software.SPDF.service.preflight.PrintPreflightService;
 import stirling.software.common.model.api.PDFFile;
 import stirling.software.common.service.CustomPDFDocumentFactory;
@@ -57,7 +58,8 @@ class PrintPreflightControllerTest {
                         new PrintPreflightService(),
                         pdfDocumentFactory,
                         tempFileManager,
-                        new PreflightGhostscriptFixer(tempFileManager, endpointConfiguration));
+                        new PreflightGhostscriptFixer(tempFileManager, endpointConfiguration),
+                        new PreflightProfileService());
         lenient()
                 .when(tempFileManager.createTempFile(any()))
                 .thenAnswer(inv -> java.io.File.createTempFile("pf-test", ".pdf"));

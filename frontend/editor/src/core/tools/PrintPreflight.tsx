@@ -42,6 +42,7 @@ const PrintPreflight = (props: BaseToolProps) => {
           <PrintPreflightSettings
             parameters={base.params.parameters}
             onParameterChange={base.params.updateParameter}
+            onApplyParameters={base.params.setParameters}
             disabled={base.endpointLoading}
           />
         ),

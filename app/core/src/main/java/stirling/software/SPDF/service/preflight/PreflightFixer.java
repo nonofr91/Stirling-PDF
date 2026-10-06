@@ -198,9 +198,13 @@ public final class PreflightFixer {
         return wanted;
     }
 
-    private static Set<Code> resolveWanted(List<String> requested) {
+    static Set<Code> resolveWanted(List<String> requested) {
         if (requested == null || requested.isEmpty()) {
             return Set.of(Code.values());
+        }
+        // "NONE" lets a profile or caller say "no fixups" where the empty list already means "all".
+        if (requested.stream().anyMatch(s -> "NONE".equalsIgnoreCase(s.trim()))) {
+            return Set.of();
         }
         Set<Code> wanted = new LinkedHashSet<>();
         for (String raw : requested) {
