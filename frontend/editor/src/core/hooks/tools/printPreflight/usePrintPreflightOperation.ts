@@ -12,6 +12,7 @@ import type { ToolEndpoint } from "@app/types/toolApiTypes";
 import type { StirlingFile } from "@app/types/fileContext";
 import { extractErrorMessage } from "@app/utils/toolErrorHandler";
 import {
+  PreflightFixAudit,
   PrintPreflightReport,
   PREFLIGHT_JSON_FILENAME,
 } from "@app/types/printPreflight";
@@ -36,9 +37,18 @@ export interface PrintPreflightOperationHook extends ToolOperationHook<PrintPref
   downloadReport: (fileId: string) => Promise<void>;
   /** Fetch the auto-fixed copy for one analyzed file. */
   downloadFixed: (fileId: string) => Promise<void>;
+  /**
+   * Dry-run the configured fixups for one analyzed file: applies them
+   * in-memory server-side and stores the before/after audit for display —
+   * nothing is downloaded and the source document is untouched.
+   */
+  previewFixes: (fileId: string) => Promise<void>;
+  /** Fixup audit per file, populated by previewFixes. */
+  fixAudits: Record<string, PreflightFixAudit>;
   annotatedLoading: string | null;
   reportLoading: string | null;
   fixedLoading: string | null;
+  previewLoading: string | null;
 }
 
 const PREFLIGHT_ENDPOINT =
@@ -49,6 +59,8 @@ const PREFLIGHT_REPORT_ENDPOINT =
   "/api/v1/security/print-preflight-report" satisfies ToolEndpoint;
 const PREFLIGHT_FIX_ENDPOINT =
   "/api/v1/security/print-preflight-fix" satisfies ToolEndpoint;
+const PREFLIGHT_FIX_PREVIEW_ENDPOINT =
+  "/api/v1/security/print-preflight-fix-preview" satisfies ToolEndpoint;
 
 const NUMERIC_FIELDS = [
   "requiredBleedMm",
@@ -101,7 +113,18 @@ const printPreflightProcessor = async (
 
   for (const file of files) {
     const base = file.name.replace(/\.pdf$/i, "");
-    if (params.reportFormat === "json") {
+    if (params.reportFormat === "fixAuditJson") {
+      const response = await apiClient.post(
+        PREFLIGHT_FIX_PREVIEW_ENDPOINT,
+        buildFormData(file, params),
+      );
+      const json = JSON.stringify(response.data ?? null, null, 2);
+      processedFiles.push(
+        new File([json], `${base}-preflight-fix-audit.json`, {
+          type: "application/json",
+        }),
+      );
+    } else if (params.reportFormat === "json") {
       const response = await apiClient.post(
         PREFLIGHT_ENDPOINT,
         buildFormData(file, params),
@@ -143,16 +166,19 @@ export const printPreflightOperationConfig = defineCustomTool({
   endpoint: (params: PrintPreflightParameters) =>
     params.reportFormat === "json"
       ? PREFLIGHT_ENDPOINT
-      : params.reportFormat === "reportPdf"
-        ? PREFLIGHT_REPORT_ENDPOINT
-        : params.reportFormat === "fixedPdf"
-          ? PREFLIGHT_FIX_ENDPOINT
-          : PREFLIGHT_ANNOTATED_ENDPOINT,
+      : params.reportFormat === "fixAuditJson"
+        ? PREFLIGHT_FIX_PREVIEW_ENDPOINT
+        : params.reportFormat === "reportPdf"
+          ? PREFLIGHT_REPORT_ENDPOINT
+          : params.reportFormat === "fixedPdf"
+            ? PREFLIGHT_FIX_ENDPOINT
+            : PREFLIGHT_ANNOTATED_ENDPOINT,
   endpoints: [
     PREFLIGHT_ENDPOINT,
     PREFLIGHT_ANNOTATED_ENDPOINT,
     PREFLIGHT_REPORT_ENDPOINT,
     PREFLIGHT_FIX_ENDPOINT,
+    PREFLIGHT_FIX_PREVIEW_ENDPOINT,
   ],
   customProcessor: printPreflightProcessor,
   defaultParameters,
@@ -178,6 +204,10 @@ export const usePrintPreflightOperation = (): PrintPreflightOperationHook => {
   const [annotatedLoading, setAnnotatedLoading] = useState<string | null>(null);
   const [reportLoading, setReportLoading] = useState<string | null>(null);
   const [fixedLoading, setFixedLoading] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState<string | null>(null);
+  const [fixAudits, setFixAudits] = useState<Record<string, PreflightFixAudit>>(
+    {},
+  );
 
   const cleanupDownloadUrl = useCallback(() => {
     if (previousUrl.current) {
@@ -190,6 +220,7 @@ export const usePrintPreflightOperation = (): PrintPreflightOperationHook => {
     cancelRequested.current = false;
     setResults([]);
     setFiles([]);
+    setFixAudits({});
     lastRun.current.clear();
     cleanupDownloadUrl();
     setDownloadUrl(null);
@@ -215,6 +246,7 @@ export const usePrintPreflightOperation = (): PrintPreflightOperationHook => {
       setErrorMessage(null);
       setResults([]);
       setFiles([]);
+      setFixAudits({});
       cleanupDownloadUrl();
       setDownloadUrl(null);
       setDownloadFilename("");
@@ -299,7 +331,13 @@ export const usePrintPreflightOperation = (): PrintPreflightOperationHook => {
       setBusy: (id: string | null) => void,
     ) => {
       const run = lastRun.current.get(fileId);
-      if (!run || annotatedLoading || reportLoading || fixedLoading) {
+      if (
+        !run ||
+        annotatedLoading ||
+        reportLoading ||
+        fixedLoading ||
+        previewLoading
+      ) {
         return;
       }
       setBusy(fileId);
@@ -326,7 +364,7 @@ export const usePrintPreflightOperation = (): PrintPreflightOperationHook => {
         setBusy(null);
       }
     },
-    [annotatedLoading, reportLoading, fixedLoading],
+    [annotatedLoading, reportLoading, fixedLoading, previewLoading],
   );
 
   const downloadAnnotated = useCallback(
@@ -360,6 +398,37 @@ export const usePrintPreflightOperation = (): PrintPreflightOperationHook => {
         setFixedLoading,
       ),
     [downloadPdf],
+  );
+
+  const previewFixes = useCallback(
+    async (fileId: string) => {
+      const run = lastRun.current.get(fileId);
+      if (
+        !run ||
+        annotatedLoading ||
+        reportLoading ||
+        fixedLoading ||
+        previewLoading
+      ) {
+        return;
+      }
+      setPreviewLoading(fileId);
+      try {
+        const response = await apiClient.post(
+          PREFLIGHT_FIX_PREVIEW_ENDPOINT,
+          buildFormData(run.file, run.params),
+        );
+        setFixAudits((current) => ({
+          ...current,
+          [fileId]: (response.data ?? null) as PreflightFixAudit,
+        }));
+      } catch (error) {
+        setErrorMessage(extractErrorMessage(error));
+      } finally {
+        setPreviewLoading(null);
+      }
+    },
+    [annotatedLoading, reportLoading, fixedLoading, previewLoading],
   );
 
   const cancelOperation = useCallback(() => {
@@ -400,14 +469,20 @@ export const usePrintPreflightOperation = (): PrintPreflightOperationHook => {
       downloadAnnotated,
       downloadReport,
       downloadFixed,
+      previewFixes,
+      fixAudits,
       annotatedLoading,
       reportLoading,
       fixedLoading,
+      previewLoading,
     }),
     [
       annotatedLoading,
       downloadFixed,
+      fixAudits,
       fixedLoading,
+      previewFixes,
+      previewLoading,
       reportLoading,
       cancelOperation,
       clearError,

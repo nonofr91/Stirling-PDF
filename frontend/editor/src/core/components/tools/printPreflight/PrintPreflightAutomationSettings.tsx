@@ -38,7 +38,8 @@ const PrintPreflightAutomationSettings = ({
             value !== "annotatedPdf" &&
             value !== "reportPdf" &&
             value !== "fixedPdf" &&
-            value !== "json"
+            value !== "json" &&
+            value !== "fixAuditJson"
           ) {
             return;
           }
@@ -69,6 +70,13 @@ const PrintPreflightAutomationSettings = ({
           {
             value: "json",
             label: t("printPreflight.reportFormat.json", "JSON report"),
+          },
+          {
+            value: "fixAuditJson",
+            label: t(
+              "printPreflight.reportFormat.fixAuditJson",
+              "Fixup audit JSON (dry run)",
+            ),
           },
         ]}
         allowDeselect={false}

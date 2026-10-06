@@ -1575,6 +1575,79 @@ class PrintPreflightFixParams(ApiModel):
     )
 
 
+class PrintPreflightFixPreviewParams(ApiModel):
+    """
+    Dry run of print-preflight-fix: applies the same requested fixups to an in-memory copy, re-analyses the result and reports which fixups applied plus the before/after finding sets — the corrected document is discarded. Use it to audit what the corrections change before committing to them. Input:PDF Output:JSON Type:SISO
+    """
+
+    check_bleed_coverage: bool = Field(
+        True,
+        description="Render each page and check the bleed band between TrimBox and BleedBox is actually painted, so trimming cannot reveal white",
+    )
+    disabled_checks: list[str] | None = Field(
+        None, description="Finding codes to skip (e.g. SAFETY_MARGIN, INK_COVERAGE_HIGH); empty runs every check"
+    )
+    fixups: list[str] | None = Field(
+        None,
+        description="Fixup codes to apply on the print-preflight-fix endpoint (e.g. EXTEND_BLEED, FLATTEN_FORM, REMOVE_JAVASCRIPT); empty or absent applies every supported fixup that has something to correct, the sentinel NONE applies none",
+    )
+    hairline_threshold_pt: float = Field(
+        0.25,
+        description="Strokes thinner than this width in points are reported as hairlines at risk of disappearing in print",
+        ge=0.0,
+    )
+    include_summary_page: bool = Field(
+        True,
+        description="Prepend summary pages (verdict, document facts, fonts, colours, findings) to the annotated PDF",
+    )
+    max_image_dpi: int = Field(
+        600,
+        description="Images rendered above this effective resolution are reported as oversampled — heavier than print can use",
+        ge=1,
+    )
+    max_ink_coverage_percent: int = Field(
+        320,
+        description="Painted colours whose total ink coverage exceeds this percentage are reported — drying and registration problems above ~320% in offset",
+        ge=0,
+    )
+    max_spot_count: int = Field(
+        0,
+        description="More spot separations than this are reported — each plate costs makeready; 0 disables the limit",
+        ge=0,
+    )
+    min_font_size_pt: float = Field(
+        5,
+        description="Text rendered smaller than this size in points is reported as too small to print reliably",
+        ge=0.0,
+    )
+    min_image1_bit_dpi: int = Field(
+        1200,
+        description="1-bit (bitmap) images rendered below this effective resolution are reported — line art needs far more resolution than continuous tone",
+        ge=1,
+    )
+    min_image_dpi: int = Field(
+        150, description="Images rendered below this effective resolution are reported as low resolution", ge=1
+    )
+    profile_name: str | None = Field(
+        None,
+        description="Named preflight profile to run with — the profile supplies every threshold, fixups and disabledChecks; request-level parameters for those are ignored. Built-ins ship with the app, customs live in configs/preflight-profiles.json",
+        examples=["offset-press"],
+    )
+    report_language: str | None = Field(
+        None,
+        description="BCP-47 tag for the language of generated report text and finding messages (e.g. fr-FR); falls back to the session locale, then English",
+        examples=["fr-FR"],
+    )
+    required_bleed_mm: float = Field(
+        3, description="Bleed width in millimetres required on every side beyond the TrimBox", ge=0.0
+    )
+    safety_margin_mm: float = Field(
+        3,
+        description="Content inside the trim but closer than this distance in millimetres to the trim edge is reported as at risk of being cut off",
+        ge=0.0,
+    )
+
+
 class PrintPreflightParams(ApiModel):
     """
     Analyzes a PDF for print production and reports issues: fonts not embedded, RGB or spot colors, low-resolution images, missing or unpainted bleed, hairline strokes, transparency, annotations inside the trim and mixed page sizes. Input:PDF Output:JSON Type:SISO
@@ -2548,6 +2621,7 @@ class Model(
         | PrintPreflightParams
         | PrintPreflightAnnotatedParams
         | PrintPreflightFixParams
+        | PrintPreflightFixPreviewParams
         | PrintPreflightProfilesParams
         | PrintPreflightReportParams
         | RedactParams
@@ -2638,6 +2712,7 @@ class Model(
         | PrintPreflightParams
         | PrintPreflightAnnotatedParams
         | PrintPreflightFixParams
+        | PrintPreflightFixPreviewParams
         | PrintPreflightProfilesParams
         | PrintPreflightReportParams
         | RedactParams
@@ -2729,6 +2804,7 @@ type ParamToolModel = (
     | PrintPreflightParams
     | PrintPreflightAnnotatedParams
     | PrintPreflightFixParams
+    | PrintPreflightFixPreviewParams
     | PrintPreflightProfilesParams
     | PrintPreflightReportParams
     | RedactParams
@@ -2821,6 +2897,7 @@ class ToolEndpoint(StrEnum):
     PRINT_PREFLIGHT = "/api/v1/security/print-preflight"
     PRINT_PREFLIGHT_ANNOTATED = "/api/v1/security/print-preflight-annotated"
     PRINT_PREFLIGHT_FIX = "/api/v1/security/print-preflight-fix"
+    PRINT_PREFLIGHT_FIX_PREVIEW = "/api/v1/security/print-preflight-fix-preview"
     PRINT_PREFLIGHT_PROFILES = "/api/v1/security/print-preflight-profiles"
     PRINT_PREFLIGHT_REPORT = "/api/v1/security/print-preflight-report"
     REDACT = "/api/v1/security/redact"
@@ -2911,6 +2988,7 @@ OPERATIONS: dict[ToolEndpoint, ParamToolModelType] = {
     ToolEndpoint.PRINT_PREFLIGHT: PrintPreflightParams,
     ToolEndpoint.PRINT_PREFLIGHT_ANNOTATED: PrintPreflightAnnotatedParams,
     ToolEndpoint.PRINT_PREFLIGHT_FIX: PrintPreflightFixParams,
+    ToolEndpoint.PRINT_PREFLIGHT_FIX_PREVIEW: PrintPreflightFixPreviewParams,
     ToolEndpoint.PRINT_PREFLIGHT_PROFILES: PrintPreflightProfilesParams,
     ToolEndpoint.PRINT_PREFLIGHT_REPORT: PrintPreflightReportParams,
     ToolEndpoint.REDACT: RedactParams,

@@ -80,6 +80,10 @@ class PreflightFixerTest {
                         inv ->
                                 Loader.loadPDF(
                                         ((PDFFile) inv.getArgument(0)).getFileInput().getBytes()));
+        lenient()
+                .when(pdfDocumentFactory.load(any(java.nio.file.Path.class)))
+                .thenAnswer(
+                        inv -> Loader.loadPDF(((java.nio.file.Path) inv.getArgument(0)).toFile()));
     }
 
     private static byte[] toBytes(PDDocument doc) throws IOException {
@@ -856,5 +860,97 @@ class PreflightFixerTest {
             cs.fill();
         }
         return toBytes(doc);
+    }
+
+    @Test
+    void testFixPreviewReportsAppliedAndResolved() throws Exception {
+        PrintPreflightRequest req = request(namesDictPdf(true, true));
+        req.setFixups(List.of("REMOVE_JAVASCRIPT", "REMOVE_ATTACHMENTS"));
+
+        stirling.software.SPDF.model.api.security.PrintPreflightFixAudit audit =
+                controller.printPreflightFixPreview(req).getBody();
+        assertNotNull(audit);
+        assertEquals(List.of("REMOVE_JAVASCRIPT", "REMOVE_ATTACHMENTS"), audit.getAppliedFixups());
+        assertTrue(
+                codes(audit.getResolvedFindings())
+                        .containsAll(List.of("JAVASCRIPT", "EMBEDDED_FILES")),
+                "fixups that ran resolve their findings");
+        assertTrue(
+                audit.getCountsAfter().getWarnings() < audit.getCountsBefore().getWarnings(),
+                "the after report carries fewer warnings");
+        assertFalse(
+                codes(audit.getRemainingFindings()).contains("JAVASCRIPT"),
+                "resolved findings do not linger in the remaining set");
+    }
+
+    @Test
+    void testFixPreviewWithNothingApplicable() throws Exception {
+        PrintPreflightRequest req = request(basePdf());
+        req.setFixups(List.of("REMOVE_JAVASCRIPT"));
+
+        stirling.software.SPDF.model.api.security.PrintPreflightFixAudit audit =
+                controller.printPreflightFixPreview(req).getBody();
+        assertNotNull(audit);
+        assertTrue(audit.getAppliedFixups().isEmpty(), "no fixup had work to do");
+        assertTrue(audit.getResolvedFindings().isEmpty());
+        assertTrue(audit.getIntroducedFindings().isEmpty());
+        assertEquals(audit.getCountsBefore().getErrors(), audit.getCountsAfter().getErrors());
+    }
+
+    @Test
+    void testFixPreviewRunsGhostscriptFixups() throws Exception {
+        org.junit.jupiter.api.Assumptions.assumeTrue(ghostscriptOnPath(), "gs binary not on PATH");
+        org.mockito.Mockito.when(endpointConfiguration.isGroupEnabled("Ghostscript"))
+                .thenReturn(true);
+        PrintPreflightRequest req = request(basePdf());
+        req.setFixups(List.of("RGB_TO_CMYK"));
+
+        stirling.software.SPDF.model.api.security.PrintPreflightFixAudit audit =
+                controller.printPreflightFixPreview(req).getBody();
+        assertNotNull(audit);
+        assertTrue(
+                audit.getAppliedFixups().contains("RGB_TO_CMYK"),
+                "Ghostscript codes join the applied list");
+        assertTrue(
+                codes(audit.getResolvedFindings()).contains("COLOR_RGB_USED"),
+                "the re-analysed Ghostscript output no longer reports RGB");
+    }
+
+    @Test
+    void testFixAuditDiffsByFindingCode() {
+        stirling.software.SPDF.model.api.security.PrintPreflightReport before =
+                new stirling.software.SPDF.model.api.security.PrintPreflightReport();
+        before.addFinding(finding("X"));
+        before.addFinding(finding("Y"));
+        stirling.software.SPDF.model.api.security.PrintPreflightReport after =
+                new stirling.software.SPDF.model.api.security.PrintPreflightReport();
+        after.addFinding(finding("Y"));
+        after.addFinding(finding("Z"));
+
+        stirling.software.SPDF.model.api.security.PrintPreflightFixAudit audit =
+                stirling.software.SPDF.model.api.security.PrintPreflightFixAudit.of(
+                        before, after, List.of("SOME_FIXUP"));
+        assertEquals(List.of("X"), codes(audit.getResolvedFindings()));
+        assertEquals(List.of("Y"), codes(audit.getRemainingFindings()));
+        assertEquals(List.of("Z"), codes(audit.getIntroducedFindings()));
+    }
+
+    private static stirling.software.SPDF.model.api.security.PrintPreflightReport.Finding finding(
+            String code) {
+        return new stirling.software.SPDF.model.api.security.PrintPreflightReport.Finding(
+                stirling.software.SPDF.model.api.security.PrintPreflightReport.Severity.WARNING,
+                stirling.software.SPDF.model.api.security.PrintPreflightReport.Category.DOCUMENT,
+                code,
+                code,
+                List.of());
+    }
+
+    private static List<String> codes(
+            List<stirling.software.SPDF.model.api.security.PrintPreflightReport.Finding> findings) {
+        return findings.stream()
+                .map(
+                        stirling.software.SPDF.model.api.security.PrintPreflightReport.Finding
+                                ::getCode)
+                .toList();
     }
 }

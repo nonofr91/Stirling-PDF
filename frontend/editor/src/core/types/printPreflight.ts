@@ -105,6 +105,23 @@ export interface PrintPreflightReport {
   facts: PreflightFacts;
 }
 
+/**
+ * Dry-run outcome of the automatic fixups — returned by
+ * /api/v1/security/print-preflight-fix-preview, which applies the requested
+ * corrections in memory and re-analyses the result instead of returning the
+ * fixed PDF. Findings are compared by code: a code absent afterwards means the
+ * finding resolved; a new code means a correction surfaced it.
+ */
+export interface PreflightFixAudit {
+  fileName: string | null;
+  appliedFixups: string[];
+  countsBefore: PreflightCounts;
+  countsAfter: PreflightCounts;
+  resolvedFindings: PreflightFinding[];
+  remainingFindings: PreflightFinding[];
+  introducedFindings: PreflightFinding[];
+}
+
 export const PREFLIGHT_JSON_FILENAME = "print-preflight-report.json";
 
 /**

@@ -14193,11 +14193,21 @@ locatedHint = "Les problèmes localisés sont encadrés sur le document — le b
 noResults = "Lancez l'outil pour générer un rapport preflight."
 pages = "Pages"
 processing = "Contrôles preflight en cours..."
+previewFixes = "Aperçu des corrections"
 results = "Résultats"
 submit = "Lancer le preflight"
 
 [printPreflight.advanced]
 toggle = "Seuils avancés"
+
+[printPreflight.audit]
+applied = "{{count}} correction(s) s'appliqueraient :"
+counts = "Signalements : {{errorsBefore}} → {{errorsAfter}} erreurs · {{warningsBefore}} → {{warningsAfter}} avertissements · {{infosBefore}} → {{infosAfter}} infos"
+introduced = "Révélés par les corrections"
+noneApplied = "Aucune correction n'a de travail à faire sur ce document."
+remaining = "Toujours signalés"
+resolved = "Résolus"
+title = "Aperçu des corrections"
 
 [printPreflight.category]
 COLOR = "Couleur"
@@ -14353,6 +14363,7 @@ offset-press = "Impression offset commerciale — seuils stricts, conversion com
 
 [printPreflight.reportFormat]
 annotatedPdf = "PDF annoté"
+fixAuditJson = "Audit des corrections JSON (essai)"
 fixedPdf = "PDF corrigé (fixups sélectionnés)"
 help = "Les sorties PDF gardent un PDF dans la chaîne ; le rapport JSON la termine avec les constats."
 json = "Rapport JSON"

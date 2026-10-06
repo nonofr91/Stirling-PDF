@@ -11045,11 +11045,21 @@ locatedHint = "Located issues are framed on the document — use the target butt
 noResults = "Run the tool to generate a preflight report."
 pages = "Pages"
 processing = "Running preflight checks..."
+previewFixes = "Preview fixes"
 results = "Results"
 submit = "Run preflight"
 
 [printPreflight.advanced]
 toggle = "Advanced thresholds"
+
+[printPreflight.audit]
+applied = "{{count}} fixup(s) would apply:"
+counts = "Findings: {{errorsBefore}} → {{errorsAfter}} errors · {{warningsBefore}} → {{warningsAfter}} warnings · {{infosBefore}} → {{infosAfter}} info"
+introduced = "Surfaced by the corrections"
+noneApplied = "No fixup has anything to correct on this document."
+remaining = "Still reported"
+resolved = "Resolved"
+title = "Fixup preview"
 
 [printPreflight.category]
 COLOR = "Color"
@@ -11205,6 +11215,7 @@ offset-press = "Commercial offset printing — strict thresholds, converts every
 
 [printPreflight.reportFormat]
 annotatedPdf = "Annotated PDF"
+fixAuditJson = "Fixup audit JSON (dry run)"
 fixedPdf = "Fixed PDF (apply selected fixups)"
 help = "PDF outputs keep the pipeline flowing; JSON report ends the chain with the findings."
 json = "JSON report"
