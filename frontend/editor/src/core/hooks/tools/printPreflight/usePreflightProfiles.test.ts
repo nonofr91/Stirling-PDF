@@ -17,6 +17,7 @@ const fullProfile: PrintPreflightProfile = {
   minFontSizePt: 7,
   safetyMarginMm: 4,
   maxInkCoveragePercent: 280,
+  renderedInkCoverage: true,
   minImage1BitDpi: 900,
   maxImageDpi: 400,
   maxSpotCount: 2,
@@ -31,6 +32,7 @@ describe("profileToParameters", () => {
     expect(params.requiredBleedMm).toBe(5);
     expect(params.minImageDpi).toBe(300);
     expect(params.checkBleedCoverage).toBe(false);
+    expect(params.renderedInkCoverage).toBe(true);
     expect(params.includeSummaryPage).toBe(false);
     expect(params.disabledChecks).toEqual(["SAFETY_MARGIN"]);
     expect(params.fixups).toEqual(["EXTEND_BLEED"]);
@@ -44,6 +46,7 @@ describe("profileToParameters", () => {
     };
     const params = profileToParameters(sparse);
     expect(params.maxInkCoveragePercent).toBe(250);
+    expect(params.renderedInkCoverage).toBe(false);
     expect(params.minImageDpi).toBeUndefined();
     expect(params.checkBleedCoverage).toBe(true);
     expect(params.includeSummaryPage).toBe(true);

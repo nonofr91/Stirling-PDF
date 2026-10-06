@@ -406,6 +406,33 @@ const PrintPreflightSettings = ({
               disabled={disabled}
             />
 
+            <Checkbox
+              checked={parameters.renderedInkCoverage ?? false}
+              onChange={(event) =>
+                onParameterChange(
+                  "renderedInkCoverage",
+                  event.currentTarget.checked,
+                )
+              }
+              disabled={disabled}
+              label={
+                <div>
+                  <Text size="sm">
+                    {t(
+                      "printPreflight.renderedInkCoverage.label",
+                      "Measure ink on the rendered page",
+                    )}
+                  </Text>
+                  <Text size="xs" c="dimmed">
+                    {t(
+                      "printPreflight.renderedInkCoverage.desc",
+                      "Rasterize with Ghostscript and measure true total ink coverage — sees stacking, images and knockouts. Slower than the painted-fill estimate.",
+                    )}
+                  </Text>
+                </div>
+              }
+            />
+
             <NumberInput
               label={t(
                 "printPreflight.minImage1BitDpi.label",

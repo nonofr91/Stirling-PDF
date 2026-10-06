@@ -1381,4 +1381,97 @@ class PreflightFixerTest {
         }
         return fn;
     }
+
+    /** A full-page 400% CMYK fill — painted-op TAC and rendered TAC agree it exceeds 320%. */
+    private static byte[] richBlackPdf() throws IOException {
+        PDDocument doc = new PDDocument();
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
+        try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+            cs.setNonStrokingColor(1f, 1f, 1f, 1f);
+            cs.addRect(0, 0, page.getMediaBox().getWidth(), page.getMediaBox().getHeight());
+            cs.fill();
+        }
+        return toBytes(doc);
+    }
+
+    /**
+     * Same 400% fill, then a white DeviceCMYK knockout over the whole page — painted ops still see
+     * the ink, but nothing of it renders. The rendered pass must clear the finding.
+     */
+    private static byte[] coveredRichBlackPdf() throws IOException {
+        PDDocument doc = new PDDocument();
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
+        try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+            cs.setNonStrokingColor(1f, 1f, 1f, 1f);
+            cs.addRect(0, 0, page.getMediaBox().getWidth(), page.getMediaBox().getHeight());
+            cs.fill();
+            cs.setNonStrokingColor(0f, 0f, 0f, 0f);
+            cs.addRect(0, 0, page.getMediaBox().getWidth(), page.getMediaBox().getHeight());
+            cs.fill();
+        }
+        return toBytes(doc);
+    }
+
+    private PrintPreflightController renderedController() {
+        PrintPreflightService service = new PrintPreflightService();
+        service.setRenderedInkCoverage(
+                new RenderedInkCoverage(tempFileManager, endpointConfiguration));
+        return new PrintPreflightController(
+                service,
+                pdfDocumentFactory,
+                tempFileManager,
+                new PreflightGhostscriptFixer(tempFileManager, endpointConfiguration),
+                new PreflightProfileService());
+    }
+
+    private List<String> renderedFindingCodes(byte[] pdf) throws IOException {
+        PrintPreflightRequest req = request(pdf);
+        req.setRenderedInkCoverage(true);
+        stirling.software.SPDF.model.api.security.PrintPreflightReport report =
+                renderedController().printPreflight(req).getBody();
+        assertNotNull(report);
+        return report.getFindings().stream()
+                .map(
+                        stirling.software.SPDF.model.api.security.PrintPreflightReport.Finding
+                                ::getCode)
+                .toList();
+    }
+
+    @Test
+    void testRenderedInkCoverageFlagsComposite() throws Exception {
+        org.junit.jupiter.api.Assumptions.assumeTrue(ghostscriptOnPath(), "gs binary not on PATH");
+        org.mockito.Mockito.when(endpointConfiguration.isGroupEnabled("Ghostscript"))
+                .thenReturn(true);
+        List<String> codes = renderedFindingCodes(richBlackPdf());
+        assertTrue(
+                codes.contains("INK_COVERAGE_HIGH_RENDERED"),
+                "the rendered pass measures the 400% fill");
+        assertFalse(
+                codes.contains("INK_COVERAGE_HIGH"),
+                "the rendered pass replaces the painted-area estimate, not duplicates it");
+    }
+
+    @Test
+    void testRenderedInkCoverageIgnoresCoveredPaint() throws Exception {
+        org.junit.jupiter.api.Assumptions.assumeTrue(ghostscriptOnPath(), "gs binary not on PATH");
+        org.mockito.Mockito.when(endpointConfiguration.isGroupEnabled("Ghostscript"))
+                .thenReturn(true);
+        byte[] pdf = coveredRichBlackPdf();
+        assertTrue(
+                findingCodes(pdf).contains("INK_COVERAGE_HIGH"),
+                "painted ops still record the hidden 400% fill");
+        List<String> rendered = renderedFindingCodes(pdf);
+        assertFalse(
+                rendered.contains("INK_COVERAGE_HIGH")
+                        || rendered.contains("INK_COVERAGE_HIGH_RENDERED"),
+                "nothing of it renders — the rendered pass clears the finding");
+    }
+
+    @Test
+    void testRenderedInkCoverageOffByDefault() throws Exception {
+        List<String> codes = findingCodes(richBlackPdf());
+        assertFalse(codes.contains("INK_COVERAGE_HIGH_RENDERED"), "the rendered pass is opt-in");
+    }
 }

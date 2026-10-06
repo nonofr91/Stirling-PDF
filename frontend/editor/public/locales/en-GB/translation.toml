@@ -11141,6 +11141,10 @@ label = "Summary page in annotated PDF"
 help = "Images rendered above this effective resolution are flagged as oversampled — dead weight the press cannot use."
 label = "Maximum image resolution (dpi)"
 
+[printPreflight.renderedInkCoverage]
+desc = "Rasterize with Ghostscript and measure true total ink coverage — sees stacking, images and knockouts. Slower than the painted-fill estimate."
+label = "Measure ink on the rendered page"
+
 [printPreflight.maxInkCoveragePercent]
 help = "Painted colours above this total area coverage are reported — ink drying and registration issues. ~320% is a common offset limit."
 label = "Max ink coverage (%)"

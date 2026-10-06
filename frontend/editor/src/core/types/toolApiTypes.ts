@@ -1192,6 +1192,10 @@ minImageDpi?: number
  */
 name?: string
 /**
+ * Measure ink coverage from a rendered CMYK raster instead of painted fills
+ */
+renderedInkCoverage?: boolean
+/**
  * Bleed width in millimetres required on every side beyond the TrimBox
  */
 requiredBleedMm?: number
@@ -1250,6 +1254,10 @@ minImageDpi?: number
  * Named preflight profile to run with — the profile supplies every threshold, fixups and disabledChecks; request-level parameters for those are ignored. Built-ins ship with the app, customs live in configs/preflight-profiles.json
  */
 profileName?: string
+/**
+ * Measure total ink coverage from a Ghostscript-rendered CMYK raster instead of painted fills — sees real stacking and knockouts but adds render time (requires the Ghostscript endpoint group)
+ */
+renderedInkCoverage?: boolean
 /**
  * BCP-47 tag for the language of generated report text and finding messages (e.g. fr-FR); falls back to the session locale, then English
  */

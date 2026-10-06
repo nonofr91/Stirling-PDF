@@ -67,9 +67,12 @@ mutated PDF. Exposed as "Preview fixes" in the results pane and as the
 - PDF/X or GWG certification is out of scope: the checks inform, they do not
   certify. Output-intent attachment gets closer but full conformance is a
   separate feature.
-- Effective (rendered) TAC is approximated today from painted fills, not from a
-  rasterized ink preview like pdfToolbox. A rendered ink pass is the natural
-  next step if `maxInkCoveragePercent` proves too coarse.
+- Rendered TAC is available via `renderedInkCoverage` (opt-in): Ghostscript
+  rasterises each page with `pamcmyk32` and the pass sums real CMYK pixels —
+  authoritative over the painted-fill estimate, which it replaces when the
+  render succeeds (finding `INK_COVERAGE_HIGH_RENDERED`). It adds one render
+  pass per document, so it stays off by default; fixup-side TAC reduction from
+  the raster remains open.
 - Fixups that change geometry (bleed extension, UserUnit rescale) must keep the
   annotated/report page indexes aligned — run analysis before mutation, or
   re-map areas after.
