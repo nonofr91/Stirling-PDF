@@ -29,10 +29,17 @@ export interface PrintPreflightParameters extends BaseParameters {
   /**
    * Automation output: "annotatedPdf" returns a PDF copy with located issues
    * framed, "reportPdf" returns the standalone report document, "fixedPdf"
-   * returns the corrected PDF and "json" returns the machine-readable report.
+   * returns the corrected PDF, "json" returns the machine-readable report and
+   * "fixAuditJson" returns the fixup dry-run audit (applied corrections plus
+   * before/after findings) without producing a PDF.
    * Interactive mode ignores it — the tool page exposes all outputs itself.
    */
-  reportFormat: "annotatedPdf" | "reportPdf" | "fixedPdf" | "json";
+  reportFormat:
+    | "annotatedPdf"
+    | "reportPdf"
+    | "fixedPdf"
+    | "json"
+    | "fixAuditJson";
 }
 
 /** Every fixup the print-preflight-fix endpoint understands. */
@@ -129,7 +136,8 @@ export function validatePrintPreflightParameters(
     params.reportFormat !== "annotatedPdf" &&
     params.reportFormat !== "reportPdf" &&
     params.reportFormat !== "fixedPdf" &&
-    params.reportFormat !== "json"
+    params.reportFormat !== "json" &&
+    params.reportFormat !== "fixAuditJson"
   ) {
     return false;
   }

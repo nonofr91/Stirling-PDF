@@ -1925,6 +1925,7 @@ export type ToolEndpoint =
   | "/api/v1/security/print-preflight"
   | "/api/v1/security/print-preflight-annotated"
   | "/api/v1/security/print-preflight-fix"
+  | "/api/v1/security/print-preflight-fix-preview"
   | "/api/v1/security/print-preflight-profiles"
   | "/api/v1/security/print-preflight-report"
   | "/api/v1/security/redact"
@@ -2045,6 +2046,7 @@ export interface ToolApiParams {
   "/api/v1/security/print-preflight": PrintPreflightRequest;
   "/api/v1/security/print-preflight-annotated": PrintPreflightRequest;
   "/api/v1/security/print-preflight-fix": PrintPreflightRequest;
+  "/api/v1/security/print-preflight-fix-preview": PrintPreflightRequest;
   "/api/v1/security/print-preflight-profiles": PrintPreflightProfile;
   "/api/v1/security/print-preflight-report": PrintPreflightRequest;
   "/api/v1/security/redact": ManualRedactPdfRequest;
@@ -2166,6 +2168,7 @@ export const TOOL_ENDPOINTS = [
   "/api/v1/security/print-preflight",
   "/api/v1/security/print-preflight-annotated",
   "/api/v1/security/print-preflight-fix",
+  "/api/v1/security/print-preflight-fix-preview",
   "/api/v1/security/print-preflight-profiles",
   "/api/v1/security/print-preflight-report",
   "/api/v1/security/redact",
@@ -2193,6 +2196,7 @@ export const TOOL_FILE_FIELDS = {
   "/api/v1/security/print-preflight": ["iccProfile"],
   "/api/v1/security/print-preflight-annotated": ["iccProfile"],
   "/api/v1/security/print-preflight-fix": ["iccProfile"],
+  "/api/v1/security/print-preflight-fix-preview": ["iccProfile"],
   "/api/v1/security/print-preflight-report": ["iccProfile"],
   "/api/v1/security/validate-signature": ["certFile"],
 } as const satisfies Partial<

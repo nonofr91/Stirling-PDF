@@ -23,6 +23,13 @@ skipped. The frontend exposes the fixups picker under "Automatic fixes"
 (interactive) and the `fixedPdf` report format (automation, keeps a PDF in the
 pipeline).
 
+`POST /api/v1/security/print-preflight-fix-preview` is the audit trail: it runs
+the same corrections on an in-memory copy, re-analyses the result and returns
+a JSON diff — applied fixup codes, error/warning/info counts before and after,
+and the resolved / remaining / introduced finding sets — without producing the
+mutated PDF. Exposed as "Preview fixes" in the results pane and as the
+`fixAuditJson` report format in automation.
+
 ## Roadmap by finding
 
 | Finding | Fixup code | Status / notes |

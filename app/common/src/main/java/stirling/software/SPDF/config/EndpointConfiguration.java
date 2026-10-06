@@ -429,6 +429,7 @@ public class EndpointConfiguration {
         addEndpointToGroup("Other", "print-preflight-annotated");
         addEndpointToGroup("Other", "print-preflight-report");
         addEndpointToGroup("Other", "print-preflight-fix");
+        addEndpointToGroup("Other", "print-preflight-fix-preview");
         addEndpointToGroup("Other", "print-preflight-profiles");
         addEndpointToGroup("Other", "add-attachments");
         addEndpointToGroup("Other", "batch-process-attachments");
@@ -546,6 +547,7 @@ public class EndpointConfiguration {
         addEndpointToGroup("Java", "print-preflight-annotated");
         addEndpointToGroup("Java", "print-preflight-report");
         addEndpointToGroup("Java", "print-preflight-fix");
+        addEndpointToGroup("Java", "print-preflight-fix-preview");
         addEndpointToGroup("Java", "print-preflight-profiles");
         addEndpointToGroup("Java", "pdf-to-single-page");
         addEndpointToGroup("Java", "markdown-to-pdf");

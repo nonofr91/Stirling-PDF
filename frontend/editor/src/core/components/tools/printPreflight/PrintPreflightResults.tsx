@@ -15,6 +15,7 @@ import { useTranslation } from "react-i18next";
 import type { PrintPreflightOperationHook } from "@app/hooks/tools/printPreflight/usePrintPreflightOperation";
 import type {
   PreflightFinding,
+  PreflightFixAudit,
   PreflightSeverity,
 } from "@app/types/printPreflight";
 import { downloadFile } from "@app/services/downloadService";
@@ -129,6 +130,131 @@ const FindingRow = ({
         {t(`printPreflight.category.${finding.category}`, finding.category)}
       </Text>
     </Group>
+  );
+};
+
+/**
+ * Result of the fixup dry-run: what applied, what resolved, what remains and
+ * what the corrections surfaced — the document itself was never produced.
+ */
+const AuditPanel = ({ audit }: { audit: PreflightFixAudit }) => {
+  const { t } = useTranslation();
+  return (
+    <Alert
+      color="blue"
+      variant="light"
+      title={t("printPreflight.audit.title", "Fixup preview")}
+      icon={<Icon name="eye" size={20} />}
+    >
+      <Stack gap="xs">
+        <Text size="sm">
+          {audit.appliedFixups.length === 0
+            ? t(
+                "printPreflight.audit.noneApplied",
+                "No fixup has anything to correct on this document.",
+              )
+            : t(
+                "printPreflight.audit.applied",
+                "{{count}} fixup(s) would apply:",
+                { count: audit.appliedFixups.length },
+              )}
+        </Text>
+        {audit.appliedFixups.length > 0 && (
+          <Group gap="xs">
+            {audit.appliedFixups.map((code) => (
+              <Badge key={code} variant="outline" size="sm" color="blue">
+                {t(`printPreflight.fixups.codes.${code}`, code)}
+              </Badge>
+            ))}
+          </Group>
+        )}
+        <Text size="sm">
+          {t(
+            "printPreflight.audit.counts",
+            "Findings: {{errorsBefore}} → {{errorsAfter}} errors · {{warningsBefore}} → {{warningsAfter}} warnings · {{infosBefore}} → {{infosAfter}} info",
+            {
+              errorsBefore: audit.countsBefore.errors,
+              errorsAfter: audit.countsAfter.errors,
+              warningsBefore: audit.countsBefore.warnings,
+              warningsAfter: audit.countsAfter.warnings,
+              infosBefore: audit.countsBefore.infos,
+              infosAfter: audit.countsAfter.infos,
+            },
+          )}
+        </Text>
+        {audit.resolvedFindings.length > 0 && (
+          <Stack gap={2}>
+            <Text size="sm" fw={600}>
+              {t("printPreflight.audit.resolved", "Resolved")}
+            </Text>
+            {audit.resolvedFindings.map((finding, idx) => (
+              <Group key={finding.code + idx} gap="xs">
+                <Badge
+                  color={severityColor(finding.severity)}
+                  variant="light"
+                  size="sm"
+                >
+                  {t(
+                    `printPreflight.severity.${finding.severity}`,
+                    finding.severity,
+                  )}
+                </Badge>
+                <Text size="xs">{finding.message}</Text>
+              </Group>
+            ))}
+          </Stack>
+        )}
+        {audit.remainingFindings.length > 0 && (
+          <Stack gap={2}>
+            <Text size="sm" fw={600} c="dimmed">
+              {t("printPreflight.audit.remaining", "Still reported")}
+            </Text>
+            {audit.remainingFindings.map((finding, idx) => (
+              <Group key={finding.code + idx} gap="xs">
+                <Badge
+                  color={severityColor(finding.severity)}
+                  variant="light"
+                  size="sm"
+                >
+                  {t(
+                    `printPreflight.severity.${finding.severity}`,
+                    finding.severity,
+                  )}
+                </Badge>
+                <Text size="xs" c="dimmed">
+                  {finding.message}
+                </Text>
+              </Group>
+            ))}
+          </Stack>
+        )}
+        {audit.introducedFindings.length > 0 && (
+          <Alert color="yellow" variant="light" p="xs">
+            <Text size="sm" fw={600}>
+              {t(
+                "printPreflight.audit.introduced",
+                "Surfaced by the corrections",
+              )}
+            </Text>
+            {audit.introducedFindings.map((finding, idx) => (
+              <Group key={finding.code + idx} gap="xs" mt={4}>
+                <Badge
+                  color={severityColor(finding.severity)}
+                  variant="light"
+                  size="sm"
+                >
+                  {t(
+                    `printPreflight.severity.${finding.severity}`,
+                    finding.severity,
+                  )}
+                </Badge>
+                <Text size="xs">{finding.message}</Text>
+              </Group>
+            ))}
+          </Alert>
+        )}
+      </Stack>
+    </Alert>
   );
 };
 
@@ -682,6 +808,10 @@ const PrintPreflightResults = ({
                 </Accordion.Panel>
               </Accordion.Item>
             </Accordion>
+
+            {operation.fixAudits[entry.fileId] && (
+              <AuditPanel audit={operation.fixAudits[entry.fileId]} />
+            )}
           </Stack>
         );
       })}
@@ -698,7 +828,8 @@ const PrintPreflightResults = ({
                   (operation.annotatedLoading != null &&
                     operation.annotatedLoading !== entry.fileId) ||
                   operation.reportLoading != null ||
-                  operation.fixedLoading != null
+                  operation.fixedLoading != null ||
+                  operation.previewLoading != null
                 }
                 onClick={() => void operation.downloadAnnotated(entry.fileId)}
               >
@@ -711,7 +842,8 @@ const PrintPreflightResults = ({
                   (operation.reportLoading != null &&
                     operation.reportLoading !== entry.fileId) ||
                   operation.annotatedLoading != null ||
-                  operation.fixedLoading != null
+                  operation.fixedLoading != null ||
+                  operation.previewLoading != null
                 }
                 onClick={() => void operation.downloadReport(entry.fileId)}
               >
@@ -724,11 +856,26 @@ const PrintPreflightResults = ({
                   (operation.fixedLoading != null &&
                     operation.fixedLoading !== entry.fileId) ||
                   operation.annotatedLoading != null ||
-                  operation.reportLoading != null
+                  operation.reportLoading != null ||
+                  operation.previewLoading != null
                 }
                 onClick={() => void operation.downloadFixed(entry.fileId)}
               >
                 {t("printPreflight.downloadFixed", "Fixed PDF")}
+              </Button>
+              <Button
+                variant="tertiary"
+                loading={operation.previewLoading === entry.fileId}
+                disabled={
+                  (operation.previewLoading != null &&
+                    operation.previewLoading !== entry.fileId) ||
+                  operation.annotatedLoading != null ||
+                  operation.reportLoading != null ||
+                  operation.fixedLoading != null
+                }
+                onClick={() => void operation.previewFixes(entry.fileId)}
+              >
+                {t("printPreflight.previewFixes", "Preview fixes")}
               </Button>
             </Stack>
           ))}

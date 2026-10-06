@@ -22,6 +22,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import stirling.software.SPDF.model.api.security.PrintPreflightFixAudit;
 import stirling.software.SPDF.model.api.security.PrintPreflightProfile;
 import stirling.software.SPDF.model.api.security.PrintPreflightReport;
 import stirling.software.SPDF.model.api.security.PrintPreflightRequest;
@@ -246,6 +247,59 @@ public class PrintPreflightController {
                     .headers(response.getHeaders())
                     .header("X-Preflight-Fixups", String.join(", ", applied))
                     .body(response.getBody());
+        }
+    }
+
+    @ToolIO(produces = ToolFormat.JSON)
+    @Operation(
+            summary = "Print preflight fix preview",
+            description =
+                    "Dry run of print-preflight-fix: applies the same requested fixups to an"
+                            + " in-memory copy, re-analyses the result and reports which fixups"
+                            + " applied plus the before/after finding sets — the corrected document"
+                            + " is discarded. Use it to audit what the corrections change before"
+                            + " committing to them.")
+    @AutoJobPostMapping(
+            value = "/print-preflight-fix-preview",
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
+            resourceWeight = ResourceWeight.MEDIUM_WEIGHT)
+    public ResponseEntity<PrintPreflightFixAudit> printPreflightFixPreview(
+            @ModelAttribute PrintPreflightRequest request) throws IOException {
+
+        MultipartFile file = request.getFileInput();
+        profileService.applyProfile(request);
+        validate(file, request);
+
+        try (PDDocument document = pdfDocumentFactory.load(request)) {
+            PrintPreflightReport before =
+                    printPreflightService.analyze(
+                            document, file.getOriginalFilename(), file.getSize(), request);
+            List<String> applied = PreflightFixer.apply(document, request, before);
+            Set<PreflightFixer.Code> gsWanted = PreflightFixer.ghostscriptWanted(request, before);
+            TempFile gsOutput = ghostscriptFixer.apply(document, gsWanted);
+            PrintPreflightReport after;
+            if (gsOutput != null) {
+                try (gsOutput;
+                        PDDocument fixed = pdfDocumentFactory.load(gsOutput.getPath())) {
+                    for (PreflightFixer.Code code : gsWanted) {
+                        applied.add(code.name());
+                    }
+                    after =
+                            printPreflightService.analyze(
+                                    fixed, file.getOriginalFilename(), file.getSize(), request);
+                }
+            } else {
+                after =
+                        printPreflightService.analyze(
+                                document, file.getOriginalFilename(), file.getSize(), request);
+            }
+            log.info(
+                    "Preflight fix preview on '{}': {} applied, {} -> {} error(s)",
+                    file.getOriginalFilename(),
+                    applied.isEmpty() ? "none" : String.join(", ", applied),
+                    before.getCounts().getErrors(),
+                    after.getCounts().getErrors());
+            return ResponseEntity.ok(PrintPreflightFixAudit.of(before, after, applied));
         }
     }
 
