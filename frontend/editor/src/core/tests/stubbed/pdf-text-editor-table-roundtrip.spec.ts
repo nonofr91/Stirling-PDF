@@ -123,11 +123,15 @@ test("merged cells retain their borders after a structural edit and export", asy
   });
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.getByTestId("pdf-editor-file-input").setInputFiles(saved);
-  await page.waitForFunction(() => {
-    const store = (window as unknown as { __editor_store: EditorStore })
-      .__editor_store;
-    return store.getState().firstPageRendered && !store.getState().loading;
-  });
+  await page.waitForFunction(
+    () => {
+      const store = (window as unknown as { __editor_store: EditorStore })
+        .__editor_store;
+      return store.getState().firstPageRendered && !store.getState().loading;
+    },
+    null,
+    { timeout: 30_000 },
+  );
   await page
     .locator('[data-testid^="pdf-editor-recognized-table-edit-"]')
     .first()
@@ -252,11 +256,15 @@ for (const file of [fixture, ...corpus]) {
     await expect(page.getByTestId("pdf-editor-page-0")).toBeVisible({
       timeout: 30_000,
     });
-    await page.waitForFunction(() => {
-      const store = (window as unknown as { __editor_store: EditorStore })
-        .__editor_store;
-      return store.getState().firstPageRendered && !store.getState().loading;
-    });
+    await page.waitForFunction(
+      () => {
+        const store = (window as unknown as { __editor_store: EditorStore })
+          .__editor_store;
+        return store.getState().firstPageRendered && !store.getState().loading;
+      },
+      null,
+      { timeout: 30_000 },
+    );
     const contentAfter = await page.evaluate(() => {
       const store = (window as unknown as { __editor_store: EditorStore })
         .__editor_store;
