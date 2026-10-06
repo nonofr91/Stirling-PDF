@@ -19,9 +19,11 @@ const INPUT = "#super-search-input";
  * URLs only the search's Processor entity fetch hits. `/api/v1/policies`
  * itself is deliberately absent: the editor's policy auto-run also reads it at
  * boot for every user, so it can't distinguish a search leak.
+ * `/api/v1/sources` is absent for the same reason: the network-source pickers
+ * probe it at boot for every user, so its presence can't signal a leak.
  */
 const ENTITY_API_PATTERN =
-  /\/api\/v1\/policies\/overview|\/api\/v1\/sources|\/api\/v1\/proprietary\/ui-data\/admin-settings/;
+  /\/api\/v1\/policies\/overview|\/api\/v1\/proprietary\/ui-data\/admin-settings/;
 
 async function openSearch(page: Page) {
   const input = page.locator(INPUT);
