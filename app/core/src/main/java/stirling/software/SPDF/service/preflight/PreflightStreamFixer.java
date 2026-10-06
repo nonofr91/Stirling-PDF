@@ -13,6 +13,7 @@ import java.util.Set;
 
 import org.apache.pdfbox.contentstream.PDContentStream;
 import org.apache.pdfbox.contentstream.operator.Operator;
+import org.apache.pdfbox.cos.COSArray;
 import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSFloat;
@@ -26,6 +27,7 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDResources;
 import org.apache.pdfbox.pdmodel.common.PDStream;
+import org.apache.pdfbox.pdmodel.common.function.PDFunction;
 import org.apache.pdfbox.pdmodel.graphics.PDXObject;
 import org.apache.pdfbox.pdmodel.graphics.color.PDColorSpace;
 import org.apache.pdfbox.pdmodel.graphics.color.PDDeviceCMYK;
@@ -81,19 +83,24 @@ final class PreflightStreamFixer {
 
     private final PDDocument document;
     private final Set<PreflightFixer.Code> wanted;
+    private final float tacLimit;
     private boolean changed;
 
-    private PreflightStreamFixer(PDDocument document, Set<PreflightFixer.Code> wanted) {
+    private PreflightStreamFixer(
+            PDDocument document, Set<PreflightFixer.Code> wanted, float tacLimit) {
         this.document = document;
         this.wanted = wanted;
+        this.tacLimit = tacLimit;
     }
 
     /**
      * Applies the requested content-stream fixups everywhere streams exist. Returns true when at
      * least one stream was rewritten.
      */
-    static boolean apply(PDDocument document, Set<PreflightFixer.Code> wanted) {
-        PreflightStreamFixer fixer = new PreflightStreamFixer(document, wanted);
+    static boolean apply(
+            PDDocument document, Set<PreflightFixer.Code> wanted, int maxInkCoveragePercent) {
+        PreflightStreamFixer fixer =
+                new PreflightStreamFixer(document, wanted, maxInkCoveragePercent / 100f);
         Set<COSBase> visited = new LinkedHashSet<>();
         for (PDPage page : document.getPages()) {
             try {
@@ -206,33 +213,60 @@ final class PreflightStreamFixer {
      */
     private List<Object> transform(RewriteState s, Operator op, List<Object> operands) {
         String name = op.getName();
-        boolean colourOp = isColourSetter(name, false);
-        boolean strokeColourOp = isColourSetter(name, true);
-        if (wanted.contains(PreflightFixer.Code.REGISTRATION_TO_BLACK)) {
-            if ("cs".equals(name) || "CS".equals(name)) {
-                List<Object> out = rewriteRegistrationColorspace(s, operands, "cs".equals(name));
+        if ("cs".equals(name) || "CS".equals(name)) {
+            boolean nonStroking = "cs".equals(name);
+            if (wanted.contains(PreflightFixer.Code.REGISTRATION_TO_BLACK)) {
+                List<Object> out = rewriteRegistrationColorspace(s, operands, nonStroking);
                 if (out != null) {
+                    clearSpot(s, nonStroking);
                     return out;
                 }
             }
-            if ("sc".equals(name)
-                    || "scn".equals(name)
-                    || "SC".equals(name)
-                    || "SCN".equals(name)) {
-                List<Object> out =
-                        rewriteRegistrationPaint(
-                                s, operands, "SC".equals(name) || "SCN".equals(name));
+            if (wanted.contains(PreflightFixer.Code.SPOT_TO_CMYK)) {
+                List<Object> out = rewriteSpotColorspace(s, operands, nonStroking);
                 if (out != null) {
+                    clearRegistration(s, nonStroking);
                     return out;
                 }
             }
+            // An unrelated colour-space selection clears the pending rewrites for that component.
+            clearRegistration(s, nonStroking);
+            clearSpot(s, nonStroking);
         }
-        // Any other colour-setter supersedes a pending registration rewrite for that component.
-        if (colourOp) {
+        // A device-colour setter implicitly switches colour space, clearing pending rewrites.
+        if (isDeviceSetter(name, false)) {
             s.pendingFillReg = null;
+            s.pendingFillSpot = null;
         }
-        if (strokeColourOp) {
+        if (isDeviceSetter(name, true)) {
             s.pendingStrokeReg = null;
+            s.pendingStrokeSpot = null;
+        }
+        if (isScOp(name)) {
+            boolean stroke = name.startsWith("S");
+            if (wanted.contains(PreflightFixer.Code.REGISTRATION_TO_BLACK)) {
+                List<Object> out = rewriteRegistrationPaint(s, operands, stroke);
+                if (out != null) {
+                    return out;
+                }
+            }
+            if (wanted.contains(PreflightFixer.Code.SPOT_TO_CMYK)) {
+                List<Object> out = rewriteSpotPaint(s, operands, stroke);
+                if (out != null) {
+                    return out;
+                }
+            }
+            if (wanted.contains(PreflightFixer.Code.REDUCE_INK_COVERAGE)
+                    && isCmykSpace(stroke ? s.stroke.cs() : s.fill.cs())) {
+                return reducePaint(operands, name);
+            }
+        }
+        if (("k".equals(name) || "K".equals(name))
+                && wanted.contains(PreflightFixer.Code.REDUCE_INK_COVERAGE)) {
+            List<Object> out = reducePaint(operands, name);
+            if (out != null) {
+                return out;
+            }
         }
         if (wanted.contains(PreflightFixer.Code.REMOVE_INVISIBLE_TEXT)
                 && TEXT_SHOW_OPS.contains(name)
@@ -270,16 +304,41 @@ final class PreflightStreamFixer {
         return null;
     }
 
-    private static boolean isColourSetter(String op, boolean stroke) {
+    /** Device-colour ops that implicitly switch the colour space ({@code cs}/{@code CS} aside). */
+    private static boolean isDeviceSetter(String op, boolean stroke) {
         return stroke
                 ? switch (op) {
-                    case "CS", "SC", "SCN", "G", "RG", "K" -> true;
+                    case "G", "RG", "K" -> true;
                     default -> false;
                 }
                 : switch (op) {
-                    case "cs", "sc", "scn", "g", "rg", "k" -> true;
+                    case "g", "rg", "k" -> true;
                     default -> false;
                 };
+    }
+
+    /** Colour-value setters — they ride the current space, they never replace it. */
+    private static boolean isScOp(String op) {
+        return switch (op) {
+            case "sc", "scn", "SC", "SCN" -> true;
+            default -> false;
+        };
+    }
+
+    private static void clearRegistration(RewriteState s, boolean nonStroking) {
+        if (nonStroking) {
+            s.pendingFillReg = null;
+        } else {
+            s.pendingStrokeReg = null;
+        }
+    }
+
+    private static void clearSpot(RewriteState s, boolean nonStroking) {
+        if (nonStroking) {
+            s.pendingFillSpot = null;
+        } else {
+            s.pendingStrokeSpot = null;
+        }
     }
 
     private static boolean trFills(int tr) {
@@ -353,17 +412,171 @@ final class PreflightStreamFixer {
             }
             cmyk[map[i]] = Math.max(cmyk[map[i]], num.floatValue());
         }
-        if (stroke) {
-            s.pendingStrokeReg = null;
-        } else {
-            s.pendingFillReg = null;
-        }
+        // The pending map survives: a colour space applies to every scn until the next setter.
         List<Object> out = new ArrayList<>(5);
         for (float v : cmyk) {
             out.add(new COSFloat(v));
         }
         out.add(Operator.getOperator(stroke ? "K" : "k"));
         return out;
+    }
+
+    /**
+     * A {@code cs} selecting a Separation/DeviceN whose alternate space is CMYK-family is rewritten
+     * to DeviceCMYK; the pending space then lets each {@code scn} evaluate its tint transform.
+     */
+    private List<Object> rewriteSpotColorspace(
+            RewriteState s, List<Object> operands, boolean nonStroking) {
+        PDColorSpace cs = s.resolveColorSpace(operands);
+        if (!isSpotConvertible(cs)) {
+            return null;
+        }
+        if (nonStroking) {
+            s.pendingFillSpot = cs;
+        } else {
+            s.pendingStrokeSpot = cs;
+        }
+        List<Object> out = new ArrayList<>(2);
+        out.add(COSName.DEVICECMYK);
+        out.add(Operator.getOperator(nonStroking ? "cs" : "CS"));
+        return out;
+    }
+
+    /**
+     * Spot conversion needs the document's own tint transform: its output lands in the declared
+     * alternate space, which only carries the converter when that space is DeviceCMYK or a
+     * 4-component ICCBased.
+     */
+    private static boolean isSpotConvertible(PDColorSpace cs) {
+        if (!(cs instanceof PDSeparation) && !(cs instanceof PDDeviceN)) {
+            return false;
+        }
+        try {
+            return tintTransformOf(cs) != null && isCmykSpace(alternateOf(cs));
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    private static boolean isCmykSpace(PDColorSpace cs) {
+        return cs instanceof PDDeviceCMYK
+                || (cs instanceof PDICCBased icc && icc.getNumberOfComponents() == 4);
+    }
+
+    private List<Object> rewriteSpotPaint(RewriteState s, List<Object> operands, boolean stroke) {
+        PDColorSpace spot = stroke ? s.pendingStrokeSpot : s.pendingFillSpot;
+        float[] comps = componentsOf(operands);
+        if (spot == null || comps == null || comps.length != spot.getNumberOfComponents()) {
+            return null;
+        }
+        float[] cmyk;
+        try {
+            cmyk = tintTransformOf(spot).eval(comps);
+        } catch (IOException e) {
+            return null;
+        }
+        if (cmyk == null || cmyk.length < 4) {
+            return null;
+        }
+        float[] v = {clamp(cmyk[0]), clamp(cmyk[1]), clamp(cmyk[2]), clamp(cmyk[3])};
+        if (wanted.contains(PreflightFixer.Code.REDUCE_INK_COVERAGE)) {
+            v = applyTac(v);
+        }
+        List<Object> out = new ArrayList<>(5);
+        for (float f : v) {
+            out.add(new COSFloat(f));
+        }
+        out.add(Operator.getOperator(stroke ? "K" : "k"));
+        return out;
+    }
+
+    private static PDFunction tintTransformOf(PDColorSpace cs) throws IOException {
+        if (cs instanceof PDDeviceN deviceN) {
+            return deviceN.getTintTransform();
+        }
+        // PDSeparation exposes no tintTransform getter: it is element 3 of the cs array.
+        if (cs instanceof PDSeparation
+                && cs.getCOSObject() instanceof COSArray array
+                && array.size() >= 4) {
+            return PDFunction.create(array.getObject(3));
+        }
+        return null;
+    }
+
+    private static PDColorSpace alternateOf(PDColorSpace cs) throws IOException {
+        if (cs instanceof PDSeparation sep) {
+            return sep.getAlternateColorSpace();
+        }
+        if (cs instanceof PDDeviceN deviceN) {
+            return deviceN.getAlternateColorSpace();
+        }
+        return null;
+    }
+
+    /**
+     * UCR-style TAC reduction: the achromatic part common to C, M and Y moves onto the K plate
+     * first — 3 channels become 1 — then any residual excess scales proportionally. Hue survives; a
+     * 100 % channel cannot rise, so K is clamped before the fallback pass.
+     */
+    private List<Object> reducePaint(List<Object> operands, String op) {
+        float[] v = componentsOf(operands);
+        if (v == null || v.length != 4) {
+            return null;
+        }
+        float[] scaled = applyTac(v);
+        if (scaled == null) {
+            return null;
+        }
+        List<Object> out = new ArrayList<>(5);
+        for (float f : scaled) {
+            out.add(new COSFloat(f));
+        }
+        out.add(Operator.getOperator(op));
+        return out;
+    }
+
+    /** Returns the reduced CMYK values, or the input unchanged when nothing needs to happen. */
+    private float[] applyTac(float[] cmyk) {
+        if (tacLimit <= 0 || tacLimit >= 4f) {
+            return cmyk;
+        }
+        float c = cmyk[0], m = cmyk[1], y = cmyk[2], k = cmyk[3];
+        float sum = c + m + y + k;
+        if (sum <= tacLimit) {
+            return cmyk;
+        }
+        float achromatic = Math.min(c, Math.min(m, y));
+        if (achromatic > 0) {
+            float pull = Math.min(1f, (sum - tacLimit) / (2f * achromatic));
+            c -= pull * achromatic;
+            m -= pull * achromatic;
+            y -= pull * achromatic;
+            k = Math.min(1f, k + pull * achromatic);
+        }
+        float rest = c + m + y + k;
+        if (rest > tacLimit) {
+            float f = tacLimit / rest;
+            c *= f;
+            m *= f;
+            y *= f;
+            k *= f;
+        }
+        return new float[] {c, m, y, k};
+    }
+
+    private static float clamp(float v) {
+        return v < 0 ? 0 : Math.min(v, 1f);
+    }
+
+    private static float[] componentsOf(List<Object> operands) {
+        float[] v = new float[operands.size()];
+        for (int i = 0; i < operands.size(); i++) {
+            if (!(operands.get(i) instanceof COSNumber n)) {
+                return null; // pattern-name operand — colour unknowable at token level
+            }
+            v[i] = n.floatValue();
+        }
+        return v;
     }
 
     /**
@@ -620,6 +833,8 @@ final class PreflightStreamFixer {
         Matrix tm = new Matrix();
         int[] pendingFillReg;
         int[] pendingStrokeReg;
+        PDColorSpace pendingFillSpot;
+        PDColorSpace pendingStrokeSpot;
 
         RewriteState(PDResources resources) {
             this.resources = resources;
@@ -633,7 +848,11 @@ final class PreflightStreamFixer {
                 List<Object> strokeCsTokens,
                 boolean opFill,
                 boolean opStroke,
-                int opm) {}
+                int opm,
+                int[] pendingFillReg,
+                int[] pendingStrokeReg,
+                PDColorSpace pendingFillSpot,
+                PDColorSpace pendingStrokeSpot) {}
 
         void track(Object token) {
             if (!(token instanceof Operator op)) {
@@ -660,7 +879,11 @@ final class PreflightStreamFixer {
                                         strokeCsTokens,
                                         opFill,
                                         opStroke,
-                                        opm));
+                                        opm,
+                                        pendingFillReg,
+                                        pendingStrokeReg,
+                                        pendingFillSpot,
+                                        pendingStrokeSpot));
                 case "Q" -> {
                     if (!stack.isEmpty()) {
                         Snapshot s = stack.pop();
@@ -672,6 +895,10 @@ final class PreflightStreamFixer {
                         opFill = s.opFill();
                         opStroke = s.opStroke();
                         opm = s.opm();
+                        pendingFillReg = s.pendingFillReg();
+                        pendingStrokeReg = s.pendingStrokeReg();
+                        pendingFillSpot = s.pendingFillSpot();
+                        pendingStrokeSpot = s.pendingStrokeSpot();
                     }
                 }
                 case "cm" -> {
@@ -768,14 +995,23 @@ final class PreflightStreamFixer {
         }
 
         private PDColorSpace resolveColorSpace(List<Object> args) {
-            if (args.size() != 1 || !(args.get(0) instanceof COSName name) || resources == null) {
+            if (args.size() != 1 || !(args.get(0) instanceof COSBase base) || resources == null) {
                 return null;
             }
+            if (base instanceof COSObject ref) {
+                base = ref.getObject();
+            }
             try {
-                return resources.getColorSpace(name);
+                if (base instanceof COSName name) {
+                    return resources.getColorSpace(name);
+                }
+                if (base instanceof COSArray array) {
+                    return PDColorSpace.create(array, resources);
+                }
             } catch (IOException e) {
                 return null;
             }
+            return null;
         }
 
         private static Matrix matrix(List<Object> args) {

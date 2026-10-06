@@ -55,6 +55,11 @@ export const FIXUP_CODES = [
   "OVERPRINT_BLACK_TEXT",
   "KNOCKOUT_WHITE",
   "PURE_BLACK_TEXT",
+  "SPOT_TO_CMYK",
+  "REDUCE_INK_COVERAGE",
+  "RGB_TO_CMYK",
+  "FLATTEN_TRANSPARENCY",
+  "TEXT_TO_OUTLINES",
 ] as const;
 
 export const defaultParameters: PrintPreflightParameters = {

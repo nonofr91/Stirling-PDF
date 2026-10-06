@@ -39,6 +39,7 @@ import org.springframework.core.io.Resource;
 import org.springframework.http.ResponseEntity;
 import org.springframework.mock.web.MockMultipartFile;
 
+import stirling.software.SPDF.config.EndpointConfiguration;
 import stirling.software.SPDF.controller.api.security.PrintPreflightController;
 import stirling.software.SPDF.model.api.security.PrintPreflightRequest;
 import stirling.software.common.model.api.PDFFile;
@@ -52,13 +53,17 @@ class PreflightFixerTest {
 
     @Mock private CustomPDFDocumentFactory pdfDocumentFactory;
     @Mock private TempFileManager tempFileManager;
+    @Mock private EndpointConfiguration endpointConfiguration;
     private PrintPreflightController controller;
 
     @BeforeEach
     void setUp() throws IOException {
         controller =
                 new PrintPreflightController(
-                        new PrintPreflightService(), pdfDocumentFactory, tempFileManager);
+                        new PrintPreflightService(),
+                        pdfDocumentFactory,
+                        tempFileManager,
+                        new PreflightGhostscriptFixer(tempFileManager, endpointConfiguration));
         lenient()
                 .when(tempFileManager.createTempFile(any()))
                 .thenAnswer(inv -> java.io.File.createTempFile("pf-fix", ".pdf"));
@@ -703,5 +708,152 @@ class PreflightFixerTest {
                 List.of(""),
                 response.getHeaders().get("X-Preflight-Fixups"),
                 "header is present even when nothing applied");
+    }
+
+    @Test
+    void testSpotToCmykConvertsSeparationTint() throws Exception {
+        byte[] pdf = spotFillPdf();
+        assertTrue(
+                findingCodes(pdf).contains("COLOR_SPOT"),
+                "the spot colorant is flagged before the fix");
+
+        PrintPreflightRequest req = request(pdf);
+        req.setFixups(List.of("SPOT_TO_CMYK"));
+        byte[] fixed = responseBytes(controller.printPreflightFix(req));
+        assertFalse(
+                findingCodes(fixed).contains("COLOR_SPOT"),
+                "a re-preflight no longer reports spot ink");
+    }
+
+    /** One cs, two scn — the pending spot conversion must survive the first paint. */
+    @Test
+    void testSpotToCmykAppliesToEveryPaintAfterTheSpaceIsSet() throws Exception {
+        PDDocument doc = new PDDocument();
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
+        PDResources res = new PDResources();
+        COSDictionary csDict = new COSDictionary();
+        csDict.setItem(COSName.getPDFName("Spot"), separation("PANTONE 300 C").getCOSObject());
+        res.getCOSObject().setItem(COSName.getPDFName("ColorSpace"), csDict);
+        page.setResources(res);
+        page.setContents(
+                new org.apache.pdfbox.pdmodel.common.PDStream(
+                        doc,
+                        new java.io.ByteArrayInputStream(
+                                "/Spot cs 0.5 scn 10 10 50 50 re f 0.9 scn 70 70 50 50 re f"
+                                        .getBytes(java.nio.charset.StandardCharsets.US_ASCII))));
+        byte[] pdf = toBytes(doc);
+        assertTrue(findingCodes(pdf).contains("COLOR_SPOT"));
+
+        PrintPreflightRequest req = request(pdf);
+        req.setFixups(List.of("SPOT_TO_CMYK"));
+        try (PDDocument result = Loader.loadPDF(responseBytes(controller.printPreflightFix(req)))) {
+            java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+            result.getPage(0).getContentStreams().next().createInputStream().transferTo(baos);
+            String stream = baos.toString(java.nio.charset.StandardCharsets.US_ASCII);
+            assertFalse(stream.contains("scn"), "every spot paint was rewritten");
+            assertEquals(2, stream.split(" k").length - 1, "both paints became DeviceCMYK");
+        }
+    }
+
+    @Test
+    void testReduceInkCoverageCapsTotalInk() throws Exception {
+        PDDocument doc = new PDDocument();
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
+        try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+            cs.setNonStrokingColor(0.9f, 0.9f, 0.9f, 0.9f);
+            cs.addRect(50, 50, 100, 100);
+            cs.fill();
+        }
+        byte[] pdf = toBytes(doc);
+        assertTrue(
+                findingCodes(pdf).contains("INK_COVERAGE_HIGH"),
+                "a 360% fill is flagged before the fix");
+
+        PrintPreflightRequest req = request(pdf);
+        req.setMaxInkCoveragePercent(300);
+        req.setFixups(List.of("REDUCE_INK_COVERAGE"));
+        byte[] fixed = responseBytes(controller.printPreflightFix(req));
+        assertFalse(
+                findingCodes(fixed).contains("INK_COVERAGE_HIGH"),
+                "the GCR remap brings the fill under the limit");
+    }
+
+    @Test
+    void testGhostscriptWantedGatesImplicitFixupsOnFindings() {
+        stirling.software.SPDF.model.api.security.PrintPreflightReport report =
+                new stirling.software.SPDF.model.api.security.PrintPreflightReport();
+        PrintPreflightRequest req = new PrintPreflightRequest();
+        assertTrue(
+                PreflightFixer.ghostscriptWanted(req, report).isEmpty(),
+                "nothing to fix: a clean report requests no Ghostscript pass");
+
+        stirling.software.SPDF.model.api.security.PrintPreflightReport.Finding finding =
+                new stirling.software.SPDF.model.api.security.PrintPreflightReport.Finding();
+        finding.setCode("COLOR_RGB_USED");
+        report.setFindings(List.of(finding));
+        assertEquals(
+                java.util.Set.of(PreflightFixer.Code.RGB_TO_CMYK),
+                PreflightFixer.ghostscriptWanted(req, report),
+                "only the finding-backed fixup is applicable");
+
+        req.setFixups(List.of("FLATTEN_TRANSPARENCY"));
+        assertEquals(
+                java.util.Set.of(PreflightFixer.Code.FLATTEN_TRANSPARENCY),
+                PreflightFixer.ghostscriptWanted(req, report),
+                "an explicit request runs regardless of the findings");
+    }
+
+    @Test
+    void testRgbToCmykViaGhostscript() throws Exception {
+        org.junit.jupiter.api.Assumptions.assumeTrue(ghostscriptOnPath(), "gs binary not on PATH");
+        org.mockito.Mockito.when(endpointConfiguration.isGroupEnabled("Ghostscript"))
+                .thenReturn(true);
+        byte[] pdf = basePdf(); // a DeviceRGB gray fill
+        assertTrue(findingCodes(pdf).contains("COLOR_RGB_USED"));
+
+        PrintPreflightRequest req = request(pdf);
+        req.setFixups(List.of("RGB_TO_CMYK"));
+        byte[] fixed = responseBytes(controller.printPreflightFix(req));
+        assertFalse(
+                findingCodes(fixed).contains("COLOR_RGB_USED"),
+                "Ghostscript converted the RGB fill to CMYK");
+    }
+
+    @Test
+    void testTextToOutlinesViaGhostscript() throws Exception {
+        org.junit.jupiter.api.Assumptions.assumeTrue(ghostscriptOnPath(), "gs binary not on PATH");
+        org.mockito.Mockito.when(endpointConfiguration.isGroupEnabled("Ghostscript"))
+                .thenReturn(true);
+        byte[] pdf = invisibleTextPdf(); // Standard-14 Helvetica is never embedded
+        assertTrue(findingCodes(pdf).contains("FONT_NOT_EMBEDDED"));
+
+        PrintPreflightRequest req = request(pdf);
+        req.setFixups(List.of("TEXT_TO_OUTLINES"));
+        byte[] fixed = responseBytes(controller.printPreflightFix(req));
+        assertFalse(
+                findingCodes(fixed).contains("FONT_NOT_EMBEDDED"),
+                "outlined text carries no font to embed");
+    }
+
+    private static boolean ghostscriptOnPath() {
+        try {
+            return new ProcessBuilder("gs", "--version").start().waitFor() == 0;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private static byte[] spotFillPdf() throws IOException {
+        PDDocument doc = new PDDocument();
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
+        try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+            cs.setNonStrokingColor(new PDColor(new float[] {0.7f}, separation("PANTONE 300 C")));
+            cs.addRect(50, 50, 100, 100);
+            cs.fill();
+        }
+        return toBytes(doc);
     }
 }

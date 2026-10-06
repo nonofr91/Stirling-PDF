@@ -56,9 +56,9 @@ import stirling.software.common.util.PageBleedGenerator.BleedMethod;
  * opt-in via {@code request.fixups}; an empty list applies every fixup that finds work to do.
  * Fixups mutate the document — this endpoint returns a new copy, never the source bytes.
  *
- * <p>Deliberately not implemented (they need colour-engine work, not token rewriting): spot→CMYK
- * remapping, TAC/ink-coverage reduction, RGB→CMYK conversion, transparency flattening, font
- * embedding, clipping objects outside the page.
+ * <p>Deliberately not implemented (they need geometry work, not token rewriting): transparency
+ * flattening is delegated to Ghostscript, but clipping objects outside the page and embedding
+ * licensed substitute fonts stay pending.
  */
 @Slf4j
 public final class PreflightFixer {
@@ -84,7 +84,12 @@ public final class PreflightFixer {
         REGISTRATION_TO_BLACK,
         OVERPRINT_BLACK_TEXT,
         KNOCKOUT_WHITE,
-        PURE_BLACK_TEXT
+        PURE_BLACK_TEXT,
+        SPOT_TO_CMYK,
+        REDUCE_INK_COVERAGE,
+        RGB_TO_CMYK,
+        FLATTEN_TRANSPARENCY,
+        TEXT_TO_OUTLINES
     }
 
     /** Fixups implemented by {@link PreflightStreamFixer} — they share one token pass. */
@@ -94,7 +99,20 @@ public final class PreflightFixer {
                     Code.REGISTRATION_TO_BLACK,
                     Code.OVERPRINT_BLACK_TEXT,
                     Code.KNOCKOUT_WHITE,
-                    Code.PURE_BLACK_TEXT);
+                    Code.PURE_BLACK_TEXT,
+                    Code.SPOT_TO_CMYK,
+                    Code.REDUCE_INK_COVERAGE);
+
+    /**
+     * Fixups delegated to a Ghostscript pass on the saved bytes — they need a real colour engine,
+     * not token rewriting. The map value is the finding that makes the fixup applicable when the
+     * request's {@code fixups} list is empty; an explicit list runs them unconditionally.
+     */
+    static final Map<Code, String> GS_FIXUP_FINDINGS =
+            Map.of(
+                    Code.RGB_TO_CMYK, "COLOR_RGB_USED",
+                    Code.FLATTEN_TRANSPARENCY, "TRANSPARENCY",
+                    Code.TEXT_TO_OUTLINES, "FONT_NOT_EMBEDDED");
 
     private PreflightFixer() {}
 
@@ -148,7 +166,9 @@ public final class PreflightFixer {
         // One token pass applies every wanted stream-level fixup.
         Set<Code> streamWanted = new LinkedHashSet<>(wanted);
         streamWanted.retainAll(STREAM_FIXUPS);
-        if (!streamWanted.isEmpty() && PreflightStreamFixer.apply(document, streamWanted)) {
+        if (!streamWanted.isEmpty()
+                && PreflightStreamFixer.apply(
+                        document, streamWanted, request.getMaxInkCoveragePercent())) {
             streamWanted.forEach(code -> applied.add(code.name()));
         }
         // Destructive page removal runs last so every other fixup sees stable page indexes.
@@ -156,6 +176,26 @@ public final class PreflightFixer {
             applied.add(Code.REMOVE_EMPTY_PAGES.name());
         }
         return applied;
+    }
+
+    /**
+     * The Ghostscript-level fixups the request asks for. An explicit {@code fixups} list runs them
+     * unconditionally; the empty-list "everything applicable" mode only keeps the ones whose
+     * finding fired in the report, so a clean document pays no Ghostscript round-trip.
+     */
+    public static Set<Code> ghostscriptWanted(
+            PrintPreflightRequest request, PrintPreflightReport report) {
+        Set<Code> wanted = new LinkedHashSet<>(resolveWanted(request.getFixups()));
+        wanted.retainAll(GS_FIXUP_FINDINGS.keySet());
+        if (request.getFixups() != null && !request.getFixups().isEmpty()) {
+            return wanted;
+        }
+        Set<String> findings = new LinkedHashSet<>();
+        for (PrintPreflightReport.Finding f : report.getFindings()) {
+            findings.add(f.getCode());
+        }
+        wanted.removeIf(code -> !findings.contains(GS_FIXUP_FINDINGS.get(code)));
+        return wanted;
     }
 
     private static Set<Code> resolveWanted(List<String> requested) {

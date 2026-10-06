@@ -2,6 +2,7 @@ package stirling.software.SPDF.controller.api.security;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Set;
 
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
@@ -20,6 +21,7 @@ import stirling.software.SPDF.model.api.security.PrintPreflightReport;
 import stirling.software.SPDF.model.api.security.PrintPreflightRequest;
 import stirling.software.SPDF.service.preflight.PreflightAnnotator;
 import stirling.software.SPDF.service.preflight.PreflightFixer;
+import stirling.software.SPDF.service.preflight.PreflightGhostscriptFixer;
 import stirling.software.SPDF.service.preflight.PreflightReportRenderer;
 import stirling.software.SPDF.service.preflight.PreflightReportText;
 import stirling.software.SPDF.service.preflight.PrintPreflightService;
@@ -31,6 +33,7 @@ import stirling.software.common.model.tool.ToolIO;
 import stirling.software.common.service.CustomPDFDocumentFactory;
 import stirling.software.common.util.ExceptionUtils;
 import stirling.software.common.util.GeneralUtils;
+import stirling.software.common.util.TempFile;
 import stirling.software.common.util.TempFileManager;
 import stirling.software.common.util.WebResponseUtils;
 
@@ -42,6 +45,7 @@ public class PrintPreflightController {
     private final PrintPreflightService printPreflightService;
     private final CustomPDFDocumentFactory pdfDocumentFactory;
     private final TempFileManager tempFileManager;
+    private final PreflightGhostscriptFixer ghostscriptFixer;
 
     @ToolIO(produces = ToolFormat.JSON)
     @Operation(
@@ -169,16 +173,27 @@ public class PrintPreflightController {
                     printPreflightService.analyze(
                             document, file.getOriginalFilename(), file.getSize(), request);
             List<String> applied = PreflightFixer.apply(document, request, report);
+            String filename =
+                    GeneralUtils.generateFilename(
+                            file.getOriginalFilename(), "_preflight-fixed.pdf");
+            // Ghostscript fixups run last: they rebuild the whole file, so the PDFBox-level
+            // corrections must already be baked into the bytes they receive.
+            Set<PreflightFixer.Code> gsWanted = PreflightFixer.ghostscriptWanted(request, report);
+            TempFile gsOutput = ghostscriptFixer.apply(document, gsWanted);
+            if (gsOutput != null) {
+                for (PreflightFixer.Code code : gsWanted) {
+                    applied.add(code.name());
+                }
+            }
             log.info(
                     "Preflight fixups on '{}': {}",
                     file.getOriginalFilename(),
                     applied.isEmpty() ? "none applicable" : String.join(", ", applied));
             ResponseEntity<Resource> response =
-                    WebResponseUtils.pdfDocToWebResponse(
-                            document,
-                            GeneralUtils.generateFilename(
-                                    file.getOriginalFilename(), "_preflight-fixed.pdf"),
-                            tempFileManager);
+                    gsOutput != null
+                            ? WebResponseUtils.pdfFileToWebResponse(gsOutput, filename)
+                            : WebResponseUtils.pdfDocToWebResponse(
+                                    document, filename, tempFileManager);
             return ResponseEntity.status(response.getStatusCode())
                     .headers(response.getHeaders())
                     .header("X-Preflight-Fixups", String.join(", ", applied))

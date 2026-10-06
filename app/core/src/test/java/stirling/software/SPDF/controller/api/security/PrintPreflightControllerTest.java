@@ -27,12 +27,14 @@ import org.springframework.core.io.Resource;
 import org.springframework.http.ResponseEntity;
 import org.springframework.mock.web.MockMultipartFile;
 
+import stirling.software.SPDF.config.EndpointConfiguration;
 import stirling.software.SPDF.model.api.security.PrintPreflightReport;
 import stirling.software.SPDF.model.api.security.PrintPreflightReport.Category;
 import stirling.software.SPDF.model.api.security.PrintPreflightReport.Finding;
 import stirling.software.SPDF.model.api.security.PrintPreflightReport.FindingArea;
 import stirling.software.SPDF.model.api.security.PrintPreflightReport.Severity;
 import stirling.software.SPDF.model.api.security.PrintPreflightRequest;
+import stirling.software.SPDF.service.preflight.PreflightGhostscriptFixer;
 import stirling.software.SPDF.service.preflight.PrintPreflightService;
 import stirling.software.common.model.api.PDFFile;
 import stirling.software.common.service.CustomPDFDocumentFactory;
@@ -45,13 +47,17 @@ class PrintPreflightControllerTest {
 
     @Mock private CustomPDFDocumentFactory pdfDocumentFactory;
     @Mock private TempFileManager tempFileManager;
+    @Mock private EndpointConfiguration endpointConfiguration;
     private PrintPreflightController controller;
 
     @BeforeEach
     void setUp() throws IOException {
         controller =
                 new PrintPreflightController(
-                        new PrintPreflightService(), pdfDocumentFactory, tempFileManager);
+                        new PrintPreflightService(),
+                        pdfDocumentFactory,
+                        tempFileManager,
+                        new PreflightGhostscriptFixer(tempFileManager, endpointConfiguration));
         lenient()
                 .when(tempFileManager.createTempFile(any()))
                 .thenAnswer(inv -> java.io.File.createTempFile("pf-test", ".pdf"));

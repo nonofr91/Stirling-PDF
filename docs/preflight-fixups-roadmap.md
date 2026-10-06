@@ -15,7 +15,10 @@ codes come back in the `X-Preflight-Fixups` response header. `PreflightFixer`
 performs dictionary- and resource-level corrections; `PreflightStreamFixer`
 rewrites content streams token-by-token (colour, overprint, text state and CTM
 tracked per stream, one pass for all stream-level fixups, pages plus nested
-form XObjects and tiling patterns). A fixup with nothing to do is silently
+form XObjects and tiling patterns); `PreflightGhostscriptFixer` runs one
+Ghostscript `pdfwrite` pass for engine-level corrections — RGB→CMYK,
+transparency flattening, text-to-outlines — gated on an explicit request or
+the matching finding firing. A fixup with nothing to do is silently
 skipped. The frontend exposes the fixups picker under "Automatic fixes"
 (interactive) and the `fixedPdf` report format (automation, keeps a PDF in the
 pipeline).
@@ -24,17 +27,17 @@ pipeline).
 
 | Finding | Fixup code | Status / notes |
 |---|---|---|
-| `FONT_NOT_EMBEDDED` | — | Pending: embed/subset only when a licensed substitute's metrics match. |
-| `COLOR_RGB_USED` | — | Pending: CMYK conversion needs a target profile + K-preserving intent. |
-| `COLOR_SPOT` | `MERGE_SPOT_ALIASES` | Done: renames colliding Separation/DeviceN colorants to one plate. Spot → CMYK mapping pending. |
+| `FONT_NOT_EMBEDDED` | `TEXT_TO_OUTLINES` | Done via Ghostscript `-dNoOutputFonts`: all text becomes vector outlines — destructive to text semantics, explicitly opt-in only. True font embedding stays pending (needs licensed substitutes with matching metrics). |
+| `COLOR_RGB_USED` | `RGB_TO_CMYK` | Done via Ghostscript `-sColorConversionStrategy=CMYK` — its ICC engine also converts RGB images, which token rewriting cannot reach. |
+| `COLOR_SPOT` | `MERGE_SPOT_ALIASES`, `SPOT_TO_CMYK` | Done: aliases merge to one plate; Separation/DeviceN paints whose tint transform lands in CMYK-family alternate are evaluated and rewritten as `k`/`K`. Spot-coloured images stay pending (needs pixel remapping). |
 | `OVERPRINT_WHITE` | `KNOCKOUT_WHITE` | Done: token-level rewrite wraps white paint ops in `q /PFN gs … Q` (op/OP false). |
 | `OVERPRINT_BLACK` | `OVERPRINT_BLACK_TEXT` | Done: wraps pure-K text show ops in `q /PFO gs … Q` (op/OP true, OPM 1). Black fills/strokes stay report-only — press-op choice. |
 | `TEXT_RICH_BLACK` | `PURE_BLACK_TEXT` | Done: rewrites rich-black fills on text below 24pt effective to `0 0 0 K k`, preserving the K weight; original colour restored after the show op. |
-| `INK_COVERAGE_HIGH` | — | Pending: GCR-style CMYK remapping to the TAC limit. |
+| `INK_COVERAGE_HIGH` | `REDUCE_INK_COVERAGE` | Done: GCR-style remap — the shared CMY achromatic part folds into K, residual excess scales down — on CMYK paint ops above `maxInkCoveragePercent`. Raster images are untouched (needs pixel remapping). |
 | `IMAGE_LOW_RES` | — | Report only — resampling cannot invent detail. |
 | `IMAGE_OVERSAMPLED` | `DOWNSAMPLE_IMAGES` | Done: re-encodes placements above `maxImageDpi` (JPEG if DCT source, else lossless); skips CMYK/separations, 1-bit art, soft-masked images. |
 | `IMAGE_1BIT_LOW_RES` | — | Upsampling is lossy — flag for user decision. |
-| `TRANSPARENCY` | — | Pending: wire the flatten pass as a fixup. |
+| `TRANSPARENCY` | `FLATTEN_TRANSPARENCY` | Done via Ghostscript `pdfwrite -dCompatibilityLevel=1.3`: transparency flattens during the write-back. |
 | `BLEED_MISSING` / `BLEED_INSUFFICIENT` | `EXTEND_BLEED` | Done: `PageBleedGenerator` MIRROR into the missing band, BleedBox/MediaBox/CropBox grown to cover. `BLEED_UNPAINTED` gaps between declared bleed and artwork are separate — the mirror paints the geometry gap. |
 | `TRIMBOX_MISSING` | `SET_MISSING_BOXES` | Done: declares TrimBox = CropBox. |
 | `CROPBOX_NE_MEDIA` | `DISCARD_CROPBOX` | Done: drops the declared CropBox. |
