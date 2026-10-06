@@ -458,7 +458,7 @@ final class PreflightStreamFixer {
         }
     }
 
-    private static boolean isCmykSpace(PDColorSpace cs) {
+    static boolean isCmykSpace(PDColorSpace cs) {
         return cs instanceof PDDeviceCMYK
                 || (cs instanceof PDICCBased icc && icc.getNumberOfComponents() == 4);
     }
@@ -490,7 +490,7 @@ final class PreflightStreamFixer {
         return out;
     }
 
-    private static PDFunction tintTransformOf(PDColorSpace cs) throws IOException {
+    static PDFunction tintTransformOf(PDColorSpace cs) throws IOException {
         if (cs instanceof PDDeviceN deviceN) {
             return deviceN.getTintTransform();
         }
@@ -503,7 +503,7 @@ final class PreflightStreamFixer {
         return null;
     }
 
-    private static PDColorSpace alternateOf(PDColorSpace cs) throws IOException {
+    static PDColorSpace alternateOf(PDColorSpace cs) throws IOException {
         if (cs instanceof PDSeparation sep) {
             return sep.getAlternateColorSpace();
         }

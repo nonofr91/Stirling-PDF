@@ -1027,4 +1027,71 @@ class PreflightFixerTest {
                 response.getHeaders().getFirst("X-Preflight-Fixups"),
                 "nothing outside the crop — the clip is not added");
     }
+
+    /** A 4×4 image in a PANTONE-named Separation space, tint ~0.5 on every pixel. */
+    private static byte[] spotImagePdf() throws IOException {
+        PDDocument doc = new PDDocument();
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
+        PDSeparation sep = separation("PANTONE 300 C");
+        org.apache.pdfbox.pdmodel.common.PDStream img =
+                new org.apache.pdfbox.pdmodel.common.PDStream(doc);
+        img.getCOSObject().setItem(COSName.SUBTYPE, COSName.IMAGE);
+        img.getCOSObject().setInt(COSName.WIDTH, 4);
+        img.getCOSObject().setInt(COSName.HEIGHT, 4);
+        img.getCOSObject().setInt(COSName.BITS_PER_COMPONENT, 8);
+        img.getCOSObject().setItem(COSName.COLORSPACE, sep.getCOSObject());
+        try (java.io.OutputStream out = img.createOutputStream()) {
+            byte[] samples = new byte[16];
+            java.util.Arrays.fill(samples, (byte) 128);
+            out.write(samples);
+        }
+        PDImageXObject xo = new PDImageXObject(img, null);
+        if (page.getResources() == null) {
+            page.setResources(new PDResources());
+        }
+        page.getResources().put(COSName.getPDFName("ImSpot"), xo);
+        try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+            cs.drawImage(xo, 100, 100, 200, 200);
+        }
+        return toBytes(doc);
+    }
+
+    @Test
+    void testSpotImageConvertedToCmyk() throws Exception {
+        byte[] pdf = spotImagePdf();
+        assertTrue(
+                findingCodes(pdf).contains("COLOR_SPOT"),
+                "baseline: the separation image flags as spot");
+
+        PrintPreflightRequest req = request(pdf);
+        req.setFixups(List.of("SPOT_TO_CMYK"));
+        ResponseEntity<Resource> response = controller.printPreflightFix(req);
+        assertEquals(List.of("SPOT_TO_CMYK"), response.getHeaders().get("X-Preflight-Fixups"));
+
+        byte[] fixed = responseBytes(response);
+        assertFalse(
+                findingCodes(fixed).contains("COLOR_SPOT"),
+                "the re-encoded image no longer counts as spot");
+        try (PDDocument d = Loader.loadPDF(fixed)) {
+            PDImageXObject img =
+                    (PDImageXObject)
+                            d.getPage(0).getResources().getXObject(COSName.getPDFName("ImSpot"));
+            assertTrue(
+                    img.getColorSpace()
+                            instanceof org.apache.pdfbox.pdmodel.graphics.color.PDDeviceCMYK,
+                    "the image moved to the separation's CMYK alternate");
+            try (java.io.InputStream in = img.getCOSObject().createInputStream()) {
+                byte[] raw = in.readAllBytes();
+                assertEquals(4 * 4 * 4, raw.length, "4×4 pixels × 4 CMYK channels");
+                // Tint 128/255 ≈ 0.502 lands on the K channel through the Type-2 tint transform.
+                assertEquals(0, raw[0] & 0xFF);
+                assertEquals(0, raw[1] & 0xFF);
+                assertEquals(0, raw[2] & 0xFF);
+                assertTrue(
+                        Math.abs((raw[3] & 0xFF) - 128) <= 2,
+                        "the tint survives as K on every pixel");
+            }
+        }
+    }
 }
