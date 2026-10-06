@@ -70,6 +70,11 @@ public final class PreflightFixer {
     private static final float MM_TO_POINTS = 72f / 25.4f;
     private static final float JPEG_QUALITY = 0.9f;
 
+    /** Decoded input plus converted output sample bytes one image remap may hold at once. */
+    private static final long MAX_REMAP_BYTES = 256L * 1024 * 1024;
+
+    private static final int MAX_TUPLE_CACHE_ENTRIES = 1 << 16;
+
     public enum Code {
         REMOVE_JAVASCRIPT,
         REMOVE_ATTACHMENTS,
@@ -220,8 +225,9 @@ public final class PreflightFixer {
     /**
      * Spot-coloured image XObjects (Separation/DeviceN colour space with a CMYK-family alternate)
      * are decoded to raw samples, remapped through the document's tint transform and re-encoded as
-     * CMYK-family images — the picture the paint-op rewrite cannot reach. Soft masks and matte
-     * references follow the image; non-8-bit samples and stencils stay untouched.
+     * CMYK-family images — the picture the paint-op rewrite cannot reach. Explicit masks and
+     * matte-free soft masks follow the image; colour-key masks, matte-bearing soft masks, non-8-bit
+     * samples, stencils and images over {@link #MAX_REMAP_BYTES} stay untouched.
      */
     private static boolean convertSpotImages(PDDocument document) {
         Map<COSBase, PDImageXObject> images = new LinkedHashMap<>();
@@ -288,17 +294,30 @@ public final class PreflightFixer {
         if (tint == null || !PreflightStreamFixer.isCmykSpace(alternate)) {
             return null;
         }
+        COSDictionary srcDict =
+                dereference(image.getCOSObject()) instanceof COSDictionary dict ? dict : null;
+        if (srcDict != null && maskOrMatteBlocksConversion(srcDict)) {
+            return null;
+        }
         int w = image.getWidth();
         int h = image.getHeight();
         int comps = cs.getNumberOfComponents();
-        byte[] raw;
-        try (InputStream in = image.getCOSObject().createInputStream()) {
-            raw = in.readAllBytes();
-        }
-        if (raw.length < (long) w * h * comps) {
+        int outComps = alternate.getNumberOfComponents();
+        long pixels = (long) w * h;
+        // Bounded before decoding: otherwise input array, output array and tuple memo of a huge
+        // photo compound into a heap-exhausting allocation the per-image catch cannot contain.
+        if (pixels <= 0 || pixels > MAX_REMAP_BYTES / (comps + outComps)) {
             return null;
         }
-        byte[] out = remapSpotSamples(image, raw, comps, tint, alternate.getNumberOfComponents());
+        int expected = (int) (pixels * comps);
+        byte[] raw;
+        try (InputStream in = image.getCOSObject().createInputStream()) {
+            raw = in.readNBytes(expected);
+        }
+        if (raw.length < expected) {
+            return null;
+        }
+        byte[] out = remapSpotSamples(image, raw, comps, tint, outComps);
         if (out == null) {
             return null;
         }
@@ -306,9 +325,28 @@ public final class PreflightFixer {
     }
 
     /**
+     * What the sample remap cannot carry over: a colour-key {@code /Mask} array's ranges index
+     * samples of the old colour space, and a {@code /Matte} — declared on the image or on its soft
+     * mask — is expressed in the parent spot space, which the non-linear tint transform cannot
+     * re-map. Both keep the image unconverted rather than corrupt its transparency.
+     */
+    private static boolean maskOrMatteBlocksConversion(COSDictionary imageDict) {
+        COSBase mask = dereference(imageDict.getItem(COSName.MASK));
+        if (mask != null && !(mask instanceof COSStream)) {
+            return true;
+        }
+        if (imageDict.getItem(COSName.MATTE) != null) {
+            return true;
+        }
+        return dereference(imageDict.getItem(COSName.SMASK)) instanceof COSDictionary smask
+                && smask.getItem(COSName.MATTE) != null;
+    }
+
+    /**
      * Per-pixel tint-transform remap. {@code /Decode} ranges are applied first so inverted or
      * narrowed sample scales stay honest. Separations go through a 256-entry LUT; DeviceN caches
-     * per input tuple — neither pays a function eval per pixel.
+     * per input tuple, capped at {@link #MAX_TUPLE_CACHE_ENTRIES} — typical spot art has few
+     * distinct tuples, so neither pays a function eval per pixel.
      */
     private static byte[] remapSpotSamples(
             PDImageXObject image, byte[] raw, int comps, PDFunction tint, int outComps)
@@ -351,7 +389,9 @@ public final class PreflightFixer {
             byte[] conv = comps <= 8 ? cache.get(key) : null;
             if (conv == null) {
                 conv = quantize(tint.eval(input), outComps);
-                if (comps <= 8) {
+                // A photo mints a fresh tuple per pixel: past the cap the input degrades to
+                // per-pixel evals instead of growing the memo with the image area.
+                if (comps <= 8 && cache.size() < MAX_TUPLE_CACHE_ENTRIES) {
                     cache.put(key, conv);
                 }
             }
@@ -388,9 +428,13 @@ public final class PreflightFixer {
         COSBase src = srcObj instanceof COSObject ref ? ref.getObject() : srcObj;
         if (src instanceof COSDictionary srcDict) {
             copyEntry(srcDict, dict, COSName.SMASK);
-            copyEntry(srcDict, dict, COSName.MASK);
-            copyEntry(srcDict, dict, COSName.MATTE);
             copyEntry(srcDict, dict, COSName.INTERPOLATE);
+            // An explicit mask survives: its bits address pixels, not samples. A colour-key array
+            // would index the old colour space — such images are declined before remap — and a
+            // matte can never stay valid through a non-linear tint transform.
+            if (dereference(srcDict.getItem(COSName.MASK)) instanceof COSStream) {
+                copyEntry(srcDict, dict, COSName.MASK);
+            }
         }
         try (java.io.OutputStream out = stream.createOutputStream(COSName.FLATE_DECODE)) {
             out.write(samples);
