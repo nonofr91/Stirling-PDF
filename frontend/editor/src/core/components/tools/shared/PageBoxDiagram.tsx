@@ -81,6 +81,7 @@ const PageBoxDiagram = ({
         component="div"
         style={{ display: "flex", justifyContent: "center" }}
       >
+        {/* icon-lint-allow: runtime-generated-svg -- box rects are computed from the PDF page boxes */}
         <svg
           width={width}
           height={height}
