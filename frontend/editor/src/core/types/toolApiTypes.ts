@@ -251,6 +251,11 @@ export interface AutoSplitPdfRequest {
    */
   duplexMode?: boolean;
 }
+export interface BatchAttachmentRequest {
+  attachments?: File[];
+  convertToPdfA3b?: boolean;
+  opsJson?: string;
+}
 export interface BookletImpositionRequest {
   /**
    * Boolean for if you wish to add border around the pages
@@ -418,17 +423,9 @@ export interface CropPdfForm {
    */
   autoCrop?: boolean;
   /**
-   * Crop each page to the named page box instead of explicit x/y/width/height. Ignored when autoCrop is true
-   */
-  cropToBox?: boolean;
-  /**
    * The height of the crop area
    */
   height?: number;
-  /**
-   * Page box used as the crop area when cropToBox is true. Pages without that box fall back to their MediaBox
-   */
-  pageBox?: "MEDIA_BOX" | "CROP_BOX" | "TRIM_BOX" | "BLEED_BOX" | "ART_BOX";
   /**
    * Pages to crop (e.g. '1, 3, 5-8' or 'all'). Omit or leave blank for all pages.
    */
@@ -449,92 +446,6 @@ export interface CropPdfForm {
    * The y-coordinate of the top-left corner of the crop area
    */
   y?: number;
-}
-export interface CutContourRequest {
-  /**
-   * Matting model id for AI mode; blank selects the catalog default (u2net)
-   */
-  aiModelId?: string;
-  /**
-   * Confidence threshold applied to AI masks, 0..1
-   */
-  aiThreshold?: number;
-  /**
-   * Alpha threshold 0-255; pixels more transparent than this are background
-   */
-  alphaThreshold?: number;
-  /**
-   * Comma-separated sources AUTO tries in order (subset of ALPHA,BACKGROUND,AI)
-   */
-  autoOrder?: string;
-  /**
-   * BACKGROUND mode: per-channel RGB distance from the page-edge colour that still counts as background
-   */
-  backgroundTolerance?: number;
-  /**
-   * Millimetres of bleed painted beyond the cut line by repeating edge pixels (irregular-contour bleed); 0 disables
-   */
-  bleedMm?: number;
-  /**
-   * Replace page content with the artwork clipped to the cut path. When false (default) the original PDF content stays untouched and only the CutContour layer is added
-   */
-  clipArtwork?: boolean;
-  /**
-   * Mask render resolution in dpi; large pages are clamped to a memory budget
-   */
-  dpi?: number;
-  /**
-   * How the subject silhouette is extracted. ALPHA uses existing transparency, BACKGROUND flood-fills a uniform background from the page edges, AI runs subject matting (ONNX model required), AUTO tries the sources in autoOrder
-   */
-  extractionMode?: "ALPHA" | "BACKGROUND" | "AI" | "AUTO";
-  /**
-   * Keep fully enclosed holes (the counter of an 'o') as inner cut contours
-   */
-  keepHoles?: boolean;
-  /**
-   * Optional-content layer name; blank defaults to the spot name
-   */
-  layerName?: string;
-  /**
-   * Artwork elements separated by less than this gap (mm) merge under a single outer cut contour; 0 keeps every piece separate
-   */
-  mergeGapMm?: number;
-  /**
-   * Connected components smaller than this area (mm²) are dropped as noise
-   */
-  minAreaMm2?: number;
-  /**
-   * Distance the cut path is moved outward from the silhouette in millimetres (negative moves it inside)
-   */
-  offsetMm?: number;
-  /**
-   * Tag the cut layer with ISO 19593-1 processing-step metadata (Structural/Cutting) and suppress it in print output
-   */
-  processingSteps?: boolean;
-  /**
-   * Optional rough perimeter drawn by the user, as flat x,y pairs in page fractions (top-left origin), e.g. "0.1,0.2,0.9,0.2,0.9,0.9,0.1,0.9". The ring inside the polygon provides the background reference and the cut stays bounded by it
-   */
-  roi?: string;
-  /**
-   * 1-based page the roi applies to; 0 or unset applies it to every page
-   */
-  roiPage?: number;
-  /**
-   * 0..100: higher values simplify harder and apply more smoothing passes to the traced contour
-   */
-  smoothness?: number;
-  /**
-   * Spot colour name the RIP keys on. Case-sensitive; keep 'CutContour' unless the shop specifies a different colourant
-   */
-  spotName?: string;
-  /**
-   * Cut stroke width in points
-   */
-  strokeWidthPt?: number;
-  /**
-   * Set TrimBox to the contour bounding box (BleedBox follows the bleed when bleedMm is positive)
-   */
-  trimToContour?: boolean;
 }
 export interface DeleteAttachmentRequest {
   /**
@@ -634,6 +545,12 @@ export interface ExtractImageScansRequest {
    */
   tolerance?: number;
 }
+export interface ExtractSingleAttachmentRequest {
+  /**
+   * Name of the embedded attachment to extract
+   */
+  attachmentName: string;
+}
 export interface FileSizeRequest {
   /**
    * The comparison type, accepts Greater, Equal, Less than
@@ -660,7 +577,9 @@ export interface FormFormDetectionDetectRequest {
   confThreshold?: number;
 }
 export type GeneralExtractBookmarksRequest = Record<string, never>;
-export type GeneralFile = Record<string, never>;
+export interface GeneralFile {
+  useStirlingOfficeConvert?: boolean;
+}
 export type GeneralPdfToSinglePageRequest = Record<string, never>;
 export type GeneralRemoveImagePdfRequest = Record<string, never>;
 export interface HTMLToPdfRequest {
@@ -910,7 +829,6 @@ export interface MetadataRequest {
 export type MiscDecompressPdfRequest = Record<string, never>;
 export type MiscRepairRequest = Record<string, never>;
 export type MiscShowJavascriptRequest = Record<string, never>;
-export type MiscTextToOutlinesRequest = Record<string, never>;
 export type MiscUnlockPdfFormsRequest = Record<string, never>;
 export interface OptimizePdfRequest {
   /**
@@ -1103,18 +1021,21 @@ export interface PdfToPresentationRequest {
    * The output Presentation format
    */
   outputFormat: "ppt" | "pptx" | "odp";
+  useStirlingOfficeConvert?: boolean;
 }
 export interface PdfToTextOrRTFRequest {
   /**
    * The output Text or RTF format
    */
   outputFormat: "rtf" | "txt";
+  useStirlingOfficeConvert?: boolean;
 }
 export interface PdfToWordRequest {
   /**
    * The output Word document format
    */
   outputFormat: "doc" | "docx" | "odt";
+  useStirlingOfficeConvert?: boolean;
 }
 export interface PdfVectorExportRequest {
   /**
@@ -1148,135 +1069,6 @@ export interface PosterPdfRequest {
    * Vertical decimation factor (how many rows to split into)
    */
   yFactor?: number;
-}
-export interface PrintPreflightProfile {
-  /**
-   * Shipped with the application — true for built-ins, ignored on save
-   */
-  builtin?: boolean;
-  /**
-   * Render each page and check the bleed band is actually painted
-   */
-  checkBleedCoverage?: boolean;
-  /**
-   * Human-readable summary shown in the profile picker
-   */
-  description?: string;
-  /**
-   * Finding codes to skip entirely
-   */
-  disabledChecks?: string[];
-  /**
-   * Fixup codes to apply; "NONE" disables all fixups
-   */
-  fixups?: string[];
-  /**
-   * Strokes thinner than this width in points are reported as hairlines
-   */
-  hairlineThresholdPt?: number;
-  /**
-   * Prepend summary pages to the annotated PDF
-   */
-  includeSummaryPage?: boolean;
-  /**
-   * Images rendered above this effective resolution are reported as oversampled
-   */
-  maxImageDpi?: number;
-  /**
-   * Painted colours whose total ink coverage exceeds this percentage are reported
-   */
-  maxInkCoveragePercent?: number;
-  /**
-   * More spot separations than this are reported; 0 disables the limit
-   */
-  maxSpotCount?: number;
-  /**
-   * Text rendered smaller than this size in points is reported
-   */
-  minFontSizePt?: number;
-  /**
-   * 1-bit images rendered below this effective resolution are reported
-   */
-  minImage1BitDpi?: number;
-  /**
-   * Images rendered below this effective resolution are reported
-   */
-  minImageDpi?: number;
-  /**
-   * Unique profile name — the key used in profileName
-   */
-  name?: string;
-  /**
-   * Bleed width in millimetres required on every side beyond the TrimBox
-   */
-  requiredBleedMm?: number;
-  /**
-   * Content closer than this distance in millimetres to the trim edge is reported
-   */
-  safetyMarginMm?: number;
-}
-export interface PrintPreflightRequest {
-  /**
-   * Render each page and check the bleed band between TrimBox and BleedBox is actually painted, so trimming cannot reveal white
-   */
-  checkBleedCoverage?: boolean;
-  /**
-   * Finding codes to skip (e.g. SAFETY_MARGIN, INK_COVERAGE_HIGH); empty runs every check
-   */
-  disabledChecks?: string[];
-  /**
-   * Fixup codes to apply on the print-preflight-fix endpoint (e.g. EXTEND_BLEED, FLATTEN_FORM, REMOVE_JAVASCRIPT); empty or absent applies every supported fixup that has something to correct, the sentinel NONE applies none
-   */
-  fixups?: string[];
-  /**
-   * Strokes thinner than this width in points are reported as hairlines at risk of disappearing in print
-   */
-  hairlineThresholdPt?: number;
-  iccProfile?: File;
-  /**
-   * Prepend summary pages (verdict, document facts, fonts, colours, findings) to the annotated PDF
-   */
-  includeSummaryPage?: boolean;
-  /**
-   * Images rendered above this effective resolution are reported as oversampled — heavier than print can use
-   */
-  maxImageDpi?: number;
-  /**
-   * Painted colours whose total ink coverage exceeds this percentage are reported — drying and registration problems above ~320% in offset
-   */
-  maxInkCoveragePercent?: number;
-  /**
-   * More spot separations than this are reported — each plate costs makeready; 0 disables the limit
-   */
-  maxSpotCount?: number;
-  /**
-   * Text rendered smaller than this size in points is reported as too small to print reliably
-   */
-  minFontSizePt?: number;
-  /**
-   * 1-bit (bitmap) images rendered below this effective resolution are reported — line art needs far more resolution than continuous tone
-   */
-  minImage1BitDpi?: number;
-  /**
-   * Images rendered below this effective resolution are reported as low resolution
-   */
-  minImageDpi?: number;
-  /**
-   * Named preflight profile to run with — the profile supplies every threshold, fixups and disabledChecks; request-level parameters for those are ignored. Built-ins ship with the app, customs live in configs/preflight-profiles.json
-   */
-  profileName?: string;
-  /**
-   * BCP-47 tag for the language of generated report text and finding messages (e.g. fr-FR); falls back to the session locale, then English
-   */
-  reportLanguage?: string;
-  /**
-   * Bleed width in millimetres required on every side beyond the TrimBox
-   */
-  requiredBleedMm?: number;
-  /**
-   * Content inside the trim but closer than this distance in millimetres to the trim edge is reported as at risk of being cut off
-   */
-  safetyMarginMm?: number;
 }
 export interface ProcessPdfWithOcrRequest {
   /**
@@ -1539,10 +1331,6 @@ export interface ScalePagesRequest {
    */
   orientation?: "PORTRAIT" | "LANDSCAPE";
   /**
-   * Page box each source page is measured from when computing the scale. Pages without that box fall back to their MediaBox
-   */
-  pageBox?: "MEDIA_BOX" | "CROP_BOX" | "TRIM_BOX" | "BLEED_BOX" | "ART_BOX";
-  /**
    * The scale of pages in the output PDF. Acceptable values are A0-A6, LETTER, LEGAL, KEEP.
    */
   pageSize:
@@ -1630,104 +1418,16 @@ export interface WorkflowCreationRequest {
   workflowType?: "SIGNING" | "REVIEW" | "APPROVAL";
 }
 export interface SecurityCertSignValidateCertificateRequest {
+  certFile?: File;
   certType: string;
   jksFile?: File;
   p12File?: File;
   password?: string;
+  privateKeyFile?: File;
 }
 export type SecurityGetInfoOnPdfRequest = Record<string, never>;
 export type SecurityRemoveCertSignRequest = Record<string, never>;
 export type SecurityValidateComplianceRequest = Record<string, never>;
-export interface SetPageBoxesRequest {
-  /**
-   * Draw crop marks at the TrimBox corners, in the slug area beyond the bleed
-   */
-  addCropMarks?: boolean;
-  /**
-   * ArtBox as "x,y,width,height" in points, applied to every page
-   */
-  artBox?: string;
-  /**
-   * Bleed width in millimetres on the bottom edge. Negative falls back to bleedMm
-   */
-  bleedBottomMm?: number;
-  /**
-   * BleedBox as "x,y,width,height" in points, applied to every page
-   */
-  bleedBox?: string;
-  /**
-   * Generate bleed in the corners in addition to the edges
-   */
-  bleedCorners?: boolean;
-  /**
-   * Render resolution used by MIRROR_IMAGE and PIXEL_REPEAT
-   */
-  bleedDpi?: number;
-  /**
-   * Skip this many millimetres of content inside the trim edge before mirroring, to jump over an inner white margin
-   */
-  bleedInsetMm?: number;
-  /**
-   * Bleed width in millimetres on the left edge. Negative falls back to bleedMm
-   */
-  bleedLeftMm?: number;
-  /**
-   * How bleed content is generated. MIRROR reflects the page's vector content across the trim edge (lossless). MIRROR_IMAGE mirrors a rendered strip (robust on shadings/transparency). PIXEL_REPEAT stretches the last edge pixel (safer when text touches the trim edge). UPSCALE enlarges the page content until it covers the BleedBox (final printed size shrinks slightly)
-   */
-  bleedMethod?: "MIRROR" | "MIRROR_IMAGE" | "PIXEL_REPEAT" | "UPSCALE";
-  /**
-   * BleedBox expanded by this many millimetres around the resolved TrimBox on every page. Ignored when bleedBox is set
-   */
-  bleedMm?: number;
-  /**
-   * Bleed width in millimetres on the right edge. Negative falls back to bleedMm
-   */
-  bleedRightMm?: number;
-  /**
-   * Bleed width in millimetres on the top edge. Negative falls back to bleedMm
-   */
-  bleedTopMm?: number;
-  /**
-   * Copy the MediaBox into any of CropBox/TrimBox/BleedBox/ArtBox still unset after the other parameters are applied
-   */
-  copyMissingFromMediaBox?: boolean;
-  /**
-   * CropBox as "x,y,width,height" in points, applied to every page
-   */
-  cropBox?: string;
-  /**
-   * Crop mark length in millimetres
-   */
-  cropMarkLengthMm?: number;
-  /**
-   * Gap in millimetres between the trim edge and where each crop mark starts
-   */
-  cropMarkOffsetMm?: number;
-  /**
-   * Crop mark stroke width in points
-   */
-  cropMarkWeightPt?: number;
-  /**
-   * Derive the TrimBox from crop marks painted on the page (like pdfToolbox's derive geometry fixup). Used only when no explicit trimBox or trimMarginMm resolves a trim; fails the page when the mark layout is absent or ambiguous
-   */
-  deriveFromCropMarks?: boolean;
-  /**
-   * Paint real bleed content between TrimBox and BleedBox on every page (mirrored or repeated edge content), so trimming leaves no white edge. Requires a positive bleedMm or per-side amount, or an explicit bleedBox larger than the trim
-   */
-  generateBleed?: boolean;
-  /**
-   * MediaBox as "x,y,width,height" in points, applied to every page
-   */
-  mediaBox?: string;
-  /**
-   * TrimBox as "x,y,width,height" in points, applied to every page
-   */
-  trimBox?: string;
-  /**
-   * TrimBox set to the MediaBox shrunk by this margin in millimetres on every side. Ignored when trimBox is set
-   */
-  trimMarginMm?: number;
-}
 export interface SignPDFWithCertRequest {
   /**
    * The alias of the certificate to sign with. Required for WINDOWS_STORE and recommended for PKCS11 tokens holding multiple certificates.
@@ -1912,8 +1612,6 @@ export type ToolEndpoint =
   | "/api/v1/form/form-detection/detect"
   | "/api/v1/general/booklet-imposition"
   | "/api/v1/general/crop"
-  | "/api/v1/general/cut-contour"
-  | "/api/v1/general/cut-contour-preview"
   | "/api/v1/general/edit-table-of-contents"
   | "/api/v1/general/edit-text"
   | "/api/v1/general/extract-bookmarks"
@@ -1927,7 +1625,6 @@ export type ToolEndpoint =
   | "/api/v1/general/remove-pages"
   | "/api/v1/general/rotate-pdf"
   | "/api/v1/general/scale-pages"
-  | "/api/v1/general/set-page-boxes"
   | "/api/v1/general/split-by-size-or-count"
   | "/api/v1/general/split-for-poster-print"
   | "/api/v1/general/split-pages"
@@ -1944,6 +1641,7 @@ export type ToolEndpoint =
   | "/api/v1/misc/auto-rename"
   | "/api/v1/misc/auto-rotate-pdf"
   | "/api/v1/misc/auto-split-pdf"
+  | "/api/v1/misc/batch-process-attachments"
   | "/api/v1/misc/compress-pdf"
   | "/api/v1/misc/create-portfolio"
   | "/api/v1/misc/decompress-pdf"
@@ -1951,6 +1649,7 @@ export type ToolEndpoint =
   | "/api/v1/misc/extract-attachments"
   | "/api/v1/misc/extract-image-scans"
   | "/api/v1/misc/extract-images"
+  | "/api/v1/misc/extract-single-attachment"
   | "/api/v1/misc/flatten"
   | "/api/v1/misc/flatten-portfolio"
   | "/api/v1/misc/list-attachments"
@@ -1961,7 +1660,6 @@ export type ToolEndpoint =
   | "/api/v1/misc/replace-invert-pdf"
   | "/api/v1/misc/scanner-effect"
   | "/api/v1/misc/show-javascript"
-  | "/api/v1/misc/text-to-outlines"
   | "/api/v1/misc/unlock-pdf-forms"
   | "/api/v1/misc/update-metadata"
   | "/api/v1/security/accessibility-report"
@@ -1973,11 +1671,6 @@ export type ToolEndpoint =
   | "/api/v1/security/cert-sign/sessions"
   | "/api/v1/security/cert-sign/validate-certificate"
   | "/api/v1/security/get-info-on-pdf"
-  | "/api/v1/security/print-preflight"
-  | "/api/v1/security/print-preflight-annotated"
-  | "/api/v1/security/print-preflight-fix"
-  | "/api/v1/security/print-preflight-profiles"
-  | "/api/v1/security/print-preflight-report"
   | "/api/v1/security/redact"
   | "/api/v1/security/redact-execute"
   | "/api/v1/security/remove-cert-sign"
@@ -2030,8 +1723,6 @@ export interface ToolApiParams {
   "/api/v1/form/form-detection/detect": FormFormDetectionDetectRequest;
   "/api/v1/general/booklet-imposition": BookletImpositionRequest;
   "/api/v1/general/crop": CropPdfForm;
-  "/api/v1/general/cut-contour": CutContourRequest;
-  "/api/v1/general/cut-contour-preview": CutContourRequest;
   "/api/v1/general/edit-table-of-contents": EditTableOfContentsRequest;
   "/api/v1/general/edit-text": EditTextRequest;
   "/api/v1/general/extract-bookmarks": GeneralExtractBookmarksRequest;
@@ -2045,7 +1736,6 @@ export interface ToolApiParams {
   "/api/v1/general/remove-pages": PDFWithPageNums;
   "/api/v1/general/rotate-pdf": RotatePDFRequest;
   "/api/v1/general/scale-pages": ScalePagesRequest;
-  "/api/v1/general/set-page-boxes": SetPageBoxesRequest;
   "/api/v1/general/split-by-size-or-count": SplitPdfBySizeOrCountRequest;
   "/api/v1/general/split-for-poster-print": PosterPdfRequest;
   "/api/v1/general/split-pages": SplitPagesRequest;
@@ -2062,6 +1752,7 @@ export interface ToolApiParams {
   "/api/v1/misc/auto-rename": ExtractHeaderRequest;
   "/api/v1/misc/auto-rotate-pdf": AutoRotatePdfRequest;
   "/api/v1/misc/auto-split-pdf": AutoSplitPdfRequest;
+  "/api/v1/misc/batch-process-attachments": BatchAttachmentRequest;
   "/api/v1/misc/compress-pdf": OptimizePdfRequest;
   "/api/v1/misc/create-portfolio": CreatePortfolioRequest;
   "/api/v1/misc/decompress-pdf": MiscDecompressPdfRequest;
@@ -2069,6 +1760,7 @@ export interface ToolApiParams {
   "/api/v1/misc/extract-attachments": ExtractAttachmentsRequest;
   "/api/v1/misc/extract-image-scans": ExtractImageScansRequest;
   "/api/v1/misc/extract-images": PDFExtractImagesRequest;
+  "/api/v1/misc/extract-single-attachment": ExtractSingleAttachmentRequest;
   "/api/v1/misc/flatten": FlattenRequest;
   "/api/v1/misc/flatten-portfolio": FlattenPortfolioRequest;
   "/api/v1/misc/list-attachments": ListAttachmentsRequest;
@@ -2079,7 +1771,6 @@ export interface ToolApiParams {
   "/api/v1/misc/replace-invert-pdf": ReplaceAndInvertColorRequest;
   "/api/v1/misc/scanner-effect": ScannerEffectRequest;
   "/api/v1/misc/show-javascript": MiscShowJavascriptRequest;
-  "/api/v1/misc/text-to-outlines": MiscTextToOutlinesRequest;
   "/api/v1/misc/unlock-pdf-forms": MiscUnlockPdfFormsRequest;
   "/api/v1/misc/update-metadata": MetadataRequest;
   "/api/v1/security/accessibility-report": AccessibilityReportRequest;
@@ -2091,11 +1782,6 @@ export interface ToolApiParams {
   "/api/v1/security/cert-sign/sessions": SecurityCertSignSessionsRequest;
   "/api/v1/security/cert-sign/validate-certificate": SecurityCertSignValidateCertificateRequest;
   "/api/v1/security/get-info-on-pdf": SecurityGetInfoOnPdfRequest;
-  "/api/v1/security/print-preflight": PrintPreflightRequest;
-  "/api/v1/security/print-preflight-annotated": PrintPreflightRequest;
-  "/api/v1/security/print-preflight-fix": PrintPreflightRequest;
-  "/api/v1/security/print-preflight-profiles": PrintPreflightProfile;
-  "/api/v1/security/print-preflight-report": PrintPreflightRequest;
   "/api/v1/security/redact": ManualRedactPdfRequest;
   "/api/v1/security/redact-execute": RedactExecuteRequest;
   "/api/v1/security/remove-cert-sign": SecurityRemoveCertSignRequest;
@@ -2149,8 +1835,6 @@ export const TOOL_ENDPOINTS = [
   "/api/v1/form/form-detection/detect",
   "/api/v1/general/booklet-imposition",
   "/api/v1/general/crop",
-  "/api/v1/general/cut-contour",
-  "/api/v1/general/cut-contour-preview",
   "/api/v1/general/edit-table-of-contents",
   "/api/v1/general/edit-text",
   "/api/v1/general/extract-bookmarks",
@@ -2164,7 +1848,6 @@ export const TOOL_ENDPOINTS = [
   "/api/v1/general/remove-pages",
   "/api/v1/general/rotate-pdf",
   "/api/v1/general/scale-pages",
-  "/api/v1/general/set-page-boxes",
   "/api/v1/general/split-by-size-or-count",
   "/api/v1/general/split-for-poster-print",
   "/api/v1/general/split-pages",
@@ -2181,6 +1864,7 @@ export const TOOL_ENDPOINTS = [
   "/api/v1/misc/auto-rename",
   "/api/v1/misc/auto-rotate-pdf",
   "/api/v1/misc/auto-split-pdf",
+  "/api/v1/misc/batch-process-attachments",
   "/api/v1/misc/compress-pdf",
   "/api/v1/misc/create-portfolio",
   "/api/v1/misc/decompress-pdf",
@@ -2188,6 +1872,7 @@ export const TOOL_ENDPOINTS = [
   "/api/v1/misc/extract-attachments",
   "/api/v1/misc/extract-image-scans",
   "/api/v1/misc/extract-images",
+  "/api/v1/misc/extract-single-attachment",
   "/api/v1/misc/flatten",
   "/api/v1/misc/flatten-portfolio",
   "/api/v1/misc/list-attachments",
@@ -2198,7 +1883,6 @@ export const TOOL_ENDPOINTS = [
   "/api/v1/misc/replace-invert-pdf",
   "/api/v1/misc/scanner-effect",
   "/api/v1/misc/show-javascript",
-  "/api/v1/misc/text-to-outlines",
   "/api/v1/misc/unlock-pdf-forms",
   "/api/v1/misc/update-metadata",
   "/api/v1/security/accessibility-report",
@@ -2210,11 +1894,6 @@ export const TOOL_ENDPOINTS = [
   "/api/v1/security/cert-sign/sessions",
   "/api/v1/security/cert-sign/validate-certificate",
   "/api/v1/security/get-info-on-pdf",
-  "/api/v1/security/print-preflight",
-  "/api/v1/security/print-preflight-annotated",
-  "/api/v1/security/print-preflight-fix",
-  "/api/v1/security/print-preflight-profiles",
-  "/api/v1/security/print-preflight-report",
   "/api/v1/security/redact",
   "/api/v1/security/redact-execute",
   "/api/v1/security/remove-cert-sign",
@@ -2232,6 +1911,7 @@ export const TOOL_FILE_FIELDS = {
   "/api/v1/misc/add-attachments": ["attachments"],
   "/api/v1/misc/add-image": ["imageFile"],
   "/api/v1/misc/add-stamp": ["stampImage"],
+  "/api/v1/misc/batch-process-attachments": ["attachments"],
   "/api/v1/misc/create-portfolio": ["files"],
   "/api/v1/security/add-watermark": ["watermarkImage"],
   "/api/v1/security/cert-sign": [
@@ -2240,11 +1920,12 @@ export const TOOL_FILE_FIELDS = {
     "p12File",
     "jksFile",
   ],
-  "/api/v1/security/cert-sign/validate-certificate": ["p12File", "jksFile"],
-  "/api/v1/security/print-preflight": ["iccProfile"],
-  "/api/v1/security/print-preflight-annotated": ["iccProfile"],
-  "/api/v1/security/print-preflight-fix": ["iccProfile"],
-  "/api/v1/security/print-preflight-report": ["iccProfile"],
+  "/api/v1/security/cert-sign/validate-certificate": [
+    "p12File",
+    "privateKeyFile",
+    "certFile",
+    "jksFile",
+  ],
   "/api/v1/security/validate-signature": ["certFile"],
 } as const satisfies Partial<Record<ToolEndpoint, readonly string[]>>;
 
