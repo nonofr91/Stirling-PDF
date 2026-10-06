@@ -8,10 +8,12 @@ import {
 
 const ENDPOINT = "/api/v1/security/print-preflight-profiles";
 
+export type PreflightProfileError = "load" | "save" | "delete";
+
 export interface PreflightProfilesHook {
   profiles: PrintPreflightProfile[];
   loading: boolean;
-  error: string | null;
+  error: PreflightProfileError | null;
   refresh: () => Promise<void>;
   saveProfile: (
     name: string,
@@ -89,7 +91,7 @@ export function usePreflightProfiles(): PreflightProfilesHook {
       setProfiles(response.data);
       setError(null);
     } catch {
-      setError("profiles.loadFailed");
+      setError("load");
     } finally {
       setLoading(false);
     }
@@ -113,7 +115,7 @@ export function usePreflightProfiles(): PreflightProfilesHook {
         await refresh();
         return true;
       } catch {
-        setError("profiles.saveFailed");
+        setError("save");
         return false;
       }
     },
@@ -127,7 +129,7 @@ export function usePreflightProfiles(): PreflightProfilesHook {
         await refresh();
         return true;
       } catch {
-        setError("profiles.deleteFailed");
+        setError("delete");
         return false;
       }
     },

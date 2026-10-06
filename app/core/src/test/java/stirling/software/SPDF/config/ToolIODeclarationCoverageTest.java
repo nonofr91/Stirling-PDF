@@ -69,7 +69,9 @@ class ToolIODeclarationCoverageTest {
                     "/api/v1/security/cert-sign/hardware",
                     // Releases finished jobs and their stored files; server maintenance, takes and
                     // returns no document.
-                    "/api/v1/general/jobs/cleanup");
+                    "/api/v1/general/jobs/cleanup",
+                    // Profile CRUD: stores named parameter sets, transforms nothing itself.
+                    "/api/v1/security/print-preflight-profiles");
 
     private record Scan(Set<String> required, Map<String, ToolIOSpec> declared) {}
 

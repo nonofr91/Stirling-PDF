@@ -154,9 +154,28 @@ const PrintPreflightSettings = ({
         )}
       </Group>
 
-      {error && (
+      {error === "load" && (
         <Text size="xs" c="red">
-          {t(`printPreflight.${error}`, error)}
+          {t(
+            "printPreflight.profiles.loadFailed",
+            "Profiles could not be loaded",
+          )}
+        </Text>
+      )}
+      {error === "save" && (
+        <Text size="xs" c="red">
+          {t(
+            "printPreflight.profiles.saveFailed",
+            "The profile could not be saved",
+          )}
+        </Text>
+      )}
+      {error === "delete" && (
+        <Text size="xs" c="red">
+          {t(
+            "printPreflight.profiles.deleteFailed",
+            "The profile could not be deleted",
+          )}
         </Text>
       )}
 
