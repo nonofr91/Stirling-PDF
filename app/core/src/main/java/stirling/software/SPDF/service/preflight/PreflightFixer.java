@@ -26,11 +26,15 @@ import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDResources;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.common.PDStream;
+import org.apache.pdfbox.pdmodel.common.function.PDFunction;
 import org.apache.pdfbox.pdmodel.graphics.PDXObject;
+import org.apache.pdfbox.pdmodel.graphics.color.PDColorSpace;
 import org.apache.pdfbox.pdmodel.graphics.color.PDDeviceGray;
+import org.apache.pdfbox.pdmodel.graphics.color.PDDeviceN;
 import org.apache.pdfbox.pdmodel.graphics.color.PDDeviceRGB;
 import org.apache.pdfbox.pdmodel.graphics.color.PDICCBased;
 import org.apache.pdfbox.pdmodel.graphics.color.PDOutputIntent;
+import org.apache.pdfbox.pdmodel.graphics.color.PDSeparation;
 import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
 import org.apache.pdfbox.pdmodel.graphics.image.JPEGFactory;
 import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
@@ -65,6 +69,11 @@ public final class PreflightFixer {
 
     private static final float MM_TO_POINTS = 72f / 25.4f;
     private static final float JPEG_QUALITY = 0.9f;
+
+    /** Decoded input plus converted output sample bytes one image remap may hold at once. */
+    private static final long MAX_REMAP_BYTES = 256L * 1024 * 1024;
+
+    private static final int MAX_TUPLE_CACHE_ENTRIES = 1 << 16;
 
     public enum Code {
         REMOVE_JAVASCRIPT,
@@ -172,6 +181,13 @@ public final class PreflightFixer {
                         document, streamWanted, request.getMaxInkCoveragePercent())) {
             streamWanted.forEach(code -> applied.add(code.name()));
         }
+        // Spot image XObjects follow the paint-op rewrite: their pixels live behind a `Do`, out
+        // of the token pass's reach, and get remapped through the document's own tint transform.
+        if (wanted.contains(Code.SPOT_TO_CMYK)
+                && convertSpotImages(document)
+                && !applied.contains(Code.SPOT_TO_CMYK.name())) {
+            applied.add(Code.SPOT_TO_CMYK.name());
+        }
         // Clip runs after every geometry fixup has settled (boxes, bleed), and only when the
         // analysis saw paint out there — a clean page keeps its original content stream untouched.
         if (wanted.contains(Code.CLIP_TO_CROPBOX)
@@ -204,6 +220,233 @@ public final class PreflightFixer {
         }
         wanted.removeIf(code -> !findings.contains(GS_FIXUP_FINDINGS.get(code)));
         return wanted;
+    }
+
+    /**
+     * Spot-coloured image XObjects (Separation/DeviceN colour space with a CMYK-family alternate)
+     * are decoded to raw samples, remapped through the document's tint transform and re-encoded as
+     * CMYK-family images — the picture the paint-op rewrite cannot reach. Explicit masks and
+     * matte-free soft masks follow the image; colour-key masks, matte-bearing soft masks, non-8-bit
+     * samples, stencils and images over {@link #MAX_REMAP_BYTES} stay untouched.
+     */
+    private static boolean convertSpotImages(PDDocument document) {
+        Map<COSBase, PDImageXObject> images = new LinkedHashMap<>();
+        Set<COSBase> visited = new LinkedHashSet<>();
+        for (PDPage page : document.getPages()) {
+            try {
+                collectSpotImages(page.getResources(), visited, images);
+            } catch (IOException e) {
+                log.debug("Spot image scan skipped a page: {}", e.getMessage());
+            }
+        }
+        boolean changed = false;
+        for (Map.Entry<COSBase, PDImageXObject> entry : images.entrySet()) {
+            try {
+                PDImageXObject converted = convertSpotImage(document, entry.getValue());
+                if (converted != null) {
+                    changed |= replaceImageReferences(document, entry.getKey(), converted);
+                }
+            } catch (IOException | RuntimeException e) {
+                log.debug("Spot image conversion skipped an image: {}", e.getMessage());
+            }
+        }
+        return changed;
+    }
+
+    private static void collectSpotImages(
+            PDResources resources, Set<COSBase> visited, Map<COSBase, PDImageXObject> out)
+            throws IOException {
+        if (resources == null || !visited.add(resources.getCOSObject())) {
+            return;
+        }
+        for (COSName name : resources.getXObjectNames()) {
+            PDXObject xo = resources.getXObject(name);
+            if (xo instanceof PDImageXObject image && isSpotColorSpace(image)) {
+                out.putIfAbsent(image.getCOSObject(), image);
+            } else if (xo instanceof PDFormXObject form) {
+                collectSpotImages(form.getResources(), visited, out);
+            }
+        }
+        for (COSName name : resources.getPatternNames()) {
+            if (resources.getPattern(name) instanceof PDTilingPattern tiling) {
+                collectSpotImages(tiling.getResources(), visited, out);
+            }
+        }
+    }
+
+    private static boolean isSpotColorSpace(PDImageXObject image) {
+        try {
+            PDColorSpace cs = image.getColorSpace();
+            return cs instanceof PDSeparation || cs instanceof PDDeviceN;
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    private static PDImageXObject convertSpotImage(PDDocument document, PDImageXObject image)
+            throws IOException {
+        if (image.getBitsPerComponent() != 8 || image.isStencil()) {
+            return null;
+        }
+        PDColorSpace cs = image.getColorSpace();
+        PDFunction tint = PreflightStreamFixer.tintTransformOf(cs);
+        PDColorSpace alternate = PreflightStreamFixer.alternateOf(cs);
+        if (tint == null || !PreflightStreamFixer.isCmykSpace(alternate)) {
+            return null;
+        }
+        COSDictionary srcDict =
+                dereference(image.getCOSObject()) instanceof COSDictionary dict ? dict : null;
+        if (srcDict != null && maskOrMatteBlocksConversion(srcDict)) {
+            return null;
+        }
+        int w = image.getWidth();
+        int h = image.getHeight();
+        int comps = cs.getNumberOfComponents();
+        int outComps = alternate.getNumberOfComponents();
+        long pixels = (long) w * h;
+        // Bounded before decoding: otherwise input array, output array and tuple memo of a huge
+        // photo compound into a heap-exhausting allocation the per-image catch cannot contain.
+        if (pixels <= 0 || pixels > MAX_REMAP_BYTES / (comps + outComps)) {
+            return null;
+        }
+        int expected = (int) (pixels * comps);
+        byte[] raw;
+        try (InputStream in = image.getCOSObject().createInputStream()) {
+            raw = in.readNBytes(expected);
+        }
+        if (raw.length < expected) {
+            return null;
+        }
+        byte[] out = remapSpotSamples(image, raw, comps, tint, outComps);
+        if (out == null) {
+            return null;
+        }
+        return rebuildImage(document, image, out, w, h, alternate);
+    }
+
+    /**
+     * What the sample remap cannot carry over: a colour-key {@code /Mask} array's ranges index
+     * samples of the old colour space, and a {@code /Matte} — declared on the image or on its soft
+     * mask — is expressed in the parent spot space, which the non-linear tint transform cannot
+     * re-map. Both keep the image unconverted rather than corrupt its transparency.
+     */
+    private static boolean maskOrMatteBlocksConversion(COSDictionary imageDict) {
+        COSBase mask = dereference(imageDict.getItem(COSName.MASK));
+        if (mask != null && !(mask instanceof COSStream)) {
+            return true;
+        }
+        if (imageDict.getItem(COSName.MATTE) != null) {
+            return true;
+        }
+        return dereference(imageDict.getItem(COSName.SMASK)) instanceof COSDictionary smask
+                && smask.getItem(COSName.MATTE) != null;
+    }
+
+    /**
+     * Per-pixel tint-transform remap. {@code /Decode} ranges are applied first so inverted or
+     * narrowed sample scales stay honest. Separations go through a 256-entry LUT; DeviceN caches
+     * per input tuple, capped at {@link #MAX_TUPLE_CACHE_ENTRIES} — typical spot art has few
+     * distinct tuples, so neither pays a function eval per pixel.
+     */
+    private static byte[] remapSpotSamples(
+            PDImageXObject image, byte[] raw, int comps, PDFunction tint, int outComps)
+            throws IOException {
+        COSArray decode = image.getDecode();
+        float[] dMin = new float[comps];
+        float[] dMax = new float[comps];
+        java.util.Arrays.fill(dMax, 1f);
+        if (decode != null) {
+            float[] range = decode.toFloatArray();
+            for (int i = 0; i < comps && 2 * i + 1 < range.length; i++) {
+                dMin[i] = range[2 * i];
+                dMax[i] = range[2 * i + 1];
+            }
+        }
+        int pixels = raw.length / comps;
+        byte[] out = new byte[pixels * outComps];
+        if (comps == 1) {
+            byte[][] lut = new byte[256][];
+            for (int s = 0; s < 256; s++) {
+                lut[s] =
+                        quantize(
+                                tint.eval(new float[] {dMin[0] + (s / 255f) * (dMax[0] - dMin[0])}),
+                                outComps);
+            }
+            for (int p = 0; p < pixels; p++) {
+                System.arraycopy(lut[raw[p] & 0xFF], 0, out, p * outComps, outComps);
+            }
+            return out;
+        }
+        Map<Long, byte[]> cache = new java.util.HashMap<>();
+        float[] input = new float[comps];
+        for (int p = 0; p < pixels; p++) {
+            int base = p * comps;
+            long key = 0;
+            for (int i = 0; i < comps; i++) {
+                key = (key << 8) | (raw[base + i] & 0xFF);
+                input[i] = dMin[i] + (raw[base + i] & 0xFF) / 255f * (dMax[i] - dMin[i]);
+            }
+            byte[] conv = comps <= 8 ? cache.get(key) : null;
+            if (conv == null) {
+                conv = quantize(tint.eval(input), outComps);
+                // A photo mints a fresh tuple per pixel: past the cap the input degrades to
+                // per-pixel evals instead of growing the memo with the image area.
+                if (comps <= 8 && cache.size() < MAX_TUPLE_CACHE_ENTRIES) {
+                    cache.put(key, conv);
+                }
+            }
+            System.arraycopy(conv, 0, out, p * outComps, outComps);
+        }
+        return out;
+    }
+
+    private static byte[] quantize(float[] comps, int outComps) {
+        byte[] q = new byte[outComps];
+        for (int i = 0; i < outComps; i++) {
+            float v = i < comps.length ? comps[i] : 0f;
+            q[i] = (byte) Math.round(Math.max(0, Math.min(1, v)) * 255);
+        }
+        return q;
+    }
+
+    private static PDImageXObject rebuildImage(
+            PDDocument document,
+            PDImageXObject source,
+            byte[] samples,
+            int w,
+            int h,
+            PDColorSpace space)
+            throws IOException {
+        PDStream stream = new PDStream(document);
+        COSDictionary dict = stream.getCOSObject();
+        dict.setItem(COSName.SUBTYPE, COSName.IMAGE);
+        dict.setInt(COSName.WIDTH, w);
+        dict.setInt(COSName.HEIGHT, h);
+        dict.setInt(COSName.BITS_PER_COMPONENT, 8);
+        dict.setItem(COSName.COLORSPACE, space.getCOSObject());
+        COSBase srcObj = source.getCOSObject();
+        COSBase src = srcObj instanceof COSObject ref ? ref.getObject() : srcObj;
+        if (src instanceof COSDictionary srcDict) {
+            copyEntry(srcDict, dict, COSName.SMASK);
+            copyEntry(srcDict, dict, COSName.INTERPOLATE);
+            // An explicit mask survives: its bits address pixels, not samples. A colour-key array
+            // would index the old colour space — such images are declined before remap — and a
+            // matte can never stay valid through a non-linear tint transform.
+            if (dereference(srcDict.getItem(COSName.MASK)) instanceof COSStream) {
+                copyEntry(srcDict, dict, COSName.MASK);
+            }
+        }
+        try (java.io.OutputStream out = stream.createOutputStream(COSName.FLATE_DECODE)) {
+            out.write(samples);
+        }
+        return new PDImageXObject(stream, null);
+    }
+
+    private static void copyEntry(COSDictionary src, COSDictionary dst, COSName key) {
+        COSBase v = src.getItem(key);
+        if (v != null) {
+            dst.setItem(key, v);
+        }
     }
 
     private static boolean hasFinding(PrintPreflightReport report, String code) {

@@ -1027,4 +1027,358 @@ class PreflightFixerTest {
                 response.getHeaders().getFirst("X-Preflight-Fixups"),
                 "nothing outside the crop — the clip is not added");
     }
+
+    /** A 4×4 image in a PANTONE-named Separation space, tint ~0.5 on every pixel. */
+    private static byte[] spotImagePdf() throws IOException {
+        return spotImagePdf((doc, imageDict) -> {});
+    }
+
+    private static byte[] spotImagePdf(ImageDictTweak tweak) throws IOException {
+        PDDocument doc = new PDDocument();
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
+        PDSeparation sep = separation("PANTONE 300 C");
+        org.apache.pdfbox.pdmodel.common.PDStream img =
+                new org.apache.pdfbox.pdmodel.common.PDStream(doc);
+        img.getCOSObject().setItem(COSName.SUBTYPE, COSName.IMAGE);
+        img.getCOSObject().setInt(COSName.WIDTH, 4);
+        img.getCOSObject().setInt(COSName.HEIGHT, 4);
+        img.getCOSObject().setInt(COSName.BITS_PER_COMPONENT, 8);
+        img.getCOSObject().setItem(COSName.COLORSPACE, sep.getCOSObject());
+        tweak.accept(doc, img.getCOSObject());
+        try (java.io.OutputStream out = img.createOutputStream()) {
+            byte[] samples = new byte[16];
+            java.util.Arrays.fill(samples, (byte) 128);
+            out.write(samples);
+        }
+        PDImageXObject xo = new PDImageXObject(img, null);
+        if (page.getResources() == null) {
+            page.setResources(new PDResources());
+        }
+        page.getResources().put(COSName.getPDFName("ImSpot"), xo);
+        try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+            cs.drawImage(xo, 100, 100, 200, 200);
+        }
+        return toBytes(doc);
+    }
+
+    private interface ImageDictTweak {
+        void accept(PDDocument doc, COSDictionary imageDict) throws IOException;
+    }
+
+    private static PDImageXObject spotImage(PDDocument doc) throws IOException {
+        return (PDImageXObject)
+                doc.getPage(0).getResources().getXObject(COSName.getPDFName("ImSpot"));
+    }
+
+    /** A 4×4 explicit 1-bit image mask — masks by position, legal on any colour space. */
+    private static org.apache.pdfbox.pdmodel.common.PDStream imageMaskStream(PDDocument doc)
+            throws IOException {
+        org.apache.pdfbox.pdmodel.common.PDStream mask =
+                new org.apache.pdfbox.pdmodel.common.PDStream(doc);
+        mask.getCOSObject().setItem(COSName.SUBTYPE, COSName.IMAGE);
+        mask.getCOSObject().setInt(COSName.WIDTH, 4);
+        mask.getCOSObject().setInt(COSName.HEIGHT, 4);
+        mask.getCOSObject().setInt(COSName.BITS_PER_COMPONENT, 1);
+        mask.getCOSObject().setBoolean(COSName.IMAGE_MASK, true);
+        try (java.io.OutputStream out = mask.createOutputStream()) {
+            out.write(new byte[] {(byte) 0xF0, 0, 0, (byte) 0xF0});
+        }
+        return mask;
+    }
+
+    private static org.apache.pdfbox.pdmodel.common.PDStream softMaskStream(
+            PDDocument doc, boolean withMatte) throws IOException {
+        org.apache.pdfbox.pdmodel.common.PDStream smask =
+                new org.apache.pdfbox.pdmodel.common.PDStream(doc);
+        smask.getCOSObject().setItem(COSName.SUBTYPE, COSName.IMAGE);
+        smask.getCOSObject().setInt(COSName.WIDTH, 4);
+        smask.getCOSObject().setInt(COSName.HEIGHT, 4);
+        smask.getCOSObject().setInt(COSName.BITS_PER_COMPONENT, 8);
+        smask.getCOSObject().setItem(COSName.COLORSPACE, COSName.DEVICEGRAY);
+        if (withMatte) {
+            org.apache.pdfbox.cos.COSArray matte = new org.apache.pdfbox.cos.COSArray();
+            matte.add(new COSFloat(0.5f));
+            smask.getCOSObject().setItem(COSName.MATTE, matte);
+        }
+        try (java.io.OutputStream out = smask.createOutputStream()) {
+            byte[] alpha = new byte[16];
+            java.util.Arrays.fill(alpha, (byte) 0xFF);
+            out.write(alpha);
+        }
+        return smask;
+    }
+
+    @Test
+    void testSpotImageConvertedToCmyk() throws Exception {
+        byte[] pdf = spotImagePdf();
+        assertTrue(
+                findingCodes(pdf).contains("COLOR_SPOT"),
+                "baseline: the separation image flags as spot");
+
+        PrintPreflightRequest req = request(pdf);
+        req.setFixups(List.of("SPOT_TO_CMYK"));
+        ResponseEntity<Resource> response = controller.printPreflightFix(req);
+        assertEquals(List.of("SPOT_TO_CMYK"), response.getHeaders().get("X-Preflight-Fixups"));
+
+        byte[] fixed = responseBytes(response);
+        assertFalse(
+                findingCodes(fixed).contains("COLOR_SPOT"),
+                "the re-encoded image no longer counts as spot");
+        try (PDDocument d = Loader.loadPDF(fixed)) {
+            PDImageXObject img =
+                    (PDImageXObject)
+                            d.getPage(0).getResources().getXObject(COSName.getPDFName("ImSpot"));
+            assertTrue(
+                    img.getColorSpace()
+                            instanceof org.apache.pdfbox.pdmodel.graphics.color.PDDeviceCMYK,
+                    "the image moved to the separation's CMYK alternate");
+            try (java.io.InputStream in = img.getCOSObject().createInputStream()) {
+                byte[] raw = in.readAllBytes();
+                assertEquals(4 * 4 * 4, raw.length, "4×4 pixels × 4 CMYK channels");
+                // Tint 128/255 ≈ 0.502 lands on the K channel through the Type-2 tint transform.
+                assertEquals(0, raw[0] & 0xFF);
+                assertEquals(0, raw[1] & 0xFF);
+                assertEquals(0, raw[2] & 0xFF);
+                assertTrue(
+                        Math.abs((raw[3] & 0xFF) - 128) <= 2,
+                        "the tint survives as K on every pixel");
+            }
+        }
+    }
+
+    @Test
+    void testColourKeyMaskedImageStaysUnconverted() throws Exception {
+        byte[] pdf =
+                spotImagePdf(
+                        (doc, img) -> {
+                            org.apache.pdfbox.cos.COSArray key =
+                                    new org.apache.pdfbox.cos.COSArray();
+                            key.add(org.apache.pdfbox.cos.COSInteger.ZERO);
+                            key.add(org.apache.pdfbox.cos.COSInteger.ZERO);
+                            img.setItem(COSName.MASK, key);
+                        });
+
+        PrintPreflightRequest req = request(pdf);
+        req.setFixups(List.of("SPOT_TO_CMYK"));
+        ResponseEntity<Resource> response = controller.printPreflightFix(req);
+        try (PDDocument result = Loader.loadPDF(responseBytes(response))) {
+            PDImageXObject img = spotImage(result);
+            assertTrue(
+                    img.getColorSpace() instanceof PDSeparation,
+                    "colour-key ranges index the old colour space — conversion declined");
+            assertNotNull(img.getColorKeyMask(), "the colour-key mask survives intact");
+        }
+        assertEquals(
+                "",
+                response.getHeaders().getFirst("X-Preflight-Fixups"),
+                "nothing applied — the fixup honestly reports no work");
+    }
+
+    @Test
+    void testExplicitImageMaskSurvivesConversion() throws Exception {
+        byte[] pdf =
+                spotImagePdf(
+                        (doc, img) ->
+                                img.setItem(COSName.MASK, imageMaskStream(doc).getCOSObject()));
+
+        PrintPreflightRequest req = request(pdf);
+        req.setFixups(List.of("SPOT_TO_CMYK"));
+        try (PDDocument result = Loader.loadPDF(responseBytes(controller.printPreflightFix(req)))) {
+            PDImageXObject img = spotImage(result);
+            assertTrue(
+                    img.getColorSpace()
+                            instanceof org.apache.pdfbox.pdmodel.graphics.color.PDDeviceCMYK,
+                    "an explicit mask does not block conversion");
+            assertNotNull(
+                    img.getMask(),
+                    "the 1-bit mask follows — it masks by position, not by sample value");
+        }
+    }
+
+    @Test
+    void testMatteSoftMaskedImageStaysUnconverted() throws Exception {
+        byte[] pdf =
+                spotImagePdf(
+                        (doc, img) ->
+                                img.setItem(
+                                        COSName.SMASK, softMaskStream(doc, true).getCOSObject()));
+
+        PrintPreflightRequest req = request(pdf);
+        req.setFixups(List.of("SPOT_TO_CMYK"));
+        try (PDDocument result = Loader.loadPDF(responseBytes(controller.printPreflightFix(req)))) {
+            PDImageXObject img = spotImage(result);
+            assertTrue(
+                    img.getColorSpace() instanceof PDSeparation,
+                    "a spot-space matte cannot be re-mapped — conversion declined");
+            assertNotNull(img.getSoftMask(), "the soft mask is left untouched");
+        }
+    }
+
+    @Test
+    void testPlainSoftMaskFollowsConversion() throws Exception {
+        byte[] pdf =
+                spotImagePdf(
+                        (doc, img) ->
+                                img.setItem(
+                                        COSName.SMASK, softMaskStream(doc, false).getCOSObject()));
+
+        PrintPreflightRequest req = request(pdf);
+        req.setFixups(List.of("SPOT_TO_CMYK"));
+        try (PDDocument result = Loader.loadPDF(responseBytes(controller.printPreflightFix(req)))) {
+            PDImageXObject img = spotImage(result);
+            assertTrue(
+                    img.getColorSpace()
+                            instanceof org.apache.pdfbox.pdmodel.graphics.color.PDDeviceCMYK,
+                    "a matte-free soft mask stays valid through conversion");
+            assertNotNull(img.getSoftMask(), "the soft mask follows the converted image");
+        }
+    }
+
+    @Test
+    void testOversizedSpotImageIsNotConverted() throws Exception {
+        PDDocument doc = new PDDocument();
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
+        org.apache.pdfbox.pdmodel.common.PDStream img =
+                new org.apache.pdfbox.pdmodel.common.PDStream(doc);
+        img.getCOSObject().setItem(COSName.SUBTYPE, COSName.IMAGE);
+        img.getCOSObject().setInt(COSName.WIDTH, 60000);
+        img.getCOSObject().setInt(COSName.HEIGHT, 60000);
+        img.getCOSObject().setInt(COSName.BITS_PER_COMPONENT, 8);
+        img.getCOSObject().setItem(COSName.COLORSPACE, separation("PANTONE 300 C").getCOSObject());
+        try (java.io.OutputStream out = img.createOutputStream()) {
+            out.write(new byte[16]); // deliberately short — the budget check precedes any decode
+        }
+        PDImageXObject xo = new PDImageXObject(img, null);
+        page.setResources(new PDResources());
+        page.getResources().put(COSName.getPDFName("ImSpot"), xo);
+        try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+            cs.drawImage(xo, 100, 100, 200, 200);
+        }
+        byte[] pdf = toBytes(doc);
+
+        PrintPreflightRequest req = request(pdf);
+        req.setFixups(List.of("SPOT_TO_CMYK"));
+        ResponseEntity<Resource> response = controller.printPreflightFix(req);
+        try (PDDocument result = Loader.loadPDF(responseBytes(response))) {
+            assertTrue(
+                    spotImage(result).getColorSpace() instanceof PDSeparation,
+                    "an image over the decode budget is declined, not read into the heap");
+        }
+        assertEquals(
+                "",
+                response.getHeaders().getFirst("X-Preflight-Fixups"),
+                "nothing applied — the fixup honestly reports no work");
+    }
+
+    @Test
+    void testDeviceNImageConverts() throws Exception {
+        byte[] pdf = deviceNImagePdf(4, 4);
+
+        PrintPreflightRequest req = request(pdf);
+        req.setFixups(List.of("SPOT_TO_CMYK"));
+        try (PDDocument result = Loader.loadPDF(responseBytes(controller.printPreflightFix(req)))) {
+            PDImageXObject img = spotImage(result);
+            assertTrue(
+                    img.getColorSpace()
+                            instanceof org.apache.pdfbox.pdmodel.graphics.color.PDDeviceCMYK,
+                    "the DeviceN image moved to its CMYK alternate");
+            try (java.io.InputStream in = img.getCOSObject().createInputStream()) {
+                byte[] raw = in.readAllBytes();
+                assertEquals(4 * 4 * 4, raw.length, "4×4 pixels × 4 CMYK channels");
+                assertEquals(0, raw[0] & 0xFF);
+                assertEquals(0, raw[1] & 0xFF);
+                assertEquals(0, raw[2] & 0xFF);
+                assertTrue(
+                        Math.abs((raw[3] & 0xFF) - 204) <= 2,
+                        "the calculator's constant 0.8 lands on K");
+            }
+        }
+    }
+
+    /** More distinct tuples than the memo holds: the un-cached eval path must stay correct. */
+    @Test
+    void testDeviceNImageConvertsPastCacheBound() throws Exception {
+        byte[] pdf = deviceNImagePdf(300, 300);
+
+        PrintPreflightRequest req = request(pdf);
+        req.setFixups(List.of("SPOT_TO_CMYK"));
+        try (PDDocument result = Loader.loadPDF(responseBytes(controller.printPreflightFix(req)))) {
+            PDImageXObject img = spotImage(result);
+            assertTrue(
+                    img.getColorSpace()
+                            instanceof org.apache.pdfbox.pdmodel.graphics.color.PDDeviceCMYK,
+                    "the DeviceN image still converted once the tuple memo filled up");
+            try (java.io.InputStream in = img.getCOSObject().createInputStream()) {
+                byte[] raw = in.readAllBytes();
+                assertEquals(300 * 300 * 4, raw.length);
+                assertTrue(Math.abs((raw[3] & 0xFF) - 204) <= 2);
+            }
+        }
+    }
+
+    /**
+     * A w×h image in a two-colorant DeviceN space whose Type-4 tint transform maps every pixel to
+     * the constant CMYK {@code 0 0 0 0.8}.
+     */
+    private static byte[] deviceNImagePdf(int w, int h) throws IOException {
+        PDDocument doc = new PDDocument();
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
+        org.apache.pdfbox.cos.COSArray colorants = new org.apache.pdfbox.cos.COSArray();
+        colorants.add(COSName.getPDFName("SpotA"));
+        colorants.add(COSName.getPDFName("SpotB"));
+        org.apache.pdfbox.cos.COSArray deviceN = new org.apache.pdfbox.cos.COSArray();
+        deviceN.add(COSName.DEVICEN);
+        deviceN.add(colorants);
+        deviceN.add(COSName.DEVICECMYK);
+        deviceN.add(tintFunction4(doc).getCOSObject());
+        org.apache.pdfbox.pdmodel.common.PDStream img =
+                new org.apache.pdfbox.pdmodel.common.PDStream(doc);
+        img.getCOSObject().setItem(COSName.SUBTYPE, COSName.IMAGE);
+        img.getCOSObject().setInt(COSName.WIDTH, w);
+        img.getCOSObject().setInt(COSName.HEIGHT, h);
+        img.getCOSObject().setInt(COSName.BITS_PER_COMPONENT, 8);
+        img.getCOSObject().setItem(COSName.COLORSPACE, deviceN);
+        try (java.io.OutputStream out = img.createOutputStream()) {
+            byte[] samples = new byte[w * h * 2];
+            for (int i = 0; i < w * h; i++) {
+                samples[2 * i] = (byte) i;
+                samples[2 * i + 1] = (byte) (i >> 8);
+            }
+            out.write(samples);
+        }
+        PDImageXObject xo = new PDImageXObject(img, null);
+        page.setResources(new PDResources());
+        page.getResources().put(COSName.getPDFName("ImSpot"), xo);
+        try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+            cs.drawImage(xo, 100, 100, 200, 200);
+        }
+        return toBytes(doc);
+    }
+
+    /** Type-4 calculator function: two tint inputs in, constant CMYK {@code 0 0 0 0.8} out. */
+    private static org.apache.pdfbox.pdmodel.common.PDStream tintFunction4(PDDocument doc)
+            throws IOException {
+        org.apache.pdfbox.pdmodel.common.PDStream fn =
+                new org.apache.pdfbox.pdmodel.common.PDStream(doc);
+        fn.getCOSObject().setInt(COSName.FUNCTION_TYPE, 4);
+        org.apache.pdfbox.cos.COSArray domain = new org.apache.pdfbox.cos.COSArray();
+        org.apache.pdfbox.cos.COSArray range = new org.apache.pdfbox.cos.COSArray();
+        for (int i = 0; i < 2; i++) {
+            domain.add(org.apache.pdfbox.cos.COSInteger.ZERO);
+            domain.add(org.apache.pdfbox.cos.COSInteger.ONE);
+        }
+        for (int i = 0; i < 4; i++) {
+            range.add(org.apache.pdfbox.cos.COSInteger.ZERO);
+            range.add(org.apache.pdfbox.cos.COSInteger.ONE);
+        }
+        fn.getCOSObject().setItem(COSName.DOMAIN, domain);
+        fn.getCOSObject().setItem(COSName.RANGE, range);
+        try (java.io.OutputStream out = fn.createOutputStream()) {
+            out.write("{ pop pop 0 0 0 0.8 }".getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+        }
+        return fn;
+    }
 }
