@@ -23,6 +23,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import stirling.software.SPDF.model.api.general.ScalePagesRequest;
+import stirling.software.SPDF.service.prepress.PrepressArchiveService;
 import stirling.software.common.annotations.AutoJobPostMapping;
 import stirling.software.common.annotations.api.GeneralApi;
 import stirling.software.common.enumeration.ResourceWeight;
@@ -32,6 +33,7 @@ import stirling.software.common.service.CustomPDFDocumentFactory;
 import stirling.software.common.util.ExceptionUtils;
 import stirling.software.common.util.GeneralUtils;
 import stirling.software.common.util.PageBoxUtils;
+import stirling.software.common.util.TempFile;
 import stirling.software.common.util.TempFileManager;
 import stirling.software.common.util.WebResponseUtils;
 
@@ -42,6 +44,7 @@ public class ScalePagesController {
 
     private final CustomPDFDocumentFactory pdfDocumentFactory;
     private final TempFileManager tempFileManager;
+    private final PrepressArchiveService prepressArchive;
 
     private static PDRectangle getTargetSize(
             String targetPDRectangle,
@@ -175,10 +178,22 @@ public class ScalePagesController {
                 }
             }
 
-            return WebResponseUtils.pdfDocToWebResponse(
-                    outputDocument,
-                    GeneralUtils.generateFilename(file.getOriginalFilename(), "_scaled.pdf"),
-                    tempFileManager);
+            String filename =
+                    GeneralUtils.generateFilename(file.getOriginalFilename(), "_scaled.pdf");
+            TempFile out = tempFileManager.createManagedTempFile(".pdf");
+            try {
+                outputDocument.save(out.getFile());
+            } catch (IOException | RuntimeException e) {
+                out.close();
+                throw e;
+            }
+            var handle =
+                    prepressArchive.recordVersion(
+                            "scale-pages", file, out.getPath(), filename, null);
+            ResponseEntity<Resource> response =
+                    WebResponseUtils.pdfFileToWebResponse(out, filename);
+            PrepressArchiveService.setChainHeaders(response, handle);
+            return response;
         }
     }
 }

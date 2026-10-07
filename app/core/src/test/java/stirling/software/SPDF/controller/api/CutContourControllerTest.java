@@ -3,12 +3,15 @@ package stirling.software.SPDF.controller.api;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.when;
 
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.file.Path;
+import java.util.Optional;
 
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.cos.COSDictionary;
@@ -35,6 +38,7 @@ import stirling.software.SPDF.model.api.general.CutContourPreview;
 import stirling.software.SPDF.model.api.general.CutContourRequest;
 import stirling.software.SPDF.model.api.security.PrintPreflightRequest;
 import stirling.software.SPDF.service.preflight.PrintPreflightService;
+import stirling.software.SPDF.service.prepress.PrepressArchiveService;
 import stirling.software.common.model.api.PDFFile;
 import stirling.software.common.service.CustomPDFDocumentFactory;
 import stirling.software.common.service.SubjectMattingService;
@@ -48,13 +52,16 @@ class CutContourControllerTest {
     @Mock private CustomPDFDocumentFactory pdfDocumentFactory;
     @Mock private TempFileManager tempFileManager;
     @Mock private ObjectProvider<SubjectMattingService> mattingProvider;
+    @Mock private PrepressArchiveService prepressArchive;
 
     private CutContourController controller;
 
     @BeforeEach
     void setUp() throws IOException {
         lenient().when(mattingProvider.getIfAvailable()).thenReturn(null);
-        controller = new CutContourController(pdfDocumentFactory, tempFileManager, mattingProvider);
+        controller =
+                new CutContourController(
+                        pdfDocumentFactory, tempFileManager, mattingProvider, prepressArchive);
         lenient()
                 .when(tempFileManager.createTempFile(any()))
                 .thenAnswer(inv -> java.io.File.createTempFile("cc-test", ".pdf"));
@@ -221,6 +228,19 @@ class CutContourControllerTest {
         IllegalArgumentException ex =
                 assertThrows(IllegalArgumentException.class, () -> controller.cutContour(req));
         assertTrue(ex.getMessage().contains("AI extraction unavailable"));
+    }
+
+    @Test
+    void cutContour_setsChainHeadersWhenArchived() throws IOException {
+        when(prepressArchive.recordVersion(any(), any(), any(Path.class), any(), any()))
+                .thenReturn(Optional.of(new PrepressArchiveService.Handle("0123456789abcdef", 2)));
+
+        ResponseEntity<Resource> response = controller.cutContour(request(alphaArtworkPdf()));
+
+        assertEquals(
+                "0123456789abcdef",
+                response.getHeaders().getFirst(PrepressArchiveService.HEADER_CHAIN_ID));
+        assertEquals("2", response.getHeaders().getFirst(PrepressArchiveService.HEADER_VERSION));
     }
 
     @Test

@@ -57,6 +57,7 @@ class CropControllerTest {
     @TempDir Path tempDir;
     @Mock private CustomPDFDocumentFactory pdfDocumentFactory;
     @Mock private TempFileManager tempFileManager;
+    @Mock private stirling.software.SPDF.service.prepress.PrepressArchiveService prepressArchive;
     @InjectMocks private CropController cropController;
     private TestPdfFactory pdfFactory;
 

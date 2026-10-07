@@ -86,6 +86,7 @@ public class ApplicationProperties {
     private InternalApi internalApi = new InternalApi();
     private Cluster cluster = new Cluster();
     private Policies policies = new Policies();
+    private Prepress prepress = new Prepress();
 
     @PostConstruct
     public void migrateSsoAutoLoginFromEnvironment() {
@@ -1937,6 +1938,35 @@ public class ApplicationProperties {
                 private boolean enabled;
                 private int retentionDays;
             }
+        }
+    }
+
+    @Data
+    public static class Prepress {
+        private Archive archive = new Archive();
+
+        @Data
+        public static class Archive {
+            /**
+             * Whether every prepress operation's output (and first-seen input) is versioned
+             * server-side under the archive root, chained by content hash. The stored PDFs are
+             * byte-identical to what was streamed to the client; nothing is embedded in them.
+             * Audit-only calls (preflight, previews) chain the file's hash but do not retain its
+             * bytes — the source is stored on the first transform that uses it.
+             */
+            private boolean enabled = true;
+
+            /**
+             * Root directory of the version archive. Empty means {@code
+             * <configPath>/prepress-archive}.
+             */
+            private String root = "";
+
+            /**
+             * Maximum stored versions kept per document chain, oldest first evicted. The v1 source
+             * is never evicted. 0 = unbounded.
+             */
+            private int maxVersionsPerChain = 20;
         }
     }
 

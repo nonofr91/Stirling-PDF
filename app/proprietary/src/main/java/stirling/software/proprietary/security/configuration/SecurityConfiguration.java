@@ -216,7 +216,9 @@ public class SecurityConfiguration {
                         "Content-Type",
                         "X-Stirling-Skipped-Field-Edits",
                         "X-Stirling-Skipped-Field-Edits-Total",
-                        "X-Stirling-Detected-Fields"));
+                        "X-Stirling-Detected-Fields",
+                        "X-Prepress-Chain-Id",
+                        "X-Prepress-Version"));
 
         cfg.setAllowCredentials(true);
         cfg.setMaxAge(3600L);
