@@ -46,6 +46,7 @@ class TextToOutlinesControllerTest {
     @TempDir Path tempDir;
     @Mock private TempFileManager tempFileManager;
     @Mock private EndpointConfiguration endpointConfiguration;
+    @Mock private stirling.software.SPDF.service.prepress.PrepressArchiveService prepressArchive;
     @InjectMocks private TextToOutlinesController controller;
 
     @BeforeEach
