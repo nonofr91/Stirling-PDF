@@ -42,6 +42,7 @@ import org.springframework.mock.web.MockMultipartFile;
 import stirling.software.SPDF.config.EndpointConfiguration;
 import stirling.software.SPDF.controller.api.security.PrintPreflightController;
 import stirling.software.SPDF.model.api.security.PrintPreflightRequest;
+import stirling.software.SPDF.service.prepress.PrepressArchiveService;
 import stirling.software.common.model.api.PDFFile;
 import stirling.software.common.service.CustomPDFDocumentFactory;
 import stirling.software.common.util.TempFileManager;
@@ -54,6 +55,7 @@ class PreflightFixerTest {
     @Mock private CustomPDFDocumentFactory pdfDocumentFactory;
     @Mock private TempFileManager tempFileManager;
     @Mock private EndpointConfiguration endpointConfiguration;
+    @Mock private PrepressArchiveService prepressArchive;
     private PrintPreflightController controller;
 
     @BeforeEach
@@ -64,7 +66,8 @@ class PreflightFixerTest {
                         pdfDocumentFactory,
                         tempFileManager,
                         new PreflightGhostscriptFixer(tempFileManager, endpointConfiguration),
-                        new PreflightProfileService());
+                        new PreflightProfileService(),
+                        prepressArchive);
         lenient()
                 .when(tempFileManager.createTempFile(any()))
                 .thenAnswer(inv -> java.io.File.createTempFile("pf-fix", ".pdf"));
@@ -1423,7 +1426,8 @@ class PreflightFixerTest {
                 pdfDocumentFactory,
                 tempFileManager,
                 new PreflightGhostscriptFixer(tempFileManager, endpointConfiguration),
-                new PreflightProfileService());
+                new PreflightProfileService(),
+                prepressArchive);
     }
 
     private List<String> renderedFindingCodes(byte[] pdf) throws IOException {

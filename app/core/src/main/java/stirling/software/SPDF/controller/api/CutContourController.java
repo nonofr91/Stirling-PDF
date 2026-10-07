@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.function.Function;
 
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -22,6 +23,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import stirling.software.SPDF.model.api.general.CutContourPreview;
 import stirling.software.SPDF.model.api.general.CutContourRequest;
+import stirling.software.SPDF.service.prepress.PrepressArchiveService;
 import stirling.software.common.annotations.AutoJobPostMapping;
 import stirling.software.common.annotations.api.GeneralApi;
 import stirling.software.common.enumeration.ResourceWeight;
@@ -34,6 +36,7 @@ import stirling.software.common.util.ExceptionUtils;
 import stirling.software.common.util.GeneralUtils;
 import stirling.software.common.util.SilhouetteTracer;
 import stirling.software.common.util.SilhouetteTracer.ExtractionMode;
+import stirling.software.common.util.TempFile;
 import stirling.software.common.util.TempFileManager;
 import stirling.software.common.util.WebResponseUtils;
 
@@ -49,6 +52,8 @@ public class CutContourController {
 
     /** Optional: only present in builds bundling the ONNX runtime with a matting model. */
     private final ObjectProvider<SubjectMattingService> mattingServiceProvider;
+
+    private final PrepressArchiveService prepressArchive;
 
     @ToolIO(produces = ToolFormat.PDF)
     @Operation(
@@ -74,11 +79,23 @@ public class CutContourController {
                 SilhouetteTracer.TraceResult trace = tracePage(document, i, traceSettings, engine);
                 CutContourGenerator.apply(document, i, trace, genSettings);
             }
-            return WebResponseUtils.pdfDocToWebResponse(
-                    document,
+            String filename =
                     GeneralUtils.generateFilename(
-                            request.getFileInput().getOriginalFilename(), "_cutcontour.pdf"),
-                    tempFileManager);
+                            request.getFileInput().getOriginalFilename(), "_cutcontour.pdf");
+            TempFile out = tempFileManager.createManagedTempFile(".pdf");
+            try {
+                document.save(out.getFile());
+            } catch (IOException | RuntimeException e) {
+                out.close();
+                throw e;
+            }
+            var handle =
+                    prepressArchive.recordVersion(
+                            "cut-contour", request.getFileInput(), out.getPath(), filename, null);
+            ResponseEntity<Resource> response =
+                    WebResponseUtils.pdfFileToWebResponse(out, filename);
+            PrepressArchiveService.setChainHeaders(response, handle);
+            return response;
         }
     }
 
@@ -128,6 +145,8 @@ public class CutContourController {
             }
         }
         preview.setPages(pages);
+        prepressArchive.recordAudit(
+                "cut-contour-preview", request.getFileInput(), Map.of("pages", pages.size()));
         return ResponseEntity.ok(preview);
     }
 

@@ -431,6 +431,7 @@ public class EndpointConfiguration {
         addEndpointToGroup("Other", "print-preflight-fix");
         addEndpointToGroup("Other", "print-preflight-fix-preview");
         addEndpointToGroup("Other", "print-preflight-profiles");
+        addEndpointToGroup("Other", "prepress-archive");
         addEndpointToGroup("Other", "add-attachments");
         addEndpointToGroup("Other", "batch-process-attachments");
         addEndpointToGroup("Other", "list-attachments");
@@ -549,6 +550,7 @@ public class EndpointConfiguration {
         addEndpointToGroup("Java", "print-preflight-fix");
         addEndpointToGroup("Java", "print-preflight-fix-preview");
         addEndpointToGroup("Java", "print-preflight-profiles");
+        addEndpointToGroup("Java", "prepress-archive");
         addEndpointToGroup("Java", "pdf-to-single-page");
         addEndpointToGroup("Java", "markdown-to-pdf");
         addEndpointToGroup("Java", "show-javascript");

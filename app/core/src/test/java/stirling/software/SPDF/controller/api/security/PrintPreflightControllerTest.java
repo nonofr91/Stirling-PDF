@@ -37,6 +37,7 @@ import stirling.software.SPDF.model.api.security.PrintPreflightRequest;
 import stirling.software.SPDF.service.preflight.PreflightGhostscriptFixer;
 import stirling.software.SPDF.service.preflight.PreflightProfileService;
 import stirling.software.SPDF.service.preflight.PrintPreflightService;
+import stirling.software.SPDF.service.prepress.PrepressArchiveService;
 import stirling.software.common.model.api.PDFFile;
 import stirling.software.common.service.CustomPDFDocumentFactory;
 import stirling.software.common.util.TempFileManager;
@@ -49,6 +50,7 @@ class PrintPreflightControllerTest {
     @Mock private CustomPDFDocumentFactory pdfDocumentFactory;
     @Mock private TempFileManager tempFileManager;
     @Mock private EndpointConfiguration endpointConfiguration;
+    @Mock private PrepressArchiveService prepressArchive;
     private PrintPreflightController controller;
 
     @BeforeEach
@@ -59,7 +61,8 @@ class PrintPreflightControllerTest {
                         pdfDocumentFactory,
                         tempFileManager,
                         new PreflightGhostscriptFixer(tempFileManager, endpointConfiguration),
-                        new PreflightProfileService());
+                        new PreflightProfileService(),
+                        prepressArchive);
         lenient()
                 .when(tempFileManager.createTempFile(any()))
                 .thenAnswer(inv -> java.io.File.createTempFile("pf-test", ".pdf"));

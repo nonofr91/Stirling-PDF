@@ -28,6 +28,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import stirling.software.SPDF.config.EndpointConfiguration;
 import stirling.software.SPDF.model.api.general.CropPdfForm;
+import stirling.software.SPDF.service.prepress.PrepressArchiveService;
 import stirling.software.common.annotations.AutoJobPostMapping;
 import stirling.software.common.annotations.api.GeneralApi;
 import stirling.software.common.enumeration.ResourceWeight;
@@ -55,6 +56,22 @@ public class CropController {
 
     private final CustomPDFDocumentFactory pdfDocumentFactory;
     private final TempFileManager tempFileManager;
+    private final PrepressArchiveService prepressArchive;
+
+    private ResponseEntity<Resource> respond(
+            PDDocument document, MultipartFile input, String filename) throws IOException {
+        TempFile out = tempFileManager.createManagedTempFile(".pdf");
+        try {
+            document.save(out.getFile());
+        } catch (IOException | RuntimeException e) {
+            out.close();
+            throw e;
+        }
+        var handle = prepressArchive.recordVersion("crop", input, out.getPath(), filename, null);
+        ResponseEntity<Resource> response = WebResponseUtils.pdfFileToWebResponse(out, filename);
+        PrepressArchiveService.setChainHeaders(response, handle);
+        return response;
+    }
 
     private static int[] detectContentBounds(BufferedImage image) {
         int width = image.getWidth();
@@ -229,11 +246,11 @@ public class CropController {
                                     cropBounds.height));
                 }
 
-                return WebResponseUtils.pdfDocToWebResponse(
+                return respond(
                         newDocument,
+                        request.getFileInput(),
                         GeneralUtils.generateFilename(
-                                request.getFileInput().getOriginalFilename(), "_cropped.pdf"),
-                        tempFileManager);
+                                request.getFileInput().getOriginalFilename(), "_cropped.pdf"));
             }
         }
     }
@@ -304,11 +321,11 @@ public class CropController {
                     newPage.setMediaBox(cropArea);
                 }
 
-                return WebResponseUtils.pdfDocToWebResponse(
+                return respond(
                         newDocument,
+                        request.getFileInput(),
                         GeneralUtils.generateFilename(
-                                request.getFileInput().getOriginalFilename(), "_cropped.pdf"),
-                        tempFileManager);
+                                request.getFileInput().getOriginalFilename(), "_cropped.pdf"));
             }
         }
     }
@@ -373,8 +390,7 @@ public class CropController {
                             imported.setResources(sourceDocument.getPage(i).getResources());
                         }
                     }
-                    return WebResponseUtils.pdfDocToWebResponse(
-                            mergedDocument, outputFilename, tempFileManager);
+                    return respond(mergedDocument, fileInput, outputFilename);
                 } finally {
                     if (croppedDocument != null) {
                         croppedDocument.close();

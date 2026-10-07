@@ -540,3 +540,9 @@ pdfEditor:
     library:
       enabled: true # Match common Type3 fonts against the built-in library of converted programs
       index: classpath:/type3/library/index.json # Override to point at a custom index.json (supports http:, file:, classpath:)
+
+prepress:
+  archive:
+    enabled: true # version every prepress transform's output server-side, chained by content hash; audit-only calls (preflight, previews) chain the hash without retaining the document
+    root: "" # archive root directory; empty means <configPath>/prepress-archive
+    maxVersionsPerChain: 20 # stored transform versions kept per chain, oldest evicted first (the v1 source is never evicted); 0 = unbounded

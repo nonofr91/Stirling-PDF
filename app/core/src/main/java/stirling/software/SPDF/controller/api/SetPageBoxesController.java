@@ -1,6 +1,7 @@
 package stirling.software.SPDF.controller.api;
 
 import java.io.IOException;
+import java.util.Map;
 
 import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
@@ -18,6 +19,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import stirling.software.SPDF.model.api.general.SetPageBoxesRequest;
+import stirling.software.SPDF.service.prepress.PrepressArchiveService;
 import stirling.software.common.annotations.AutoJobPostMapping;
 import stirling.software.common.annotations.api.GeneralApi;
 import stirling.software.common.enumeration.ResourceWeight;
@@ -29,6 +31,7 @@ import stirling.software.common.util.GeneralUtils;
 import stirling.software.common.util.PageBleedGenerator;
 import stirling.software.common.util.PageBleedGenerator.BleedEdges;
 import stirling.software.common.util.PageBleedGenerator.BleedMethod;
+import stirling.software.common.util.TempFile;
 import stirling.software.common.util.TempFileManager;
 import stirling.software.common.util.WebResponseUtils;
 
@@ -41,6 +44,7 @@ public class SetPageBoxesController {
 
     private final CustomPDFDocumentFactory pdfDocumentFactory;
     private final TempFileManager tempFileManager;
+    private final PrepressArchiveService prepressArchive;
 
     @AutoJobPostMapping(
             value = "/set-page-boxes",
@@ -73,11 +77,29 @@ public class SetPageBoxesController {
                 applyBoxes(document, page, pageIndex++, request, method);
             }
 
-            return WebResponseUtils.pdfDocToWebResponse(
-                    document,
+            String filename =
                     GeneralUtils.generateFilename(
-                            request.getFileInput().getOriginalFilename(), "_boxes.pdf"),
-                    tempFileManager);
+                            request.getFileInput().getOriginalFilename(), "_boxes.pdf");
+            TempFile out = tempFileManager.createManagedTempFile(".pdf");
+            try {
+                document.save(out.getFile());
+            } catch (IOException | RuntimeException e) {
+                out.close();
+                throw e;
+            }
+            var handle =
+                    prepressArchive.recordVersion(
+                            "set-page-boxes",
+                            request.getFileInput(),
+                            out.getPath(),
+                            filename,
+                            Map.of(
+                                    "generateBleed", request.isGenerateBleed(),
+                                    "addCropMarks", request.isAddCropMarks()));
+            ResponseEntity<Resource> response =
+                    WebResponseUtils.pdfFileToWebResponse(out, filename);
+            PrepressArchiveService.setChainHeaders(response, handle);
+            return response;
         }
     }
 

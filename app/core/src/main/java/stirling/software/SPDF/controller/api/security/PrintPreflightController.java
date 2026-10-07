@@ -2,6 +2,8 @@ package stirling.software.SPDF.controller.api.security;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -33,6 +35,7 @@ import stirling.software.SPDF.service.preflight.PreflightProfileService;
 import stirling.software.SPDF.service.preflight.PreflightReportRenderer;
 import stirling.software.SPDF.service.preflight.PreflightReportText;
 import stirling.software.SPDF.service.preflight.PrintPreflightService;
+import stirling.software.SPDF.service.prepress.PrepressArchiveService;
 import stirling.software.common.annotations.AutoJobPostMapping;
 import stirling.software.common.annotations.api.SecurityApi;
 import stirling.software.common.enumeration.ResourceWeight;
@@ -55,6 +58,7 @@ public class PrintPreflightController {
     private final TempFileManager tempFileManager;
     private final PreflightGhostscriptFixer ghostscriptFixer;
     private final PreflightProfileService profileService;
+    private final PrepressArchiveService prepressArchive;
 
     @Operation(
             summary = "List preflight profiles",
@@ -121,6 +125,14 @@ public class PrintPreflightController {
                     report.getCounts().getErrors(),
                     report.getCounts().getWarnings(),
                     report.getCounts().getInfos());
+            prepressArchive.recordAudit(
+                    "print-preflight",
+                    file,
+                    Map.of(
+                            "errors", report.getCounts().getErrors(),
+                            "warnings", report.getCounts().getWarnings(),
+                            "infos", report.getCounts().getInfos(),
+                            "renderedInkCoverage", request.isRenderedInkCoverage()));
             return ResponseEntity.ok(report);
         }
     }
@@ -155,10 +167,22 @@ public class PrintPreflightController {
                         PreflightReportRenderer.render(document, report, request);
                 PreflightReportRenderer.insertAtFront(document, summaryPages);
             }
-            return WebResponseUtils.pdfDocToWebResponse(
-                    document,
-                    GeneralUtils.generateFilename(file.getOriginalFilename(), "_preflight.pdf"),
-                    tempFileManager);
+            String filename =
+                    GeneralUtils.generateFilename(file.getOriginalFilename(), "_preflight.pdf");
+            TempFile out = tempFileManager.createManagedTempFile(".pdf");
+            try {
+                document.save(out.getFile());
+            } catch (IOException | RuntimeException e) {
+                out.close();
+                throw e;
+            }
+            var handle =
+                    prepressArchive.recordVersion(
+                            "print-preflight-annotated", file, out.getPath(), filename, null);
+            ResponseEntity<Resource> response =
+                    WebResponseUtils.pdfFileToWebResponse(out, filename);
+            PrepressArchiveService.setChainHeaders(response, handle);
+            return response;
         }
     }
 
@@ -186,11 +210,23 @@ public class PrintPreflightController {
                     printPreflightService.analyze(
                             document, file.getOriginalFilename(), file.getSize(), request);
             PreflightReportRenderer.render(reportDoc, report, request);
-            return WebResponseUtils.pdfDocToWebResponse(
-                    reportDoc,
+            String filename =
                     GeneralUtils.generateFilename(
-                            file.getOriginalFilename(), "_preflight-report.pdf"),
-                    tempFileManager);
+                            file.getOriginalFilename(), "_preflight-report.pdf");
+            TempFile out = tempFileManager.createManagedTempFile(".pdf");
+            try {
+                reportDoc.save(out.getFile());
+            } catch (IOException | RuntimeException e) {
+                out.close();
+                throw e;
+            }
+            var handle =
+                    prepressArchive.recordVersion(
+                            "print-preflight-report", file, out.getPath(), filename, null);
+            ResponseEntity<Resource> response =
+                    WebResponseUtils.pdfFileToWebResponse(out, filename);
+            PrepressArchiveService.setChainHeaders(response, handle);
+            return response;
         }
     }
 
@@ -238,15 +274,41 @@ public class PrintPreflightController {
                     "Preflight fixups on '{}': {}",
                     file.getOriginalFilename(),
                     applied.isEmpty() ? "none applicable" : String.join(", ", applied));
-            ResponseEntity<Resource> response =
-                    gsOutput != null
-                            ? WebResponseUtils.pdfFileToWebResponse(gsOutput, filename)
-                            : WebResponseUtils.pdfDocToWebResponse(
-                                    document, filename, tempFileManager);
-            return ResponseEntity.status(response.getStatusCode())
-                    .headers(response.getHeaders())
-                    .header("X-Preflight-Fixups", String.join(", ", applied))
-                    .body(response.getBody());
+            ResponseEntity<Resource> response;
+            Optional<PrepressArchiveService.Handle> handle;
+            if (gsOutput != null) {
+                response = WebResponseUtils.pdfFileToWebResponse(gsOutput, filename);
+                handle =
+                        prepressArchive.recordVersion(
+                                "print-preflight-fix",
+                                file,
+                                gsOutput.getPath(),
+                                filename,
+                                Map.of("fixups", applied));
+            } else {
+                TempFile out = tempFileManager.createManagedTempFile(".pdf");
+                try {
+                    document.save(out.getFile());
+                } catch (IOException | RuntimeException e) {
+                    out.close();
+                    throw e;
+                }
+                handle =
+                        prepressArchive.recordVersion(
+                                "print-preflight-fix",
+                                file,
+                                out.getPath(),
+                                filename,
+                                Map.of("fixups", applied));
+                response = WebResponseUtils.pdfFileToWebResponse(out, filename);
+            }
+            ResponseEntity<Resource> withHeaders =
+                    ResponseEntity.status(response.getStatusCode())
+                            .headers(response.getHeaders())
+                            .header("X-Preflight-Fixups", String.join(", ", applied))
+                            .body(response.getBody());
+            PrepressArchiveService.setChainHeaders(withHeaders, handle);
+            return withHeaders;
         }
     }
 
@@ -299,6 +361,15 @@ public class PrintPreflightController {
                     applied.isEmpty() ? "none" : String.join(", ", applied),
                     before.getCounts().getErrors(),
                     after.getCounts().getErrors());
+            prepressArchive.recordAudit(
+                    "print-preflight-fix-preview",
+                    file,
+                    Map.of(
+                            "fixups", applied,
+                            "errorsBefore", before.getCounts().getErrors(),
+                            "errorsAfter", after.getCounts().getErrors(),
+                            "warningsBefore", before.getCounts().getWarnings(),
+                            "warningsAfter", after.getCounts().getWarnings()));
             return ResponseEntity.ok(PrintPreflightFixAudit.of(before, after, applied));
         }
     }

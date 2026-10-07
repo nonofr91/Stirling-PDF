@@ -15,6 +15,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import stirling.software.SPDF.config.EndpointConfiguration;
+import stirling.software.SPDF.service.prepress.PrepressArchiveService;
 import stirling.software.common.annotations.AutoJobPostMapping;
 import stirling.software.common.annotations.api.MiscApi;
 import stirling.software.common.enumeration.ResourceWeight;
@@ -36,6 +37,7 @@ public class TextToOutlinesController {
 
     private final TempFileManager tempFileManager;
     private final EndpointConfiguration endpointConfiguration;
+    private final PrepressArchiveService prepressArchive;
 
     @AutoJobPostMapping(
             value = "/text-to-outlines",
@@ -97,10 +99,15 @@ public class TextToOutlinesController {
 
             TempFile out = tempOutputFile;
             tempOutputFile = null; // ownership transferred to response Resource
-            return WebResponseUtils.pdfFileToWebResponse(
-                    out,
-                    GeneralUtils.generateFilename(
-                            inputFile.getOriginalFilename(), "_outlined.pdf"));
+            String filename =
+                    GeneralUtils.generateFilename(inputFile.getOriginalFilename(), "_outlined.pdf");
+            var handle =
+                    prepressArchive.recordVersion(
+                            "text-to-outlines", inputFile, out.getPath(), filename, null);
+            ResponseEntity<Resource> response =
+                    WebResponseUtils.pdfFileToWebResponse(out, filename);
+            PrepressArchiveService.setChainHeaders(response, handle);
+            return response;
         } finally {
             if (tempOutputFile != null) {
                 tempOutputFile.close();
