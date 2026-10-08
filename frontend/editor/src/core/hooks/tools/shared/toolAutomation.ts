@@ -427,7 +427,12 @@ export function serializeToolStep(
     );
   }
   const merged = { ...(config.defaultParameters ?? {}), ...step.params };
-  const operation = resolveEndpoint(config, merged) ?? step.operation;
+  // An unmigrated tool (no toApiParams) can't reflect param edits in the body anyway;
+  // re-resolving its endpoint from defaults would rewrite a stored step to whatever the
+  // defaults happen to select, so keep the step's own operation.
+  const operation = config.toApiParams
+    ? (resolveEndpoint(config, merged) ?? step.operation)
+    : step.operation;
   const parameters = config.toApiParams
     ? (config.toApiParams(merged) as Record<string, unknown>)
     : {};
@@ -536,9 +541,14 @@ export function deserializeToolStep(
     ...mapped,
   };
   // Validate against the generated endpoint set instead of casting the matched string.
-  const operation =
-    resolveEndpoint(config, params) ??
-    (isToolEndpoint(step.operation) ? step.operation : undefined);
+  // Without fromApiParams the mapped params are just defaults, so resolution would guess
+  // the wrong endpoint for a dynamic tool — prefer the stored operation then.
+  const storedOperation = isToolEndpoint(step.operation)
+    ? step.operation
+    : undefined;
+  const operation = config?.fromApiParams
+    ? (resolveEndpoint(config, params) ?? storedOperation)
+    : (storedOperation ?? resolveEndpoint(config, params));
   if (operation === undefined) return unmappedStep(step);
   return {
     toolId,

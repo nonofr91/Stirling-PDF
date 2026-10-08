@@ -14176,6 +14176,14 @@ desc = "Vérifie un PDF pour la production print : polices non incorporées, cou
 tags = "preflight,prépresse,prepress,print,impression,contrôle,rapport,polices,incorporées,RVB,CMJN,fond perdu,traits,coupe,dpi,résolution,surimpression,transparence,pdfx"
 title = "Preflight d'impression"
 
+[home.printPreflightCheck]
+desc = "Vérifie un PDF pour la production print et annote une copie sans modifier le fichier."
+title = "Preflight d'impression (contrôle)"
+
+[home.printPreflightFix]
+desc = "Vérifie un PDF pour la production print et applique les corrections sûres."
+title = "Preflight d'impression (correction)"
+
 [home.setPageBoxes]
 desc = "Définit MediaBox, CropBox, TrimBox, BleedBox et ArtBox sur chaque page pour les flux prépresse"
 tags = "prépresse,boîtes de page,mediabox,cropbox,trimbox,bleedbox,artbox,fond perdu"
@@ -14387,6 +14395,8 @@ nameLabel = "Nom du profil"
 saveAs = "Enregistrer comme profil…"
 saveFailed = "Le profil n'a pas pu être enregistré"
 saveModalTitle = "Enregistrer le profil"
+stepHelp = "Un profil nommé fournit les seuils, les corrections et les contrôles désactivés — effacez-le pour régler cette étape manuellement."
+suppliesStep = "Le profil nommé fournit tous les réglages de preflight de cette étape."
 
 [printPreflight.profiles.builtin]
 digital-press = "Presse numérique"

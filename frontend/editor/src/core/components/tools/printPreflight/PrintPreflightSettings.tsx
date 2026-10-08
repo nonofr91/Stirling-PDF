@@ -32,6 +32,14 @@ interface PrintPreflightSettingsProps {
   /** Atomic profile application; falls back to per-key updates when absent. */
   onApplyParameters?: (parameters: PrintPreflightParameters) => void;
   disabled?: boolean;
+  /**
+   * Sections to leave out — pipeline steps hide what their endpoint ignores or what a
+   * surrounding control already owns (the step's named-profile select replaces the
+   * expand-inline one).
+   */
+  hideProfiles?: boolean;
+  hideSummaryPage?: boolean;
+  hideFixups?: boolean;
 }
 
 const PrintPreflightSettings = ({
@@ -39,6 +47,9 @@ const PrintPreflightSettings = ({
   onParameterChange,
   onApplyParameters,
   disabled = false,
+  hideProfiles = false,
+  hideSummaryPage = false,
+  hideFixups = false,
 }: PrintPreflightSettingsProps) => {
   const { t } = useTranslation();
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -96,132 +107,138 @@ const PrintPreflightSettings = ({
 
   return (
     <Stack gap="md">
-      <Select
-        label={t("printPreflight.profiles.label", "Preflight profile")}
-        description={t(
-          "printPreflight.profiles.help",
-          "A saved set of thresholds and fixes. Selecting one replaces every value below.",
-        )}
-        placeholder={t("printPreflight.profiles.custom", "Custom settings")}
-        data={profiles.map((p) => ({
-          value: p.name,
-          label: p.builtin
-            ? t(`printPreflight.profiles.builtin.${p.name}`, p.name)
-            : p.name,
-        }))}
-        value={activeProfile}
-        onChange={applyProfile}
-        clearable
-        searchable
-        disabled={disabled || loading}
-        comboboxProps={{ withinPortal: true }}
-      />
-
-      {selectedProfile && (
-        <Text size="xs" c="dimmed">
-          {selectedProfile.builtin
-            ? t(
-                `printPreflight.profiles.builtinDesc.${selectedProfile.name}`,
-                selectedProfile.description ?? "",
-              )
-            : selectedProfile.description}
-        </Text>
-      )}
-
-      <Group gap="xs">
-        <Button
-          variant="tertiary"
-          size="sm"
-          onClick={() => {
-            setSaveName(activeProfile ?? "");
-            setSaveDescription(selectedProfile?.description ?? "");
-            setSaveModalOpen(true);
-          }}
-          disabled={disabled}
-        >
-          {t("printPreflight.profiles.saveAs", "Save as profile…")}
-        </Button>
-        {selectedProfile && !selectedProfile.builtin && (
-          <Button
-            variant="tertiary"
-            size="sm"
-            accent="danger"
-            onClick={handleDelete}
-            disabled={disabled}
-          >
-            {t("printPreflight.profiles.delete", "Delete profile")}
-          </Button>
-        )}
-      </Group>
-
-      {error === "load" && (
-        <Text size="xs" c="red">
-          {t(
-            "printPreflight.profiles.loadFailed",
-            "Profiles could not be loaded",
-          )}
-        </Text>
-      )}
-      {error === "save" && (
-        <Text size="xs" c="red">
-          {t(
-            "printPreflight.profiles.saveFailed",
-            "The profile could not be saved",
-          )}
-        </Text>
-      )}
-      {error === "delete" && (
-        <Text size="xs" c="red">
-          {t(
-            "printPreflight.profiles.deleteFailed",
-            "The profile could not be deleted",
-          )}
-        </Text>
-      )}
-
-      <Modal
-        opened={saveModalOpen}
-        onClose={() => setSaveModalOpen(false)}
-        title={t("printPreflight.profiles.saveModalTitle", "Save profile")}
-        centered
-      >
-        <Stack gap="md">
-          <TextInput
-            label={t("printPreflight.profiles.nameLabel", "Profile name")}
-            value={saveName}
-            onChange={(event) => setSaveName(event.currentTarget.value)}
-            required
-            maxLength={100}
-            data-autofocus
-          />
-          <TextInput
-            label={t(
-              "printPreflight.profiles.descLabel",
-              "Description (optional)",
+      {!hideProfiles && (
+        <>
+          <Select
+            label={t("printPreflight.profiles.label", "Preflight profile")}
+            description={t(
+              "printPreflight.profiles.help",
+              "A saved set of thresholds and fixes. Selecting one replaces every value below.",
             )}
-            value={saveDescription}
-            onChange={(event) => setSaveDescription(event.currentTarget.value)}
+            placeholder={t("printPreflight.profiles.custom", "Custom settings")}
+            data={profiles.map((p) => ({
+              value: p.name,
+              label: p.builtin
+                ? t(`printPreflight.profiles.builtin.${p.name}`, p.name)
+                : p.name,
+            }))}
+            value={activeProfile}
+            onChange={applyProfile}
+            clearable
+            searchable
+            disabled={disabled || loading}
+            comboboxProps={{ withinPortal: true }}
           />
-          <Group justify="flex-end">
+
+          {selectedProfile && (
+            <Text size="xs" c="dimmed">
+              {selectedProfile.builtin
+                ? t(
+                    `printPreflight.profiles.builtinDesc.${selectedProfile.name}`,
+                    selectedProfile.description ?? "",
+                  )
+                : selectedProfile.description}
+            </Text>
+          )}
+
+          <Group gap="xs">
             <Button
               variant="tertiary"
-              onClick={() => setSaveModalOpen(false)}
-              disabled={saving}
+              size="sm"
+              onClick={() => {
+                setSaveName(activeProfile ?? "");
+                setSaveDescription(selectedProfile?.description ?? "");
+                setSaveModalOpen(true);
+              }}
+              disabled={disabled}
             >
-              {t("cancel", "Cancel")}
+              {t("printPreflight.profiles.saveAs", "Save as profile…")}
             </Button>
-            <Button
-              onClick={handleSave}
-              loading={saving}
-              disabled={saveName.trim() === ""}
-            >
-              {t("save", "Save")}
-            </Button>
+            {selectedProfile && !selectedProfile.builtin && (
+              <Button
+                variant="tertiary"
+                size="sm"
+                accent="danger"
+                onClick={handleDelete}
+                disabled={disabled}
+              >
+                {t("printPreflight.profiles.delete", "Delete profile")}
+              </Button>
+            )}
           </Group>
-        </Stack>
-      </Modal>
 
-      <Divider />
+          {error === "load" && (
+            <Text size="xs" c="red">
+              {t(
+                "printPreflight.profiles.loadFailed",
+                "Profiles could not be loaded",
+              )}
+            </Text>
+          )}
+          {error === "save" && (
+            <Text size="xs" c="red">
+              {t(
+                "printPreflight.profiles.saveFailed",
+                "The profile could not be saved",
+              )}
+            </Text>
+          )}
+          {error === "delete" && (
+            <Text size="xs" c="red">
+              {t(
+                "printPreflight.profiles.deleteFailed",
+                "The profile could not be deleted",
+              )}
+            </Text>
+          )}
+
+          <Modal
+            opened={saveModalOpen}
+            onClose={() => setSaveModalOpen(false)}
+            title={t("printPreflight.profiles.saveModalTitle", "Save profile")}
+            centered
+          >
+            <Stack gap="md">
+              <TextInput
+                label={t("printPreflight.profiles.nameLabel", "Profile name")}
+                value={saveName}
+                onChange={(event) => setSaveName(event.currentTarget.value)}
+                required
+                maxLength={100}
+                data-autofocus
+              />
+              <TextInput
+                label={t(
+                  "printPreflight.profiles.descLabel",
+                  "Description (optional)",
+                )}
+                value={saveDescription}
+                onChange={(event) =>
+                  setSaveDescription(event.currentTarget.value)
+                }
+              />
+              <Group justify="flex-end">
+                <Button
+                  variant="tertiary"
+                  onClick={() => setSaveModalOpen(false)}
+                  disabled={saving}
+                >
+                  {t("cancel", "Cancel")}
+                </Button>
+                <Button
+                  onClick={handleSave}
+                  loading={saving}
+                  disabled={saveName.trim() === ""}
+                >
+                  {t("save", "Save")}
+                </Button>
+              </Group>
+            </Stack>
+          </Modal>
+
+          <Divider />
+        </>
+      )}
 
       <NumberInput
         label={t("printPreflight.requiredBleedMm.label", "Required bleed (mm)")}
@@ -309,29 +326,31 @@ const PrintPreflightSettings = ({
         }
       />
 
-      <Checkbox
-        checked={parameters.includeSummaryPage}
-        onChange={(event) =>
-          onParameterChange("includeSummaryPage", event.currentTarget.checked)
-        }
-        disabled={disabled}
-        label={
-          <div>
-            <Text size="sm">
-              {t(
-                "printPreflight.includeSummaryPage.label",
-                "Summary page in annotated PDF",
-              )}
-            </Text>
-            <Text size="xs" c="dimmed">
-              {t(
-                "printPreflight.includeSummaryPage.desc",
-                "Prepend the report summary — verdict, facts, fonts, colours — to the annotated PDF copy.",
-              )}
-            </Text>
-          </div>
-        }
-      />
+      {!hideSummaryPage && (
+        <Checkbox
+          checked={parameters.includeSummaryPage}
+          onChange={(event) =>
+            onParameterChange("includeSummaryPage", event.currentTarget.checked)
+          }
+          disabled={disabled}
+          label={
+            <div>
+              <Text size="sm">
+                {t(
+                  "printPreflight.includeSummaryPage.label",
+                  "Summary page in annotated PDF",
+                )}
+              </Text>
+              <Text size="xs" c="dimmed">
+                {t(
+                  "printPreflight.includeSummaryPage.desc",
+                  "Prepend the report summary — verdict, facts, fonts, colours — to the annotated PDF copy.",
+                )}
+              </Text>
+            </div>
+          }
+        />
+      )}
 
       <Divider />
 
@@ -516,63 +535,67 @@ const PrintPreflightSettings = ({
         </Collapse>
       </Stack>
 
-      <Divider />
+      {!hideFixups && (
+        <>
+          <Divider />
 
-      <Stack gap="sm">
-        <Button
-          variant="tertiary"
-          onClick={() => setFixesOpen(!fixesOpen)}
-          disabled={disabled}
-        >
-          {t("printPreflight.fixes.toggle", "Automatic fixes")}{" "}
-          {fixesOpen ? "▲" : "▼"}
-        </Button>
-
-        <Collapse in={fixesOpen}>
-          <Stack gap="md" mt="md">
-            <Text size="xs" c="dimmed">
-              {t(
-                "printPreflight.fixes.help",
-                "Corrections applied when producing a Fixed PDF. The annotated and JSON reports are always analysis-only.",
-              )}
-            </Text>
-            <MultiSelect
-              label={t("printPreflight.fixups.label", "Fixups to apply")}
-              description={t(
-                "printPreflight.fixups.help",
-                "Leave empty to apply every fixup that has something to correct.",
-              )}
-              placeholder={t(
-                "printPreflight.fixups.placeholder",
-                "All applicable fixups",
-              )}
-              data={[
-                {
-                  value: "NONE",
-                  label: t(
-                    "printPreflight.fixups.codes.NONE",
-                    "None — disable all fixups",
-                  ),
-                },
-                ...FIXUP_CODES.map((code) => ({
-                  value: code,
-                  label: t(`printPreflight.fixups.codes.${code}`, code),
-                })),
-              ]}
-              value={parameters.fixups ?? []}
-              onChange={(value) =>
-                onParameterChange(
-                  "fixups",
-                  value.length === 0 ? undefined : value,
-                )
-              }
-              searchable
+          <Stack gap="sm">
+            <Button
+              variant="tertiary"
+              onClick={() => setFixesOpen(!fixesOpen)}
               disabled={disabled}
-              comboboxProps={{ withinPortal: true }}
-            />
+            >
+              {t("printPreflight.fixes.toggle", "Automatic fixes")}{" "}
+              {fixesOpen ? "▲" : "▼"}
+            </Button>
+
+            <Collapse in={fixesOpen}>
+              <Stack gap="md" mt="md">
+                <Text size="xs" c="dimmed">
+                  {t(
+                    "printPreflight.fixes.help",
+                    "Corrections applied when producing a Fixed PDF. The annotated and JSON reports are always analysis-only.",
+                  )}
+                </Text>
+                <MultiSelect
+                  label={t("printPreflight.fixups.label", "Fixups to apply")}
+                  description={t(
+                    "printPreflight.fixups.help",
+                    "Leave empty to apply every fixup that has something to correct.",
+                  )}
+                  placeholder={t(
+                    "printPreflight.fixups.placeholder",
+                    "All applicable fixups",
+                  )}
+                  data={[
+                    {
+                      value: "NONE",
+                      label: t(
+                        "printPreflight.fixups.codes.NONE",
+                        "None — disable all fixups",
+                      ),
+                    },
+                    ...FIXUP_CODES.map((code) => ({
+                      value: code,
+                      label: t(`printPreflight.fixups.codes.${code}`, code),
+                    })),
+                  ]}
+                  value={parameters.fixups ?? []}
+                  onChange={(value) =>
+                    onParameterChange(
+                      "fixups",
+                      value.length === 0 ? undefined : value,
+                    )
+                  }
+                  searchable
+                  disabled={disabled}
+                  comboboxProps={{ withinPortal: true }}
+                />
+              </Stack>
+            </Collapse>
           </Stack>
-        </Collapse>
-      </Stack>
+        </>
+      )}
     </Stack>
   );
 };
