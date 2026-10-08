@@ -38,6 +38,7 @@ import stirling.software.SPDF.service.preflight.PreflightGhostscriptFixer;
 import stirling.software.SPDF.service.preflight.PreflightProfileService;
 import stirling.software.SPDF.service.preflight.PrintPreflightService;
 import stirling.software.SPDF.service.prepress.PrepressArchiveService;
+import stirling.software.SPDF.service.prepress.PrepressReportHeaders;
 import stirling.software.common.model.api.PDFFile;
 import stirling.software.common.service.CustomPDFDocumentFactory;
 import stirling.software.common.util.TempFileManager;
@@ -1385,5 +1386,61 @@ class PrintPreflightControllerTest {
         req.setMaxInkCoveragePercent(320);
         req.setMinImage1BitDpi(0);
         assertThrows(IllegalArgumentException.class, () -> controller.printPreflight(req));
+    }
+
+    @Test
+    void testPreflightSummaryVerdictTracksSeverity() throws Exception {
+        // A page with no trim/bleed boxes carries errors; a fully boxed page passes.
+        PDDocument bare = new PDDocument();
+        bare.addPage(new PDPage(PDRectangle.A4));
+        PrintPreflightReport failing = controller.printPreflight(request(toBytes(bare))).getBody();
+        assertNotNull(failing);
+        assertEquals("fail", failing.getPreflight().verdict());
+
+        PrintPreflightReport clean = controller.printPreflight(request(redBleedPdf())).getBody();
+        assertNotNull(clean);
+        // redBleed has trim+bleed boxes but no output intent — a warning-only document.
+        assertEquals("warn", clean.getPreflight().verdict());
+        assertTrue(clean.getPreflight().warnings() > 0);
+        assertEquals(0, clean.getPreflight().errors());
+    }
+
+    @Test
+    void testFixEndpointReanalyzesAndEmitsToolReport() throws Exception {
+        // Missing boxes are fixable: the report riding the response must describe the
+        // delivered file, so post-fix counts sit below the pre-fix ones the verdict would
+        // otherwise route on.
+        PDDocument doc = new PDDocument();
+        doc.addPage(new PDPage(PDRectangle.A4));
+        PrintPreflightRequest req = request(toBytes(doc));
+        req.setFixups(java.util.List.of("SET_MISSING_BOXES"));
+
+        ResponseEntity<Resource> response = controller.printPreflightFix(req);
+        assertEquals(200, response.getStatusCode().value());
+        String header = response.getHeaders().getFirst(PrepressReportHeaders.TOOL_REPORT);
+        assertNotNull(header, "fixed output must carry a tool report for pipeline routing");
+        com.fasterxml.jackson.databind.JsonNode json =
+                new com.fasterxml.jackson.databind.ObjectMapper().readTree(header);
+        com.fasterxml.jackson.databind.JsonNode preflight = json.get("preflight");
+        assertNotNull(preflight);
+        assertTrue(
+                preflight.get("preWarnings").asInt() > preflight.get("warnings").asInt(),
+                "post-fix analysis must see the TrimBox the fixup wrote: " + header);
+        assertTrue(preflight.get("preErrors").asInt() >= preflight.get("errors").asInt());
+    }
+
+    @Test
+    void testAnnotatedEndpointEmitsToolReport() throws Exception {
+        PDDocument doc = new PDDocument();
+        doc.addPage(new PDPage(PDRectangle.A4));
+        PrintPreflightRequest req = request(toBytes(doc));
+        req.setIncludeSummaryPage(false);
+
+        ResponseEntity<Resource> response = controller.printPreflightAnnotated(req);
+        String header = response.getHeaders().getFirst(PrepressReportHeaders.TOOL_REPORT);
+        assertNotNull(header);
+        com.fasterxml.jackson.databind.JsonNode json =
+                new com.fasterxml.jackson.databind.ObjectMapper().readTree(header);
+        assertEquals("fail", json.get("preflight").get("verdict").asText());
     }
 }

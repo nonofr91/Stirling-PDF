@@ -255,6 +255,128 @@ describe("PolicySetupWizard", () => {
     ]);
   });
 
+  it("injects the preflight-fix step when a route reads the verdict", async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(
+      <SharedPolicySetupWizard
+        entry={routingEntry}
+        onClose={vi.fn()}
+        onSubmit={onSubmit}
+        routingConfig={({ onChange }) => (
+          <button
+            onClick={() =>
+              onChange({
+                sourceId: "inbox",
+                trigger: { type: "folder-watch", options: {} },
+                outputIds: ["approved"],
+                routingRules: [
+                  {
+                    condition: {
+                      input: {
+                        source: "document",
+                        field: "report.preflight.verdict",
+                      },
+                      operator: "matches-any",
+                      values: ["fail"],
+                    },
+                    outputId: "quarantine",
+                  },
+                ],
+              })
+            }
+          >
+            Configure verdict routing
+          </button>
+        )}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Configure verdict routing" }),
+    );
+    await submitWizard(ENABLE);
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    const result = onSubmit.mock.calls[0][1] as PolicySetupResult;
+    // The verdict cannot exist without a reporting step, so the wizard adds one — the fix
+    // variant, so a clean verdict still delivers a corrected document.
+    expect(result.steps.map((step) => step.operation)).toEqual([
+      "/api/v1/security/print-preflight-fix",
+    ]);
+    expect(buildWireFromSetup(routingEntry, result, t).routingRules).toEqual([
+      {
+        condition: {
+          input: { source: "document", field: "report.preflight.verdict" },
+          operator: "matches-any",
+          values: ["fail"],
+        },
+        outputId: "quarantine",
+      },
+    ]);
+  });
+
+  it("orders the injected preflight step before classify on combined routes", async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(
+      <SharedPolicySetupWizard
+        entry={routingEntry}
+        onClose={vi.fn()}
+        onSubmit={onSubmit}
+        routingConfig={({ onChange }) => (
+          <button
+            onClick={() =>
+              onChange({
+                sourceId: "inbox",
+                trigger: { type: "folder-watch", options: {} },
+                outputIds: ["approved"],
+                routingRules: [
+                  {
+                    condition: {
+                      input: {
+                        source: "document",
+                        field: "classification.labels",
+                      },
+                      operator: "matches-any",
+                      values: ["invoice"],
+                    },
+                    outputId: "finance",
+                  },
+                  {
+                    condition: {
+                      input: {
+                        source: "document",
+                        field: "report.preflight.verdict",
+                      },
+                      operator: "matches-any",
+                      values: ["fail"],
+                    },
+                    outputId: "quarantine",
+                  },
+                ],
+              })
+            }
+          >
+            Configure combined routing
+          </button>
+        )}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Configure combined routing" }),
+    );
+    await submitWizard(ENABLE);
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    const result = onSubmit.mock.calls[0][1] as PolicySetupResult;
+    // Preflight before classify: a Ghostscript fixup rebuilds the file and would drop the
+    // classification metadata written earlier — classify cannot change the verdict, so it goes last.
+    expect(result.steps.map((step) => step.operation)).toEqual([
+      "/api/v1/security/print-preflight-fix",
+      "/api/v1/ai/tools/classify-and-label",
+    ]);
+  });
+
   it("allows deterministic routing without AI or a classify step", async () => {
     aiClassificationEnabled.value = false;
     const onSubmit = vi.fn().mockResolvedValue(undefined);

@@ -18,15 +18,22 @@ describe("POLICY_OPERATIONS", () => {
       "classify",
       "complianceCheck",
       "compress",
+      "crop",
+      "cutContour",
       "externalApiCall",
       "flatten",
       "ingest",
       "ocr",
       "pdfa",
+      "printPreflight",
+      "printPreflightFix",
       "purviewApplyLabel",
       "purviewReadLabel",
       "redact",
       "sanitize",
+      "scalePages",
+      "setPageBoxes",
+      "textToOutlines",
       "timestampPdf",
       "watermark",
     ]);
@@ -156,6 +163,37 @@ describe("compliance steps", () => {
     });
     expect(back?.toolId).toBe("complianceCheck");
     expect(back?.params).toEqual({});
+  });
+});
+
+describe("prepress steps", () => {
+  test("both preflight entries pin the PDF-returning endpoints routing can read", () => {
+    // The JSON report endpoint returns no file, so it cannot carry a verdict through a pipeline.
+    expect(policyEndpoint("printPreflight")).toBe(
+      "/api/v1/security/print-preflight-annotated",
+    );
+    expect(policyEndpoint("printPreflightFix")).toBe(
+      "/api/v1/security/print-preflight-fix",
+    );
+  });
+
+  test("printPreflightFix sends fixups as the list the backend request model reads", () => {
+    const wire = policyStepToWire(
+      policyStep("printPreflightFix", {
+        profileName: "offset-press",
+        fixups: "SET_MISSING_BOXES, EXTEND_BLEED",
+      }),
+    );
+    expect(wire.parameters).toEqual({
+      profileName: "offset-press",
+      fixups: ["SET_MISSING_BOXES", "EXTEND_BLEED"],
+    });
+  });
+
+  test("an empty profile falls back to the request defaults instead of sending a blank", () => {
+    const wire = policyStepToWire(policyStep("printPreflight"));
+    expect(wire.operation).toBe("/api/v1/security/print-preflight-annotated");
+    expect(wire.parameters).toEqual({});
   });
 });
 

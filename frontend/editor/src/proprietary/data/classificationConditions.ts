@@ -30,3 +30,11 @@ export function requiresClassification(condition: Condition): boolean {
     condition.input.field.startsWith("classification.")
   );
 }
+
+/** Step-report facts are only present when a reporting tool (e.g. preflight) ran in the pipeline. */
+export function requiresPreflight(condition: Condition): boolean {
+  return (
+    condition.input.source === "document" &&
+    condition.input.field.startsWith("report.preflight.")
+  );
+}

@@ -232,4 +232,113 @@ describe("RoutingRules", () => {
 
     expect(onChange).toHaveBeenCalledWith([rule(["contract"], "src-legal")]);
   });
+
+  it("offers preflight report fields only when a preflight step feeds the route", () => {
+    const onChange = vi.fn();
+    baseRender(
+      <RoutingRules
+        rules={[
+          {
+            condition: {
+              input: { source: "document", field: "document.extension" },
+              operator: "matches-any",
+              values: ["pdf"],
+            },
+            outputId: "src-finance",
+          },
+        ]}
+        onChange={onChange}
+        destinations={DESTINATIONS}
+        preflightAvailable={false}
+      />,
+      { wrapper: PortalTestProviders },
+    );
+
+    fireEvent.click(screen.getByRole("textbox", { name: "Match by" }));
+
+    const verdictOption = screen.getByRole("option", {
+      name: "Preflight verdict",
+    });
+    expect(verdictOption).toHaveAttribute("data-combobox-disabled");
+    expect(
+      screen.getByRole("option", { name: "Preflight error count" }),
+    ).toHaveAttribute("data-combobox-disabled");
+
+    fireEvent.click(verdictOption);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("emits the report.preflight.verdict condition the backend routes on", () => {
+    const onChange = vi.fn();
+    baseRender(
+      <RoutingRules
+        rules={[
+          {
+            condition: {
+              input: { source: "document", field: "document.extension" },
+              operator: "matches-any",
+              values: ["pdf"],
+            },
+            outputId: "src-finance",
+          },
+        ]}
+        onChange={onChange}
+        destinations={DESTINATIONS}
+        preflightAvailable
+      />,
+      { wrapper: PortalTestProviders },
+    );
+
+    fireEvent.click(screen.getByRole("textbox", { name: "Match by" }));
+    fireEvent.click(screen.getByRole("option", { name: "Preflight verdict" }));
+
+    expect(onChange).toHaveBeenCalledWith([
+      {
+        condition: {
+          input: { source: "document", field: "report.preflight.verdict" },
+          operator: "matches-any",
+          values: [],
+        },
+        outputId: "src-finance",
+      },
+    ]);
+  });
+
+  it("picks a verdict from the fixed pass/warn/fail list, not free text", () => {
+    const onChange = vi.fn();
+    baseRender(
+      <RoutingRules
+        rules={[
+          {
+            condition: {
+              input: { source: "document", field: "report.preflight.verdict" },
+              operator: "matches-any",
+              values: [],
+            },
+            outputId: "src-finance",
+          },
+        ]}
+        onChange={onChange}
+        destinations={DESTINATIONS}
+        preflightAvailable
+      />,
+      { wrapper: PortalTestProviders },
+    );
+
+    fireEvent.click(
+      screen.getAllByRole("textbox", { name: "Values to match" })[0],
+    );
+    fireEvent.click(screen.getByRole("option", { name: "fail" }));
+
+    expect(onChange).toHaveBeenCalledWith([
+      {
+        condition: {
+          input: { source: "document", field: "report.preflight.verdict" },
+          operator: "matches-any",
+          values: ["fail"],
+        },
+        outputId: "src-finance",
+      },
+    ]);
+  });
 });

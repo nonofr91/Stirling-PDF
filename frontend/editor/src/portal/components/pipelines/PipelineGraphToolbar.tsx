@@ -2,7 +2,7 @@ import { useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { Tooltip } from "@mantine/core";
 import { Icon } from "@app/ui/Icon";
-import { ActionIcon, Button, FilePicker, Spinner } from "@app/ui";
+import { ActionIcon, Button, FilePicker, Spinner, StatusBadge } from "@app/ui";
 import { type RunOutputFile } from "@portal/api/pipelines";
 import "@portal/components/pipelines/PipelineGraphToolbar.css";
 
@@ -137,16 +137,64 @@ function RunResultStrip({ result, onDownload }: RunResultStripProps) {
       )}
 
       {outputs.map((output) => (
-        <Button
+        <span
           key={output.fileId}
-          variant="tertiary"
-          size="sm"
-          onClick={() => onDownload(output)}
-          leftSection={<Icon name="download" size={"1.125rem"} />}
+          className="portal-pipeline-toolbar__result-file"
         >
-          {output.fileName ?? output.fileId}
-        </Button>
+          <Button
+            variant="tertiary"
+            size="sm"
+            onClick={() => onDownload(output)}
+            leftSection={<Icon name="download" size={"1.125rem"} />}
+          >
+            {output.fileName ?? output.fileId}
+          </Button>
+          {output.report?.preflight?.verdict && (
+            <StatusBadge
+              size="sm"
+              tone={verdictTone(output.report.preflight.verdict)}
+            >
+              {t(
+                `printPreflight.verdict.${output.report.preflight.verdict}`,
+                output.report.preflight.verdict,
+              )}
+            </StatusBadge>
+          )}
+          {output.report?.prepress?.chainId && (
+            <Tooltip
+              label={t(
+                "portal.pipelines.inspector.archiveLink",
+                "Open the version archive for this document",
+              )}
+              withinPortal
+            >
+              <a
+                className="portal-pipeline-toolbar__result-archive"
+                href={`/api/v1/general/prepress-archive/${output.report.prepress.chainId}`}
+                target="_blank"
+                rel="noreferrer"
+                aria-label={t(
+                  "portal.pipelines.inspector.archiveLink",
+                  "Open the version archive for this document",
+                )}
+              >
+                <Icon name="file-doc-archive" size={"1rem"} />
+              </a>
+            </Tooltip>
+          )}
+        </span>
       ))}
     </div>
   );
+}
+
+function verdictTone(verdict: "pass" | "warn" | "fail") {
+  switch (verdict) {
+    case "pass":
+      return "success" as const;
+    case "warn":
+      return "warning" as const;
+    case "fail":
+      return "danger" as const;
+  }
 }

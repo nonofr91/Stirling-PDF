@@ -3,8 +3,12 @@ import {
   parseTrigger,
   buildTriggerFor,
 } from "@portal/components/pipelines/inputTriggerConfig";
-import { requiresClassification } from "@app/data/classificationConditions";
+import {
+  requiresClassification,
+  requiresPreflight,
+} from "@app/data/classificationConditions";
 import { isConditionComplete } from "@app/conditions/validation";
+import { PREFLIGHT_STEP_ENDPOINTS } from "@app/policies/operations";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -155,6 +159,9 @@ const CLASSIFY_OPERATION = "/api/v1/ai/tools/classify-and-label";
 
 function isClassifyStep(step: WorkingToolStep): boolean {
   return step.operation === CLASSIFY_OPERATION;
+}
+function isPreflightStep(step: WorkingToolStep): boolean {
+  return PREFLIGHT_STEP_ENDPOINTS.has(step.operation);
 }
 function isClassifyTool(tool: ExecutableTool): boolean {
   return (
@@ -754,6 +761,7 @@ export function PipelineBuilder() {
     );
   const outputValid = returnsToEditor || (destinationReady && vectorReady);
   const classifies = steps.some(isClassifyStep);
+  const preflights = steps.some(isPreflightStep);
   // Mirrors PolicyValidator.validateRoutingRules: a rule with nothing to match on, or nowhere to
   // send, would be rejected on save - so it is named here rather than surfaced as a server error.
   const routingValid = routingRules.every(
@@ -763,6 +771,11 @@ export function PipelineBuilder() {
   // Every document would fall through to the fallback, so this is named rather than left to run.
   const routingHasVerdict = routingRules.every(
     (rule) => !requiresClassification(rule.condition) || classifies,
+  );
+  // Same orphan check for report-based rules: a preflight rule without a preflight step can
+  // never match, silently sending everything to the fallback.
+  const routingHasPreflight = routingRules.every(
+    (rule) => !requiresPreflight(rule.condition) || preflights,
   );
 
   // The single source of truth for "can this be committed": every reason it can't be, in the order
@@ -790,6 +803,13 @@ export function PipelineBuilder() {
       t(
         "portal.pipelines.builder.blocker.routingNeedsClassify",
         "Add a Classify step, or turn off routing by document type",
+      ),
+    );
+  if (!routingHasPreflight)
+    blockers.push(
+      t(
+        "portal.pipelines.builder.blocker.routingNeedsPreflight",
+        "Add a Print Preflight step, or turn off routing by preflight verdict",
       ),
     );
   if (classifies && !aiAvailabilityLoading && !aiClassificationEnabled)
@@ -1358,6 +1378,7 @@ export function PipelineBuilder() {
                 destinations={writableSources}
                 onCreateDestination={() => createSourceFor("output")}
                 canClassify={classifies}
+                canPreflight={preflights}
                 aiClassificationEnabled={aiClassificationEnabled}
               />
               <DestinationPicker

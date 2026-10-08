@@ -3,6 +3,7 @@ package stirling.software.proprietary.policy.engine;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 import java.io.ByteArrayOutputStream;
@@ -22,6 +23,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
+import org.springframework.http.ResponseEntity;
 
 import stirling.software.common.model.ApplicationProperties;
 import stirling.software.common.model.job.ResultFile;
@@ -42,6 +44,7 @@ import stirling.software.proprietary.policy.asset.InProcessPolicyAssetStore;
 import stirling.software.proprietary.policy.asset.PolicyAssetResolver;
 import stirling.software.proprietary.policy.model.OutputSpec;
 import stirling.software.proprietary.policy.model.PipelineDefinition;
+import stirling.software.proprietary.policy.model.PipelineStep;
 import stirling.software.proprietary.policy.model.PolicyInputs;
 import stirling.software.proprietary.policy.model.PolicyRun;
 import stirling.software.proprietary.policy.model.PolicyRunStatus;
@@ -190,6 +193,72 @@ class PolicyEngineRoutingTest {
         assertThat(sink.deliveries()).containsExactly("fallback:invoice.docx");
     }
 
+    @Test
+    void routesOnTheStepReportVerdictNotJustDocumentFacts() throws Exception {
+        // A preflight-fix step stamps each file's verdict into its report; routing must read
+        // report.preflight.verdict so a failing document is quarantined while a clean one ships.
+        String fix = "/api/v1/security/print-preflight-fix";
+        when(toolMetadataService.isMultiInput(fix)).thenReturn(false);
+        when(toolMetadataService.shouldUnpackZipResponse(fix)).thenReturn(false);
+        when(internalApiClient.post(eq(fix), any()))
+                .thenAnswer(
+                        inv -> {
+                            org.springframework.util.MultiValueMap<String, Object> body =
+                                    inv.getArgument(1);
+                            Resource input = (Resource) body.getFirst("fileInput");
+                            String verdict = input.getFilename().contains("bad") ? "fail" : "pass";
+                            return ResponseEntity.ok()
+                                    .header(
+                                            "X-Stirling-Tool-Report",
+                                            "{\"preflight\":{\"verdict\":\"" + verdict + "\"}}")
+                                    .body(pdfResource(input.getFilename()));
+                        });
+
+        PipelineDefinition definition =
+                new PipelineDefinition(
+                        "prepress",
+                        List.of(new PipelineStep(fix, java.util.Map.of())),
+                        List.of(new OutputSpec("record", java.util.Map.of("dest", "out"))),
+                        List.of(
+                                new RoutedDestination(
+                                        new RoutingRule(
+                                                new Condition.MatchesAny(
+                                                        new ConditionInput.DocumentField(
+                                                                "report.preflight.verdict"),
+                                                        List.of("fail")),
+                                                "quarantine"),
+                                        new OutputSpec(
+                                                "record",
+                                                java.util.Map.of("dest", "quarantine")))));
+
+        PolicyRun run =
+                engine.submit(
+                                definition,
+                                PolicyInputs.of(
+                                        List.of(pdfResource("good.pdf"), pdfResource("bad.pdf"))),
+                                PolicyProgressListener.NOOP)
+                        .completion()
+                        .get(20, TimeUnit.SECONDS);
+
+        assertThat(run.getStatus()).isEqualTo(PolicyRunStatus.COMPLETED);
+        assertThat(sink.deliveries())
+                .containsExactlyInAnyOrder("quarantine:bad.pdf", "out:good.pdf");
+    }
+
+    private static Resource pdfResource(String filename) throws IOException {
+        try (PDDocument doc = new PDDocument()) {
+            doc.addPage(new PDPage());
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            doc.save(out);
+            return new ByteArrayResource(out.toByteArray()) {
+                @Override
+                public String getFilename() {
+                    return filename;
+                }
+            };
+        }
+    }
+
     private static RoutedDestination routed(String label, String dest) {
         return new RoutedDestination(
                 new RoutingRule(
@@ -245,7 +314,8 @@ class PolicyEngineRoutingTest {
             List<ResultFile> results = new ArrayList<>();
             for (Resource output : outputs) {
                 deliveries.add(dest + ":" + output.getFilename());
-                results.add(new ResultFile(dest, output.getFilename(), "application/pdf", 0L));
+                results.add(
+                        new ResultFile(dest, output.getFilename(), "application/pdf", 0L, null));
             }
             return results;
         }

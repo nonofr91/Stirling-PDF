@@ -9790,6 +9790,7 @@ managerOnly = "Only an admin or team leader can modify a policy"
 name = "Give the pipeline a name"
 routing = "Give every route document types and a destination"
 routingNeedsClassify = "Add a Classify step, or turn off routing by document type"
+routingNeedsPreflight = "Add a Print Preflight step, or turn off routing by preflight verdict"
 saveHeading = "To save your changes:"
 schedule = "Set how often it runs"
 setup = "Finish setting up: {{tools}}"
@@ -9840,6 +9841,9 @@ matchDocumentType = "Document type (AI classification)"
 matchDocumentTypeDisabled = "Document type (AI unavailable)"
 matchExtension = "File extension"
 matchFilename = "Exact filename"
+matchPreflightErrors = "Preflight error count"
+matchPreflightVerdict = "Preflight verdict"
+matchPreflightWarnings = "Preflight warning count"
 matchTitle = "PDF title"
 matchValues = "Values to match"
 needsClassify = "Add a Classify step to use document-type routing, or match on a document property instead."
@@ -9922,6 +9926,7 @@ failed = "Failed"
 running = "Running"
 
 [portal.pipelines.inspector]
+archiveLink = "Open the version archive for this document"
 multipleBody = "Drag any of them onto a line to move them together, or press Delete to remove them."
 multipleSelected_one = "{{count}} step selected"
 multipleSelected_other = "{{count}} steps selected"
@@ -10318,6 +10323,14 @@ label = "Check the document meets the standard"
 desc = "Compresses the document to a smaller file size."
 label = "Reduce file size"
 
+[portal.policies.wizard.capability.crop]
+desc = "Trims pages to a chosen box or the detected content edge."
+label = "Crop pages"
+
+[portal.policies.wizard.capability.cutContour]
+desc = "Reads the finishing contour from the artwork so a cutter can follow it."
+label = "Extract the cut contour"
+
 [portal.policies.wizard.capability.flatten]
 desc = "Merges form fields and annotations into the page so they can't be edited."
 label = "Flatten the document"
@@ -10334,6 +10347,14 @@ label = "Make text searchable"
 desc = "Rewrites the document in the ISO archival format, embedding its fonts and colour profiles so it still renders the same years from now. Invalidates digital signatures."
 label = "Convert to PDF/A for archiving"
 
+[portal.policies.wizard.capability.printPreflight]
+desc = "Runs the print preflight checks and hands back a copy with every issue framed — routes can send a failing document to quarantine with the annotated proof attached."
+label = "Check for print, without changing the file"
+
+[portal.policies.wizard.capability.printPreflightFix]
+desc = "Runs the print preflight checks, applies the corrections it safely can (page boxes, bleed, colour), and reports a verdict routes can send to quarantine."
+label = "Check and fix for print"
+
 [portal.policies.wizard.capability.redact]
 desc = "Finds and blacks out sensitive details — like Social Security and card numbers — so they can't be read."
 label = "Redact sensitive information"
@@ -10341,6 +10362,18 @@ label = "Redact sensitive information"
 [portal.policies.wizard.capability.sanitize]
 desc = "Removes hidden JavaScript so nothing can run automatically when the document is opened."
 label = "Strip active content"
+
+[portal.policies.wizard.capability.scalePages]
+desc = "Resizes page content to a target size, e.g. growing artwork to cover its bleed."
+label = "Scale pages"
+
+[portal.policies.wizard.capability.setPageBoxes]
+desc = "Declares the page's boxes — trim, bleed, crop — so downstream print steps read the right geometry."
+label = "Set page boxes"
+
+[portal.policies.wizard.capability.textToOutlines]
+desc = "Turns live text into vector paths, so no missing font or substitution can change it at press."
+label = "Convert text to outlines"
 
 [portal.policies.wizard.capability.timestampPdf]
 desc = "Proves the document existed in this exact form at a point in time, using an independent timestamp authority. Only a hash is sent - the document never leaves your server."
@@ -11247,6 +11280,9 @@ complete = "Preflight complete"
 [printPreflight.verdict]
 clean = "Ready for print"
 errors = "{{errors}} blocking issue(s) found"
+fail = "Fail"
+pass = "Pass"
+warn = "Warnings only"
 warnings = "Printable with {{warnings}} warning(s)"
 
 [processingFolders.setup]
