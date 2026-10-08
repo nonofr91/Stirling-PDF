@@ -1,8 +1,23 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useTranslation } from "react-i18next";
 import i18n from "i18next";
 import apiClient from "@app/services/apiClient";
 import { downloadFile } from "@app/services/downloadService";
+import { useFileContext } from "@app/contexts/FileContext";
+import { ViewerContext } from "@app/contexts/ViewerContext";
+import {
+  createChildStub,
+  generateProcessedFileMetadata,
+} from "@app/contexts/file/fileActions";
+import { createStirlingFile, type FileId } from "@app/types/fileContext";
+import type { ToolOperation } from "@app/types/file";
 import {
   defineCustomTool,
   CustomProcessorResult,
@@ -37,6 +52,8 @@ export interface PrintPreflightOperationHook extends ToolOperationHook<PrintPref
   downloadReport: (fileId: string) => Promise<void>;
   /** Fetch the auto-fixed copy for one analyzed file. */
   downloadFixed: (fileId: string) => Promise<void>;
+  /** Sources already versioned by a successful fix — the fix button is a no-op for them. */
+  fixedSourceIds: ReadonlySet<string>;
   /**
    * Dry-run the configured fixups for one analyzed file: applies them
    * in-memory server-side and stores the before/after audit for display —
@@ -190,6 +207,9 @@ export const printPreflightOperationConfig = defineCustomTool({
 
 export const usePrintPreflightOperation = (): PrintPreflightOperationHook => {
   const { t } = useTranslation();
+  const { consumeFiles, selectors } = useFileContext();
+  const viewerContext = useContext(ViewerContext);
+  const setActiveFileId = viewerContext?.setActiveFileId ?? (() => {});
   const [isLoading, setIsLoading] = useState(false);
   const [status, setStatus] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -212,6 +232,7 @@ export const usePrintPreflightOperation = (): PrintPreflightOperationHook => {
   const [fixAudits, setFixAudits] = useState<Record<string, PreflightFixAudit>>(
     {},
   );
+  const [fixedSourceIds, setFixedSourceIds] = useState<Set<string>>(new Set());
 
   const cleanupDownloadUrl = useCallback(() => {
     if (previousUrl.current) {
@@ -225,6 +246,7 @@ export const usePrintPreflightOperation = (): PrintPreflightOperationHook => {
     setResults([]);
     setFiles([]);
     setFixAudits({});
+    setFixedSourceIds(new Set());
     lastRun.current.clear();
     cleanupDownloadUrl();
     setDownloadUrl(null);
@@ -251,6 +273,7 @@ export const usePrintPreflightOperation = (): PrintPreflightOperationHook => {
       setResults([]);
       setFiles([]);
       setFixAudits({});
+      setFixedSourceIds(new Set());
       cleanupDownloadUrl();
       setDownloadUrl(null);
       setDownloadFilename("");
@@ -393,15 +416,85 @@ export const usePrintPreflightOperation = (): PrintPreflightOperationHook => {
     [downloadPdf],
   );
 
+  // The fixed PDF is the document's next production version: it enters the
+  // workbench as a child of the input (standard version-op path — the source
+  // stays in version history) and is also downloaded for handoff to the RIP.
   const downloadFixed = useCallback(
-    (fileId: string) =>
-      downloadPdf(
-        fileId,
-        PREFLIGHT_FIX_ENDPOINT,
-        "_preflight-fixed",
-        setFixedLoading,
-      ),
-    [downloadPdf],
+    async (fileId: string) => {
+      const run = lastRun.current.get(fileId);
+      if (
+        !run ||
+        fixedSourceIds.has(fileId) ||
+        annotatedLoading ||
+        reportLoading ||
+        fixedLoading ||
+        previewLoading
+      ) {
+        return;
+      }
+      setFixedLoading(fileId);
+      try {
+        const response = await apiClient.post(
+          PREFLIGHT_FIX_ENDPOINT,
+          buildFormData(run.file, run.params),
+          {
+            responseType: "blob",
+          },
+        );
+        const blob =
+          response.data instanceof Blob
+            ? response.data
+            : new Blob([response.data], { type: "application/pdf" });
+        const base = run.file.name.replace(/\.pdf$/i, "");
+        const fixedFile = new File([blob], `${base}_preflight-fixed.pdf`, {
+          type: "application/pdf",
+        });
+
+        const parentStub = selectors.getStirlingFileStub(fileId as FileId);
+        if (parentStub) {
+          const operation: ToolOperation = {
+            toolId: "printPreflight",
+            timestamp: Date.now(),
+          };
+          const metadata = await generateProcessedFileMetadata(fixedFile);
+          const childStub = createChildStub(
+            parentStub,
+            operation,
+            fixedFile,
+            metadata?.thumbnailUrl,
+            metadata,
+          );
+          const outputFileIds = await consumeFiles(
+            [fileId as FileId],
+            [createStirlingFile(fixedFile, childStub.id)],
+            [childStub],
+          );
+          if (outputFileIds.length === 1) {
+            setActiveFileId(outputFileIds[0]);
+          }
+          setFixedSourceIds((current) => new Set(current).add(fileId));
+        }
+
+        await downloadFile({
+          data: fixedFile,
+          filename: fixedFile.name,
+        });
+      } catch (error) {
+        setErrorMessage(extractErrorMessage(error));
+      } finally {
+        setFixedLoading(null);
+      }
+    },
+    [
+      annotatedLoading,
+      reportLoading,
+      fixedLoading,
+      previewLoading,
+      fixedSourceIds,
+      consumeFiles,
+      selectors,
+      setActiveFileId,
+    ],
   );
 
   const previewFixes = useCallback(
@@ -475,6 +568,7 @@ export const usePrintPreflightOperation = (): PrintPreflightOperationHook => {
       downloadFixed,
       previewFixes,
       fixAudits,
+      fixedSourceIds,
       annotatedLoading,
       reportLoading,
       fixedLoading,
@@ -484,6 +578,7 @@ export const usePrintPreflightOperation = (): PrintPreflightOperationHook => {
       annotatedLoading,
       downloadFixed,
       fixAudits,
+      fixedSourceIds,
       fixedLoading,
       previewFixes,
       previewLoading,
