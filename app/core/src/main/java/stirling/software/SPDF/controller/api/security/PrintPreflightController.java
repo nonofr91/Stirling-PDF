@@ -290,35 +290,44 @@ public class PrintPreflightController {
                     applied.isEmpty() ? "none applicable" : String.join(", ", applied));
             // Re-analyse the delivered document so pipeline routing sees the post-fix state —
             // the pre-fix report cannot say whether the fixups resolved everything (the
-            // fix-preview endpoint already pays this same second analysis pass).
-            PrintPreflightReport postReport = reanalyzeFixed(request, file, document, gsOutput);
+            // fix-preview endpoint already pays this same second analysis pass). gsOutput is
+            // only owned by the response once pdfFileToWebResponse wraps it — every throwing
+            // call before that must close it or the Ghostscript output leaks on disk.
+            PrintPreflightReport postReport;
             ResponseEntity<Resource> response;
             Optional<PrepressArchiveService.Handle> handle;
             if (gsOutput != null) {
-                response = WebResponseUtils.pdfFileToWebResponse(gsOutput, filename);
-                handle =
-                        prepressArchive.recordVersion(
-                                "print-preflight-fix",
-                                file,
-                                gsOutput.getPath(),
-                                filename,
-                                Map.of("fixups", applied));
+                try {
+                    postReport = reanalyzeFixed(request, file, document, gsOutput);
+                    handle =
+                            prepressArchive.recordVersion(
+                                    "print-preflight-fix",
+                                    file,
+                                    gsOutput.getPath(),
+                                    filename,
+                                    Map.of("fixups", applied));
+                    response = WebResponseUtils.pdfFileToWebResponse(gsOutput, filename);
+                } catch (IOException | RuntimeException e) {
+                    gsOutput.close();
+                    throw e;
+                }
             } else {
+                postReport = reanalyzeFixed(request, file, document, null);
                 TempFile out = tempFileManager.createManagedTempFile(".pdf");
                 try {
                     document.save(out.getFile());
+                    handle =
+                            prepressArchive.recordVersion(
+                                    "print-preflight-fix",
+                                    file,
+                                    out.getPath(),
+                                    filename,
+                                    Map.of("fixups", applied));
+                    response = WebResponseUtils.pdfFileToWebResponse(out, filename);
                 } catch (IOException | RuntimeException e) {
                     out.close();
                     throw e;
                 }
-                handle =
-                        prepressArchive.recordVersion(
-                                "print-preflight-fix",
-                                file,
-                                out.getPath(),
-                                filename,
-                                Map.of("fixups", applied));
-                response = WebResponseUtils.pdfFileToWebResponse(out, filename);
             }
             ResponseEntity<Resource> withHeaders =
                     ResponseEntity.status(response.getStatusCode())

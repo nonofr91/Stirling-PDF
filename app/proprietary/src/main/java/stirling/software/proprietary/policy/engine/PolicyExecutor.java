@@ -148,8 +148,13 @@ public class PolicyExecutor {
             try (AutomationRunContext.Scope doc = documentScope(billingOrigin)) {
                 r = callEndpoint(step, resources, supportingFiles);
             }
+            // Fan-in attribution: a merged file only carries the report every input agreed on —
+            // a silent merge of divergent verdicts cannot claim either one.
+            JsonNode shared = sharedReport(inputFiles);
             for (Resource file : r.files()) {
-                files.add(new PipelineFile(file, origin, billingOrigin, r.report()));
+                files.add(
+                        new PipelineFile(
+                                file, origin, billingOrigin, mergeReports(shared, r.report())));
             }
             report = r.report();
         } else if (inputFiles.isEmpty()) {
@@ -165,14 +170,12 @@ public class PolicyExecutor {
                     r = callEndpoint(step, List.of(input.resource()), supportingFiles);
                 }
                 for (Resource file : r.files()) {
-                    // A silent step (no report) keeps the file's previous verdict — e.g. a
-                    // compress after the fix must not erase its preflight outcome.
                     files.add(
                             new PipelineFile(
                                     file,
                                     input.origin(),
                                     input.billingOrigin(),
-                                    r.report() != null ? r.report() : input.report()));
+                                    mergeReports(input.report(), r.report())));
                 }
                 if (report == null) {
                     report = r.report();
@@ -180,6 +183,43 @@ public class PolicyExecutor {
             }
         }
         return new StepOutput(files, report);
+    }
+
+    /**
+     * Layers the producing step's report over the file's carried one, namespace by namespace: a
+     * step that only adds archive metadata ({@code prepress.*}) must not erase an earlier {@code
+     * preflight} verdict, while a fresh verdict replaces the previous one. A non-object report
+     * replaces wholesale — nothing reliable to merge into.
+     */
+    private static JsonNode mergeReports(JsonNode prior, JsonNode next) {
+        if (next == null) {
+            return prior;
+        }
+        if (prior instanceof ObjectNode priorObj && next instanceof ObjectNode nextObj) {
+            ObjectNode merged = priorObj.deepCopy();
+            merged.setAll(nextObj);
+            return merged;
+        }
+        return next;
+    }
+
+    /**
+     * The report every input carries when they all agree, else null: a multi-input step's output
+     * cannot honestly inherit a verdict its sources disagree on (or that some never had).
+     */
+    private static JsonNode sharedReport(List<PipelineFile> files) {
+        JsonNode shared = null;
+        for (PipelineFile file : files) {
+            if (file.report() == null) {
+                return null;
+            }
+            if (shared == null) {
+                shared = file.report();
+            } else if (!shared.equals(file.report())) {
+                return null;
+            }
+        }
+        return shared;
     }
 
     private static Integer sharedOrigin(List<PipelineFile> files) {

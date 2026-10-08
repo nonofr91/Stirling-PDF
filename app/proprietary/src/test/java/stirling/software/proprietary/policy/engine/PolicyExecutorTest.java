@@ -465,6 +465,101 @@ class PolicyExecutorTest {
         assertEquals("warn", result.reports().get(0).at("/preflight/verdict").asString());
     }
 
+    @Test
+    void archiveOnlyReportLayersOverTheCarriedVerdict() throws IOException {
+        String fix = "/api/v1/security/print-preflight-fix";
+        String cut = "/api/v1/security/cut-contour";
+        when(toolMetadataService.isMultiInput(anyString())).thenReturn(false);
+        when(toolMetadataService.shouldUnpackZipResponse(anyString())).thenReturn(false);
+        when(internalApiClient.post(eq(fix), any()))
+                .thenAnswer(
+                        inv ->
+                                ResponseEntity.ok()
+                                        .header(
+                                                "X-Stirling-Tool-Report",
+                                                "{\"preflight\":{\"verdict\":\"fail\",\"errors\":1}}")
+                                        .body(pdf("fixed", "fixed.pdf")));
+        // A versioned prepress step emits chain headers only: layering them over the carried
+        // report must keep the verdict, or fail routes lose the file to the fallback.
+        when(internalApiClient.post(eq(cut), any()))
+                .thenAnswer(
+                        inv ->
+                                ResponseEntity.ok()
+                                        .header("X-Prepress-Chain-Id", "chain9")
+                                        .header("X-Prepress-Version", "2")
+                                        .body(pdf("cut", "cut.pdf")));
+
+        PolicyExecutionResult result =
+                executor.execute(
+                        definition(
+                                new PipelineStep(fix, Map.of()), new PipelineStep(cut, Map.of())),
+                        PolicyInputs.of(List.of(pdf("in", "in.pdf"))),
+                        PolicyProgressListener.NOOP);
+
+        assertEquals("fail", result.reports().get(0).at("/preflight/verdict").asString());
+        assertEquals("chain9", result.reports().get(0).at("/prepress/chainId").asString());
+    }
+
+    @Test
+    void silentMergeKeepsAVerdictAllInputsAgreeOn() throws IOException {
+        String fix = "/api/v1/security/print-preflight-fix";
+        when(toolMetadataService.isMultiInput(fix)).thenReturn(false);
+        when(toolMetadataService.shouldUnpackZipResponse(fix)).thenReturn(false);
+        when(internalApiClient.post(eq(fix), any()))
+                .thenAnswer(
+                        inv ->
+                                ResponseEntity.ok()
+                                        .header(
+                                                "X-Stirling-Tool-Report",
+                                                "{\"preflight\":{\"verdict\":\"fail\",\"errors\":2}}")
+                                        .body(pdf("fixed", "f.pdf")));
+        when(toolMetadataService.isMultiInput(MERGE)).thenReturn(true);
+        when(toolMetadataService.shouldUnpackZipResponse(MERGE)).thenReturn(false);
+        stubEndpoint(MERGE, pdf("merged", "merged.pdf")); // silent merge emits no report
+
+        PolicyExecutionResult result =
+                executor.execute(
+                        definition(
+                                new PipelineStep(fix, Map.of()), new PipelineStep(MERGE, Map.of())),
+                        PolicyInputs.of(List.of(pdf("a", "a.pdf"), pdf("b", "b.pdf"))),
+                        PolicyProgressListener.NOOP);
+
+        assertEquals("fail", result.reports().get(0).at("/preflight/verdict").asString());
+    }
+
+    @Test
+    void silentMergeDropsAVerdictInputsDisagreeOn() throws IOException {
+        String fix = "/api/v1/security/print-preflight-fix";
+        when(toolMetadataService.isMultiInput(fix)).thenReturn(false);
+        when(toolMetadataService.shouldUnpackZipResponse(fix)).thenReturn(false);
+        when(internalApiClient.post(eq(fix), any()))
+                .thenAnswer(
+                        inv -> {
+                            MultiValueMap<String, Object> body = inv.getArgument(1);
+                            Resource input = (Resource) body.getFirst("fileInput");
+                            String verdict = input.getFilename().contains("bad") ? "fail" : "pass";
+                            return ResponseEntity.ok()
+                                    .header(
+                                            "X-Stirling-Tool-Report",
+                                            "{\"preflight\":{\"verdict\":\"" + verdict + "\"}}")
+                                    .body(pdf("fixed", input.getFilename()));
+                        });
+        when(toolMetadataService.isMultiInput(MERGE)).thenReturn(true);
+        when(toolMetadataService.shouldUnpackZipResponse(MERGE)).thenReturn(false);
+        stubEndpoint(MERGE, pdf("merged", "merged.pdf"));
+
+        PolicyExecutionResult result =
+                executor.execute(
+                        definition(
+                                new PipelineStep(fix, Map.of()), new PipelineStep(MERGE, Map.of())),
+                        PolicyInputs.of(List.of(pdf("a", "good.pdf"), pdf("b", "bad.pdf"))),
+                        PolicyProgressListener.NOOP);
+
+        // pass + fail merged: the output cannot honestly carry either verdict, so routing on
+        // report.preflight.* must not match — a quarantine rule silently passing would be worse.
+        assertNull(result.reports().get(0));
+    }
+
     // --- helpers ---
 
     private static PipelineDefinition definition(PipelineStep... steps) {
