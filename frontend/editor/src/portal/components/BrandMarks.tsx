@@ -5,6 +5,8 @@ import { Icon, isIconName, type IconName } from "@app/ui/Icon";
 const ID_ALIASES: Record<string, IconName> = {
   email: "mail",
   smb: "hard-drive",
+  // Outbound mail gets the send glyph; `mail` stays with the inbound inbox type.
+  smtp: "send",
   vectordb: "database",
 };
 

@@ -45,6 +45,10 @@ const SOURCE_TYPE_META: Record<string, SourceTypeMeta> = {
     labelKey: "portal.sources.types.sftp.label",
     accent: "default",
   },
+  smtp: {
+    labelKey: "portal.sources.types.smtp.label",
+    accent: "warning",
+  },
   ftp: {
     labelKey: "portal.sources.types.ftp.label",
     accent: "default",
@@ -72,7 +76,13 @@ export function sourceTypeMeta(type: string): SourceTypeMeta {
 export interface SourceFieldDef {
   key: string;
   labelKey: string;
-  control: "text" | "password" | "select" | "s3Connection" | "connection";
+  control:
+    | "text"
+    | "password"
+    | "select"
+    | "s3Connection"
+    | "connection"
+    | "textarea";
   required?: boolean;
   placeholderKey?: string;
   helperTextKey?: string;
@@ -346,6 +356,97 @@ export const CREATABLE_SOURCE_TYPES: CreatableSourceType[] = [
         defaultValue: "text",
         labelKey: "portal.sources.types.vectordb.textField",
         helperTextKey: "portal.sources.types.vectordb.textFieldHint",
+      },
+    ],
+  },
+  {
+    // Output-only: sends the run's report by email. SMTP credentials are the
+    // instance's mail.* settings, so the destination only carries who/what.
+    type: "smtp",
+    readable: false,
+    labelKey: "portal.sources.types.smtp.label",
+    descriptionKey: "portal.sources.types.smtp.description",
+    fields: [
+      {
+        key: "to",
+        control: "text",
+        required: true,
+        labelKey: "portal.sources.types.smtp.fields.to.label",
+        placeholderKey: "portal.sources.types.smtp.fields.to.placeholder",
+        helperTextKey: "portal.sources.types.smtp.fields.to.helperText",
+      },
+      {
+        key: "subject",
+        control: "text",
+        labelKey: "portal.sources.types.smtp.fields.subject.label",
+        placeholderKey: "portal.sources.types.smtp.fields.subject.placeholder",
+        helperTextKey: "portal.sources.types.smtp.fields.templatesHelp",
+      },
+      {
+        key: "body",
+        control: "textarea",
+        labelKey: "portal.sources.types.smtp.fields.body.label",
+        placeholderKey: "portal.sources.types.smtp.fields.body.placeholder",
+        helperTextKey: "portal.sources.types.smtp.fields.templatesHelp",
+      },
+      {
+        key: "mode",
+        control: "select",
+        defaultValue: "perRun",
+        labelKey: "portal.sources.types.smtp.fields.mode.label",
+        helperTextKey: "portal.sources.types.smtp.fields.mode.helperText",
+        advanced: true,
+        options: [
+          {
+            value: "perRun",
+            labelKey: "portal.sources.types.smtp.fields.mode.options.perRun",
+          },
+          {
+            value: "perFile",
+            labelKey: "portal.sources.types.smtp.fields.mode.options.perFile",
+          },
+        ],
+      },
+      {
+        key: "attachReport",
+        control: "select",
+        defaultValue: "true",
+        labelKey: "portal.sources.types.smtp.fields.attachReport.label",
+        helperTextKey:
+          "portal.sources.types.smtp.fields.attachReport.helperText",
+        options: [
+          {
+            value: "true",
+            labelKey:
+              "portal.sources.types.smtp.fields.attachReport.options.yes",
+          },
+          {
+            value: "false",
+            labelKey:
+              "portal.sources.types.smtp.fields.attachReport.options.no",
+          },
+        ],
+      },
+      {
+        key: "attachOutputs",
+        control: "select",
+        defaultValue: "false",
+        labelKey: "portal.sources.types.smtp.fields.attachOutputs.label",
+        helperTextKey:
+          "portal.sources.types.smtp.fields.attachOutputs.helperText",
+        advanced: true,
+        options: [
+          {
+            value: "true",
+            labelKey:
+              "portal.sources.types.smtp.fields.attachOutputs.options.yes",
+          },
+          {
+            value: "false",
+            labelKey:
+              "portal.sources.types.smtp.fields.attachOutputs.options.no",
+          },
+        ],
       },
     ],
   },

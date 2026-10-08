@@ -43,8 +43,9 @@ describe("vector database destinations", () => {
       exportChunksJsonl: false,
     });
   });
-  it("keeps vector destinations out of the input picker", () => {
+  it("keeps output-only destinations out of the input picker", () => {
     expect(isReadableSource({ type: "vectordb" })).toBe(false);
+    expect(isReadableSource({ type: "smtp" })).toBe(false);
     expect(isReadableSource({ type: "s3" })).toBe(true);
     expect(isReadableSource({ type: "editor" })).toBe(true);
   });

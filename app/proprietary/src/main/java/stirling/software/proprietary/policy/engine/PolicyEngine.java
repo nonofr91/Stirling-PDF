@@ -409,7 +409,13 @@ public class PolicyEngine {
                     return;
                 }
                 List<ResultFile> outputs =
-                        deliver(run, runId, inputs, result.files(), result.reports());
+                        deliver(
+                                run,
+                                runId,
+                                inputs,
+                                result.files(),
+                                result.reports(),
+                                result.report());
                 taskManager.setMultipleFileResults(runId, outputs);
                 taskManager.setComplete(runId);
                 run.complete(outputs);
@@ -580,10 +586,9 @@ public class PolicyEngine {
             String runId,
             PolicyInputs inputs,
             List<Resource> files,
-            List<JsonNode> reports)
+            List<JsonNode> reports,
+            JsonNode runReport)
             throws IOException {
-        OutputDelivery delivery =
-                new OutputDelivery(runId, run.getPolicyId(), inputs, JobContext.getOwner());
         List<OutputSpec> fallback = run.getDefinition().outputs();
         if (fallback.isEmpty()) {
             // No destinations means inline delivery (results returned to the caller), preserving
@@ -600,6 +605,16 @@ public class PolicyEngine {
                 }
             }
         }
+        OutputDelivery delivery =
+                new OutputDelivery(
+                        runId,
+                        run.getPolicyId(),
+                        inputs,
+                        JobContext.getOwner(),
+                        null,
+                        run.getDefinition().name(),
+                        reportByFile,
+                        runReport);
         List<RoutedDestination> routing = run.getDefinition().routing();
         if (routing.isEmpty()) {
             return deliverGrouped(delivery, groupedToAll(files, fallback), reportByFile);

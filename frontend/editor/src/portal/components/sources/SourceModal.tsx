@@ -12,6 +12,7 @@ import {
   Select,
   Spinner,
 } from "@app/ui";
+import { Textarea } from "@mantine/core";
 import { errorMessage } from "@portal/api/http";
 import {
   createSource,
@@ -519,6 +520,18 @@ export function SourceModal({
         return renderConnectionControl(field);
       case "select":
         return renderSelectControl(field);
+      case "textarea":
+        return (
+          <Textarea
+            value={options[field.key] ?? ""}
+            placeholder={
+              field.placeholderKey ? t(field.placeholderKey) : undefined
+            }
+            onChange={(e) => setOption(field.key, e.currentTarget.value)}
+            autosize
+            minRows={3}
+          />
+        );
       default:
         return renderInputControl(field);
     }
