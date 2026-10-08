@@ -853,6 +853,7 @@ const PrintPreflightResults = ({
                 variant="secondary"
                 loading={operation.fixedLoading === entry.fileId}
                 disabled={
+                  operation.fixedSourceIds.has(entry.fileId) ||
                   (operation.fixedLoading != null &&
                     operation.fixedLoading !== entry.fileId) ||
                   operation.annotatedLoading != null ||
@@ -861,7 +862,9 @@ const PrintPreflightResults = ({
                 }
                 onClick={() => void operation.downloadFixed(entry.fileId)}
               >
-                {t("printPreflight.downloadFixed", "Fixed PDF")}
+                {operation.fixedSourceIds.has(entry.fileId)
+                  ? t("printPreflight.fixedAdded", "Fixed — in version history")
+                  : t("printPreflight.downloadFixed", "Fixed PDF")}
               </Button>
               <Button
                 variant="tertiary"

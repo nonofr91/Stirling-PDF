@@ -52,6 +52,8 @@ export interface PrintPreflightOperationHook extends ToolOperationHook<PrintPref
   downloadReport: (fileId: string) => Promise<void>;
   /** Fetch the auto-fixed copy for one analyzed file. */
   downloadFixed: (fileId: string) => Promise<void>;
+  /** Sources already versioned by a successful fix — the fix button is a no-op for them. */
+  fixedSourceIds: ReadonlySet<string>;
   /**
    * Dry-run the configured fixups for one analyzed file: applies them
    * in-memory server-side and stores the before/after audit for display —
@@ -230,6 +232,7 @@ export const usePrintPreflightOperation = (): PrintPreflightOperationHook => {
   const [fixAudits, setFixAudits] = useState<Record<string, PreflightFixAudit>>(
     {},
   );
+  const [fixedSourceIds, setFixedSourceIds] = useState<Set<string>>(new Set());
 
   const cleanupDownloadUrl = useCallback(() => {
     if (previousUrl.current) {
@@ -243,6 +246,7 @@ export const usePrintPreflightOperation = (): PrintPreflightOperationHook => {
     setResults([]);
     setFiles([]);
     setFixAudits({});
+    setFixedSourceIds(new Set());
     lastRun.current.clear();
     cleanupDownloadUrl();
     setDownloadUrl(null);
@@ -269,6 +273,7 @@ export const usePrintPreflightOperation = (): PrintPreflightOperationHook => {
       setResults([]);
       setFiles([]);
       setFixAudits({});
+      setFixedSourceIds(new Set());
       cleanupDownloadUrl();
       setDownloadUrl(null);
       setDownloadFilename("");
@@ -419,6 +424,7 @@ export const usePrintPreflightOperation = (): PrintPreflightOperationHook => {
       const run = lastRun.current.get(fileId);
       if (
         !run ||
+        fixedSourceIds.has(fileId) ||
         annotatedLoading ||
         reportLoading ||
         fixedLoading ||
@@ -466,6 +472,7 @@ export const usePrintPreflightOperation = (): PrintPreflightOperationHook => {
           if (outputFileIds.length === 1) {
             setActiveFileId(outputFileIds[0]);
           }
+          setFixedSourceIds((current) => new Set(current).add(fileId));
         }
 
         await downloadFile({
@@ -483,6 +490,7 @@ export const usePrintPreflightOperation = (): PrintPreflightOperationHook => {
       reportLoading,
       fixedLoading,
       previewLoading,
+      fixedSourceIds,
       consumeFiles,
       selectors,
       setActiveFileId,
@@ -560,6 +568,7 @@ export const usePrintPreflightOperation = (): PrintPreflightOperationHook => {
       downloadFixed,
       previewFixes,
       fixAudits,
+      fixedSourceIds,
       annotatedLoading,
       reportLoading,
       fixedLoading,
@@ -569,6 +578,7 @@ export const usePrintPreflightOperation = (): PrintPreflightOperationHook => {
       annotatedLoading,
       downloadFixed,
       fixAudits,
+      fixedSourceIds,
       fixedLoading,
       previewFixes,
       previewLoading,
