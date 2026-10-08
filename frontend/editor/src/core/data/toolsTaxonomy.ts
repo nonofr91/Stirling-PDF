@@ -65,6 +65,9 @@ export type ToolRegistryEntry = {
   supportsAutomate?: boolean;
   // Keep out of the editor's tool list: a step only a pipeline runs, with no UI to open.
   hiddenFromToolList?: boolean;
+  // Keep out of the pipeline step picker: an interactive workbench (customProcessor, no step
+  // mappers) can only land as an uneditable step there. Legacy Automate still lists it.
+  hiddenFromPipelineSteps?: boolean;
   // Synonyms for search (optional)
   synonyms?: string[];
   // Version status indicator (e.g., "alpha", "beta")

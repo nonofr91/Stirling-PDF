@@ -355,7 +355,12 @@ export function getExecutableTools(
 ): ExecutableTool[] {
   const tools: ExecutableTool[] = [];
   for (const [id, entry] of Object.entries(registry)) {
-    if (!entry || !getToolSupportsAutomate(entry)) continue;
+    if (
+      !entry ||
+      !getToolSupportsAutomate(entry) ||
+      entry.hiddenFromPipelineSteps
+    )
+      continue;
     const config = entry.operationConfig;
     if (!config) continue;
     // A configured endpoint from defaults, else the routing set's first member as a stand-in so a

@@ -92,6 +92,12 @@ const registry: Partial<ToolRegistry> = {
     supportsAutomate: false,
     operationConfig: repairConfig,
   }),
+  // Excluded: interactive workbench that cannot be edited as a pipeline step.
+  printPreflight: entry({
+    name: "Print Preflight",
+    hiddenFromPipelineSteps: true,
+    operationConfig: repairConfig,
+  }),
   // Excluded: no operationConfig at all.
   extractPages: entry({ name: "Extract pages" }),
 };

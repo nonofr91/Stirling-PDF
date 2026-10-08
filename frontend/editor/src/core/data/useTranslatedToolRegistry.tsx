@@ -623,7 +623,7 @@ export function useTranslatedToolCatalog(): TranslatedToolCatalog {
         // The interactive workbench is a customProcessor with no step mappers, so it can
         // only ever land as an uneditable pipeline step — the printPreflightFix /
         // printPreflightCheck entries cover the pipeline use case.
-        supportsAutomate: false,
+        hiddenFromPipelineSteps: true,
         synonyms: getSynonyms(t, "printPreflight"),
       },
       printPreflightFix: {
