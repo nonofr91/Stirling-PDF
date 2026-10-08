@@ -377,6 +377,71 @@ describe("PolicySetupWizard", () => {
     ]);
   });
 
+  it("keeps steps the routing wizard does not manage", async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    const entry: CatalogueEntry = {
+      category: routing,
+      config: routingConfig,
+      policy: {
+        ...editEntry([
+          {
+            operation: "/api/v1/general/cut-contour",
+            parameters: { contourName: "cut" },
+          },
+        ]).policy!,
+        category: routing,
+        config: routingConfig,
+      },
+    };
+    render(
+      <SharedPolicySetupWizard
+        entry={entry}
+        onClose={vi.fn()}
+        onSubmit={onSubmit}
+        routingConfig={({ onChange }) => (
+          <button
+            onClick={() =>
+              onChange({
+                sourceId: "inbox",
+                trigger: { type: "folder-watch", options: {} },
+                outputIds: ["approved"],
+                routingRules: [
+                  {
+                    condition: {
+                      input: {
+                        source: "document",
+                        field: "report.preflight.verdict",
+                      },
+                      operator: "matches-any",
+                      values: ["fail"],
+                    },
+                    outputId: "quarantine",
+                  },
+                ],
+              })
+            }
+          >
+            Configure verdict routing
+          </button>
+        )}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Configure verdict routing" }),
+    );
+    await submitWizard(SAVE_CHANGES);
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    const result = onSubmit.mock.calls[0][1] as PolicySetupResult;
+    // cut-contour was saved via the builder; a wizard save must not silently drop it.
+    expect(result.steps.map((step) => step.operation)).toEqual([
+      "/api/v1/general/cut-contour",
+      "/api/v1/security/print-preflight-fix",
+    ]);
+    expect(result.steps[0].parameters).toEqual({ contourName: "cut" });
+  });
+
   it("allows deterministic routing without AI or a classify step", async () => {
     aiClassificationEnabled.value = false;
     const onSubmit = vi.fn().mockResolvedValue(undefined);

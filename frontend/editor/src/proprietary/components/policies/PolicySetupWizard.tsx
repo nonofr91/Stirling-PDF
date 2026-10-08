@@ -577,7 +577,21 @@ function PolicySetupWizardBody({
         ? tools.filter((tool) => tool.toolId === "classify")
         : []
       : enabledTools;
-    const steps: PipelineStep[] = selectedTools.map((tool) => {
+    // Routing mode manages only the verdict/classify steps its rules need; steps the wizard has
+    // no UI for (saved via the builder or another preset) ride through untouched — dropping them
+    // on save would silently cut the folder's processing chain.
+    const managedOperations = new Set<string>([
+      policyEndpoint("classify"),
+      ...PREFLIGHT_STEP_ENDPOINTS,
+    ]);
+    const preservedSteps = isRouting
+      ? (policy?.steps ?? []).filter(
+          (step) => step.operation == null || !managedOperations.has(step.operation),
+        )
+      : [];
+    const steps: PipelineStep[] = [
+      ...preservedSteps,
+      ...selectedTools.map((tool) => {
       const step = policyStepToWire(tool);
       const saved = policy?.steps.find(
         (original) => original.operation === step.operation,
@@ -587,7 +601,8 @@ function PolicySetupWizardBody({
         ...step,
         parameters: { ...saved?.parameters, ...step.parameters },
       };
-    });
+      }),
+    ];
     // A verdict route needs a reporting step the routing category does not seed: inject the fix
     // variant, reusing a saved preflight step's parameters when the policy already carries one.
     // It runs before classify: a Ghostscript-level fixup rebuilds the file and would drop a

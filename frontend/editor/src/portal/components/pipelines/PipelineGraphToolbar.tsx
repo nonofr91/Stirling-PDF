@@ -27,6 +27,8 @@ export interface PipelineGraphToolbarProps {
   /** The last test run in this session, or null if there has not been one. */
   runResult: RunResultSummary | null;
   onDownloadOutput: (output: RunOutputFile) => void;
+  /** Opens an output's archive chain — fetched via apiClient.local so auth/origin hold in SaaS. */
+  onOpenArchive: (chainId: string) => void;
   /** Opens the definition (JSON + cURL) - an inspect action, sibling to Test, hence its home here. */
   onViewDefinition: () => void;
 }
@@ -43,6 +45,7 @@ export function PipelineGraphToolbar({
   testing,
   runResult,
   onDownloadOutput,
+  onOpenArchive,
   onViewDefinition,
 }: PipelineGraphToolbarProps) {
   const { t } = useTranslation();
@@ -69,7 +72,11 @@ export function PipelineGraphToolbar({
       </FilePicker>
 
       {runResult && (
-        <RunResultStrip result={runResult} onDownload={onDownloadOutput} />
+        <RunResultStrip
+          result={runResult}
+          onDownload={onDownloadOutput}
+          onOpenArchive={onOpenArchive}
+        />
       )}
 
       {/* The graph is the visual definition; reading it as JSON/cURL sits at the far end of its bar. */}
@@ -95,10 +102,11 @@ export function PipelineGraphToolbar({
 interface RunResultStripProps {
   result: RunResultSummary;
   onDownload: (output: RunOutputFile) => void;
+  onOpenArchive: (chainId: string) => void;
 }
 
 /** What the last test run did, beside the button that started it. */
-function RunResultStrip({ result, onDownload }: RunResultStripProps) {
+function RunResultStrip({ result, onDownload, onOpenArchive }: RunResultStripProps) {
   const { t } = useTranslation();
   const outputs = result.outputs ?? [];
 
@@ -168,18 +176,18 @@ function RunResultStrip({ result, onDownload }: RunResultStripProps) {
               )}
               withinPortal
             >
-              <a
+              <ActionIcon
+                variant="tertiary"
+                size="sm"
                 className="portal-pipeline-toolbar__result-archive"
-                href={`/api/v1/general/prepress-archive/${output.report.prepress.chainId}`}
-                target="_blank"
-                rel="noreferrer"
+                onClick={() => onOpenArchive(output.report!.prepress!.chainId!)}
                 aria-label={t(
                   "portal.pipelines.inspector.archiveLink",
                   "Open the version archive for this document",
                 )}
               >
                 <Icon name="file-doc-archive" size={"1rem"} />
-              </a>
+              </ActionIcon>
             </Tooltip>
           )}
         </span>

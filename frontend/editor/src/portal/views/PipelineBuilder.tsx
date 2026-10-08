@@ -54,6 +54,7 @@ import {
   fetchPipeline,
   fetchRun,
   fetchRunOutput,
+  fetchPrepressArchive,
   fetchTriggers,
   runPipelineTest,
   savePipeline,
@@ -1073,6 +1074,23 @@ export function PipelineBuilder() {
     }
   }
 
+  /** Open an output's archive chain in a tab. Fetched through apiClient.local so the request
+   * carries the backend base + credentials — a bare same-origin link 401s on SaaS/bearer
+   * sessions. The chain is JSON, pretty-printed so it reads as a page, not a download. */
+  async function openArchive(chainId: string) {
+    try {
+      const chain = await fetchPrepressArchive(chainId);
+      const url = URL.createObjectURL(
+        new Blob([JSON.stringify(chain, null, 2)], { type: "text/plain" }),
+      );
+      window.open(url, "_blank", "noopener,noreferrer");
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (e) {
+      if (mounted.current)
+        setRunResult({ tone: "danger", text: errorMessage(e) });
+    }
+  }
+
   /** Explain an empty trigger: parked files outrank blander reasons. */
   function emptySweepResult(outcome: TriggerOutcome): RunResult {
     if (outcome.parked > 0) {
@@ -1508,6 +1526,7 @@ export function PipelineBuilder() {
             testing={testing}
             runResult={testSummary}
             onDownloadOutput={downloadOutput}
+            onOpenArchive={openArchive}
             onViewDefinition={() => setDefinitionOpen(true)}
           />
           <PipelineGraph
