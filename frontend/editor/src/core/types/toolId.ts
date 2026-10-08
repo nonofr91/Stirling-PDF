@@ -43,6 +43,8 @@ export const CORE_REGULAR_TOOL_IDS = [
   "cutContour",
   "textToOutlines",
   "printPreflight",
+  "printPreflightFix",
+  "printPreflightCheck",
   "pdfToSinglePage",
   "repair",
   "compare",

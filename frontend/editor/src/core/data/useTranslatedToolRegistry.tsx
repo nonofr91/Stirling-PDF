@@ -54,6 +54,8 @@ import { cropOperationConfig } from "@app/hooks/tools/crop/useCropOperation";
 import { setPageBoxesOperationConfig } from "@app/hooks/tools/setPageBoxes/useSetPageBoxesOperation";
 import { cutContourOperationConfig } from "@app/hooks/tools/cutContour/useCutContourOperation";
 import { printPreflightOperationConfig } from "@app/hooks/tools/printPreflight/usePrintPreflightOperation";
+import { printPreflightFixOperationConfig } from "@app/hooks/tools/printPreflightFix/usePrintPreflightFixOperation";
+import { printPreflightCheckOperationConfig } from "@app/hooks/tools/printPreflightCheck/usePrintPreflightCheckOperation";
 import { textToOutlinesOperationConfig } from "@app/hooks/tools/textToOutlines/useTextToOutlinesOperation";
 import { removeAnnotationsOperationConfig } from "@app/hooks/tools/removeAnnotations/useRemoveAnnotationsOperation";
 import { removeImageOperationConfig } from "@app/hooks/tools/removeImage/useRemoveImageOperation";
@@ -619,6 +621,44 @@ export function useTranslatedToolCatalog(): TranslatedToolCatalog {
         ),
         maxFiles: 1,
         synonyms: getSynonyms(t, "printPreflight"),
+      },
+      printPreflightFix: {
+        icon: <Icon name="shield-check" size="1.5rem" />,
+        name: t("home.printPreflightFix.title", "Print Preflight Fix"),
+        component: null,
+        description: t(
+          "home.printPreflightFix.desc",
+          "Check a PDF for print production issues and apply the safe corrections.",
+        ),
+        categoryId: ToolCategoryId.STANDARD_TOOLS,
+        subcategoryId: SubcategoryId.PREPRESS,
+        maxFiles: 1,
+        endpoints: ["print-preflight-fix"],
+        operationConfig: asRegistryConfig(printPreflightFixOperationConfig),
+        automationSettings: lazySettings(
+          () =>
+            import("@app/components/tools/printPreflightFix/PrintPreflightFixAutomationSettings"),
+        ),
+        hiddenFromToolList: true,
+      },
+      printPreflightCheck: {
+        icon: <Icon name="clipboard-check" size="1.5rem" />,
+        name: t("home.printPreflightCheck.title", "Print Preflight Check"),
+        component: null,
+        description: t(
+          "home.printPreflightCheck.desc",
+          "Check a PDF for print production issues and annotate a copy without changing the file.",
+        ),
+        categoryId: ToolCategoryId.STANDARD_TOOLS,
+        subcategoryId: SubcategoryId.PREPRESS,
+        maxFiles: 1,
+        endpoints: ["print-preflight-annotated"],
+        operationConfig: asRegistryConfig(printPreflightCheckOperationConfig),
+        automationSettings: lazySettings(
+          () =>
+            import("@app/components/tools/printPreflightCheck/PrintPreflightCheckAutomationSettings"),
+        ),
+        hiddenFromToolList: true,
       },
       rotate: {
         icon: <Icon name="rotate-cw" size="1.5rem" />,

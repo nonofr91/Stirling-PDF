@@ -35,6 +35,9 @@ import { overlayPdfsOperationConfig } from "@app/hooks/tools/overlayPdfs/useOver
 import { defaultParameters as overlayDefaults } from "@app/hooks/tools/overlayPdfs/useOverlayPdfsParameters";
 import { certSignOperationConfig } from "@app/hooks/tools/certSign/useCertSignOperation";
 import { defaultParameters as certSignDefaults } from "@app/hooks/tools/certSign/useCertSignParameters";
+import { printPreflightOperationConfig } from "@app/hooks/tools/printPreflight/usePrintPreflightOperation";
+import { printPreflightFixOperationConfig } from "@app/hooks/tools/printPreflightFix/usePrintPreflightFixOperation";
+import { printPreflightCheckOperationConfig } from "@app/hooks/tools/printPreflightCheck/usePrintPreflightCheckOperation";
 
 function entry(over: Partial<ToolRegistryEntry>): ToolRegistryEntry {
   return {
@@ -634,5 +637,139 @@ describe("supporting files", () => {
     expect(activeFileFields(step({ certFile: "asset:x" }), registry)).toEqual([
       "certFile",
     ]);
+  });
+});
+
+describe("printPreflight pipeline steps", () => {
+  // The interactive tool's dynamic endpoint set claims every preflight
+  // endpoint; the dedicated step entries must win by exact static match,
+  // otherwise a stored fix step reloads as the unsupported interactive tool
+  // and resaves as an annotated check with empty parameters.
+  const preflightRegistry: Partial<ToolRegistry> = {
+    printPreflight: entry({
+      name: "Print Preflight",
+      automationSettings: NoopSettings,
+      operationConfig: asRegistryConfig(printPreflightOperationConfig),
+    }),
+    printPreflightFix: entry({
+      name: "Print Preflight Fix",
+      automationSettings: NoopSettings,
+      operationConfig: asRegistryConfig(printPreflightFixOperationConfig),
+    }),
+    printPreflightCheck: entry({
+      name: "Print Preflight Check",
+      automationSettings: NoopSettings,
+      operationConfig: asRegistryConfig(printPreflightCheckOperationConfig),
+    }),
+  };
+
+  test("a stored print-preflight-fix step reloads editable, params and endpoint intact", () => {
+    const stored = {
+      operation: "/api/v1/security/print-preflight-fix",
+      parameters: {
+        profileName: "offset-press",
+        fixups: ["RGB_TO_CMYK", "EXTEND_BLEED"],
+        requiredBleedMm: 5,
+      },
+      fileParameters: { iccProfile: "asset:icc-1" },
+    };
+
+    const step = deserializeToolStep(stored, preflightRegistry);
+    expect(step.toolId).toBe("printPreflightFix");
+    expect(step.support).toBe("editable");
+    expect(step.operation).toBe("/api/v1/security/print-preflight-fix");
+    expect(step.params).toMatchObject({
+      profileName: "offset-press",
+      fixups: ["RGB_TO_CMYK", "EXTEND_BLEED"],
+      requiredBleedMm: 5,
+      reportFormat: "fixedPdf",
+    });
+    expect(step.fileParameters).toEqual({ iccProfile: "asset:icc-1" });
+    // The stored iccProfile binding maps to a live file field, so it isn't
+    // dropped as stale when the step is edited and resaved.
+    expect(activeFileFields(step, preflightRegistry)).toEqual(["iccProfile"]);
+
+    const api = serializeToolStep(step, preflightRegistry);
+    expect(api.operation).toBe("/api/v1/security/print-preflight-fix");
+    // A named profile is authoritative — the backend merges field-by-field, so
+    // the wire body carries only the name; leftover inline values would apply
+    // wherever the profile is silent.
+    expect(api.parameters).toEqual({ profileName: "offset-press" });
+    expect(api.fileParameters).toEqual({ iccProfile: "asset:icc-1" });
+  });
+
+  test("a fix step without a profile keeps its inline thresholds and fixups", () => {
+    const step = deserializeToolStep(
+      {
+        operation: "/api/v1/security/print-preflight-fix",
+        parameters: {
+          fixups: ["RGB_TO_CMYK"],
+          requiredBleedMm: 5,
+          minImageDpi: 300,
+        },
+      },
+      preflightRegistry,
+    );
+    expect(step.toolId).toBe("printPreflightFix");
+    expect(step.params).toMatchObject({ profileName: "" });
+
+    const api = serializeToolStep(step, preflightRegistry);
+    expect(api.operation).toBe("/api/v1/security/print-preflight-fix");
+    expect(api.parameters).toMatchObject({
+      fixups: ["RGB_TO_CMYK"],
+      requiredBleedMm: 5,
+      minImageDpi: 300,
+    });
+  });
+
+  test("a stored print-preflight-annotated step reloads as the check variant", () => {
+    const step = deserializeToolStep(
+      {
+        operation: "/api/v1/security/print-preflight-annotated",
+        parameters: { includeSummaryPage: false, minImageDpi: 150 },
+      },
+      preflightRegistry,
+    );
+    expect(step.toolId).toBe("printPreflightCheck");
+    expect(step.support).toBe("editable");
+    expect(step.params).toMatchObject({
+      includeSummaryPage: false,
+      minImageDpi: 150,
+      reportFormat: "annotatedPdf",
+    });
+
+    const api = serializeToolStep(step, preflightRegistry);
+    expect(api.operation).toBe("/api/v1/security/print-preflight-annotated");
+    expect(api.parameters).toMatchObject({
+      includeSummaryPage: false,
+      minImageDpi: 150,
+    });
+  });
+
+  test("a wizard-injected empty step maps to fix and serializes backend defaults", () => {
+    const step = deserializeToolStep(
+      { operation: "/api/v1/security/print-preflight-fix", parameters: {} },
+      preflightRegistry,
+    );
+    expect(step.toolId).toBe("printPreflightFix");
+    expect(step.support).toBe("editable");
+
+    const api = serializeToolStep(step, preflightRegistry);
+    expect(api.operation).toBe("/api/v1/security/print-preflight-fix");
+    expect(api.parameters).not.toHaveProperty("fixups");
+    expect(api.parameters).not.toHaveProperty("profileName");
+  });
+
+  test("the interactive tool still claims the non-step endpoints", () => {
+    const step = deserializeToolStep(
+      { operation: "/api/v1/security/print-preflight", parameters: {} },
+      preflightRegistry,
+    );
+    expect(step.toolId).toBe("printPreflight");
+    // No mappers on the interactive config: unsupported, but the endpoint survives a resave.
+    expect(step.support).toBe("unsupported");
+    expect(serializeToolStep(step, preflightRegistry).operation).toBe(
+      "/api/v1/security/print-preflight",
+    );
   });
 });

@@ -5879,6 +5879,14 @@ desc = "Check a PDF for print production issues: unembedded fonts, RGB/spot colo
 tags = "preflight,prepress,print,check,report,fonts,embedded,RGB,CMYK,bleed,fond perdu,trim,marks,hairline,dpi,resolution,overprint,transparency,pdfx,pdf/x"
 title = "Print Preflight"
 
+[home.printPreflightCheck]
+desc = "Check a PDF for print production issues and annotate a copy without changing the file."
+title = "Print Preflight Check"
+
+[home.printPreflightFix]
+desc = "Check a PDF for print production issues and apply the safe corrections."
+title = "Print Preflight Fix"
+
 [home.read]
 desc = "View and annotate PDFs. Highlight text, draw, or insert comments for review and collaboration."
 tags = "view,open,display,read,viewer,PDF viewer,PDF reader,open PDF,view PDF,display PDF,preview,browse"
@@ -11239,6 +11247,8 @@ nameLabel = "Profile name"
 saveAs = "Save as profile…"
 saveFailed = "The profile could not be saved"
 saveModalTitle = "Save profile"
+stepHelp = "A named profile supplies the thresholds, fixups and disabled checks — clear it to tune this step inline."
+suppliesStep = "The named profile supplies every preflight setting for this step."
 
 [printPreflight.profiles.builtin]
 digital-press = "Digital press"
