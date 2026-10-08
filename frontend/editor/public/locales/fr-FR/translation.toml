@@ -10774,6 +10774,50 @@ placeholder = "Bucket entier"
 description = "Interrogez un dossier de dépôt SFTP pour détecter de nouveaux documents."
 label = "SFTP"
 
+[portal.sources.types.smtp]
+description = "Envoie le rapport du run par e-mail à la fin du traitement. Utilise la configuration SMTP du serveur."
+label = "Courriel (SMTP)"
+
+[portal.sources.types.smtp.fields]
+templatesHelp = "Variables : {filename} {fileNames} {fileCount} {pipeline} {verdict} {errorCount} {warningCount} {runId} {date} {status}. Les variables inconnues restent telles quelles."
+
+[portal.sources.types.smtp.fields.attachOutputs]
+helperText = "Désactivé par défaut — le rapport seul reste assez léger pour n'importe quel serveur mail."
+label = "Joindre aussi les fichiers traités"
+
+[portal.sources.types.smtp.fields.attachOutputs.options]
+no = "Non"
+yes = "Oui"
+
+[portal.sources.types.smtp.fields.attachReport]
+helperText = "Un résumé JSON du verdict, des erreurs et des avertissements de chaque étape."
+label = "Joindre le rapport d'étape"
+
+[portal.sources.types.smtp.fields.attachReport.options]
+no = "Non"
+yes = "Oui"
+
+[portal.sources.types.smtp.fields.body]
+label = "Message"
+placeholder = "Laisser vide pour envoyer un résumé généré."
+
+[portal.sources.types.smtp.fields.mode]
+helperText = "per-run regroupe tous les fichiers dans un seul e-mail ; per-file envoie un e-mail par fichier traité."
+label = "Envoi"
+
+[portal.sources.types.smtp.fields.mode.options]
+perFile = "Un e-mail par fichier"
+perRun = "Un e-mail par run"
+
+[portal.sources.types.smtp.fields.subject]
+label = "Objet"
+placeholder = "[{verdict}] {pipeline} — {fileNames}"
+
+[portal.sources.types.smtp.fields.to]
+helperText = "Adresses e-mail séparées par des virgules."
+label = "Destinataires"
+placeholder = "ops@exemple.fr, qualite@exemple.fr"
+
 [portal.sources.types.sharepoint]
 description = "Récupérez des documents depuis des bibliothèques de documents SharePoint."
 label = "SharePoint"
