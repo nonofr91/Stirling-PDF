@@ -204,6 +204,9 @@ export function ProcessingFolderWizard({
             destinations={destinations}
             onCreateDestination={onCreateDestination}
             classificationAvailable={aiClassificationEnabled}
+            // Always injectable: a preflight rule adds the fix step to the saved pipeline,
+            // the same way a classification rule pulls in classify.
+            preflightAvailable
             compact
           />
         </>

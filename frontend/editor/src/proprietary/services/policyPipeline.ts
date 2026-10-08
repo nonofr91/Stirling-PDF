@@ -12,6 +12,7 @@
  */
 
 import { resolveRunOn, type PolicyRunOn } from "@app/policies/runOn";
+import type { StepReport } from "@app/policies/types";
 import type { AutomationConfig } from "@app/types/automation";
 import type { PolicyFolderSettings } from "@app/types/policies";
 import {
@@ -83,6 +84,8 @@ export type PolicyRunStatus =
 export interface BackendResultFile {
   fileId: string;
   fileName: string;
+  /** The producing step's report (e.g. preflight verdict), when the tool emitted one. */
+  report?: StepReport | null;
 }
 
 /** Read-only view returned by the run status endpoint (mirrors PolicyRunView). */

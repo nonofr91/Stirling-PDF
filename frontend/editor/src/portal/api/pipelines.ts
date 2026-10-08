@@ -289,6 +289,13 @@ export async function fetchRunOutput(fileId: string): Promise<Blob> {
   );
 }
 
+/** GET /api/v1/general/prepress-archive/{chainId}: the version chain an output belongs to. */
+export async function fetchPrepressArchive(chainId: string): Promise<unknown> {
+  return apiClient.local.json<unknown>(
+    `/api/v1/general/prepress-archive/${encodeURIComponent(chainId)}`,
+  );
+}
+
 /** GET /api/v1/policies/run/{runId}: current status, error, and step cursor of a run. */
 export async function fetchRun(runId: string): Promise<PolicyRunView> {
   return apiClient.local.json<PolicyRunView>(

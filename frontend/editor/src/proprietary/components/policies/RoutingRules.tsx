@@ -44,6 +44,8 @@ interface RoutingRulesProps {
   /** Classification requires both an available AI service and, in the full builder, its step. */
   classificationAvailable?: boolean;
   classificationUnavailableReason?: string;
+  /** Preflight report fields require a preflight step somewhere in the pipeline. */
+  preflightAvailable?: boolean;
 }
 
 /**
@@ -58,6 +60,7 @@ export function RoutingRules({
   onCreateDestination,
   classificationAvailable = true,
   classificationUnavailableReason,
+  preflightAvailable = false,
 }: RoutingRulesProps) {
   const { t } = useTranslation();
 
@@ -112,6 +115,7 @@ export function RoutingRules({
                   condition={rule.condition}
                   onChange={(condition) => update(index, { condition })}
                   classificationAvailable={classificationAvailable}
+                  preflightAvailable={preflightAvailable}
                 />
                 <Select
                   inputSize="sm"
@@ -172,12 +176,15 @@ export function RoutingRules({
 interface RoutingSectionProps extends RoutingRulesProps {
   /** Whether the pipeline classifies, i.e. whether there is a verdict for a rule to read. */
   canClassify: boolean;
+  /** Whether the pipeline runs a preflight step whose report a rule can read. */
+  canPreflight?: boolean;
   aiClassificationEnabled?: boolean;
 }
 
 /** Document-property routes work without AI; document-type routes require an available classification step. */
 export function RoutingSection({
   canClassify,
+  canPreflight = false,
   aiClassificationEnabled = true,
   ...rules
 }: RoutingSectionProps) {
@@ -242,6 +249,7 @@ export function RoutingSection({
             {...rules}
             classificationAvailable={classificationAvailable}
             classificationUnavailableReason={unavailableReason}
+            preflightAvailable={canPreflight}
           />
         </>
       )}

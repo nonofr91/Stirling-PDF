@@ -15,6 +15,8 @@ interface PolicyRoutingDestinationsProps {
   onCreateDestination?: () => void;
   classificationAvailable?: boolean;
   classificationUnavailableReason?: string;
+  /** Preflight report fields require a preflight step in the pipeline; the wizard injects one. */
+  preflightAvailable?: boolean;
   compact?: boolean;
 }
 
@@ -26,6 +28,7 @@ export function PolicyRoutingDestinations({
   onCreateDestination,
   classificationAvailable,
   classificationUnavailableReason,
+  preflightAvailable = false,
   compact = false,
 }: PolicyRoutingDestinationsProps) {
   const { t } = useTranslation();
@@ -49,6 +52,7 @@ export function PolicyRoutingDestinations({
         onCreateDestination={onCreateDestination}
         classificationAvailable={classificationAvailable}
         classificationUnavailableReason={classificationUnavailableReason}
+        preflightAvailable={preflightAvailable}
       />
 
       <h3 className="portal-policies__wizard-heading">

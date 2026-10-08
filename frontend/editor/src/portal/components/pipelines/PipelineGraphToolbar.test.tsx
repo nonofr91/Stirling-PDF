@@ -21,6 +21,7 @@ function renderToolbar(overrides: Partial<PipelineGraphToolbarProps> = {}) {
   const handlers = {
     onTest: vi.fn(),
     onDownloadOutput: vi.fn(),
+    onOpenArchive: vi.fn(),
     onViewDefinition: vi.fn(),
   };
   render(

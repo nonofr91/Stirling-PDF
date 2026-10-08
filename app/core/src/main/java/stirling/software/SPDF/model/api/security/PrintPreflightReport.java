@@ -46,12 +46,66 @@ public class PrintPreflightReport {
         }
     }
 
+    /**
+     * Compact summary of this report, also emitted as the pipeline step's report so routing rules
+     * can match on {@code report.preflight.*}. {@code verdict} is categorical because matches-any
+     * conditions compare by equality — {@code errors > 0} is not expressible there. {@code
+     * fixupsApplied}, {@code preErrors} and {@code preWarnings} describe the pre-fix state and stay
+     * empty/null on a plain analysis.
+     */
+    public Preflight getPreflight() {
+        return Preflight.of(counts);
+    }
+
     @Data
     @NoArgsConstructor
     public static class Counts {
         private int errors;
         private int warnings;
         private int infos;
+    }
+
+    /**
+     * The step-report shape every preflight endpoint shares: {@code verdict} is {@code fail} when
+     * errors remain, {@code warn} when only warnings remain, {@code pass} otherwise.
+     */
+    public record Preflight(
+            String verdict,
+            int errors,
+            int warnings,
+            List<String> fixupsApplied,
+            Integer preErrors,
+            Integer preWarnings) {
+
+        public static Preflight of(Counts counts) {
+            return new Preflight(
+                    verdictOf(counts),
+                    counts.getErrors(),
+                    counts.getWarnings(),
+                    List.of(),
+                    null,
+                    null);
+        }
+
+        public static Preflight afterFix(Counts post, List<String> fixupsApplied, Counts pre) {
+            return new Preflight(
+                    verdictOf(post),
+                    post.getErrors(),
+                    post.getWarnings(),
+                    List.copyOf(fixupsApplied),
+                    pre.getErrors(),
+                    pre.getWarnings());
+        }
+
+        private static String verdictOf(Counts counts) {
+            if (counts.getErrors() > 0) {
+                return "fail";
+            }
+            if (counts.getWarnings() > 0) {
+                return "warn";
+            }
+            return "pass";
+        }
     }
 
     @Data

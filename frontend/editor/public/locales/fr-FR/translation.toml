@@ -9617,6 +9617,7 @@ managerOnly = "Seul un administrateur ou un responsable d’équipe peut modifie
 name = "Donnez un nom au pipeline"
 routing = "Donnez à chaque route des types de documents et une destination"
 routingNeedsClassify = "Ajoutez une étape Classifier, ou désactivez le routage par type de document"
+routingNeedsPreflight = "Ajoutez une étape Print Preflight, ou désactivez le routage par verdict preflight"
 saveHeading = "Pour enregistrer vos modifications :"
 schedule = "Définissez la fréquence d’exécution"
 setup = "Terminez la configuration : {{tools}}"
@@ -9667,6 +9668,9 @@ matchDocumentType = "Type de document (classification AI)"
 matchDocumentTypeDisabled = "Type de document (AI indisponible)"
 matchExtension = "Extension de fichier"
 matchFilename = "Nom de fichier exact"
+matchPreflightErrors = "Nombre d’erreurs preflight"
+matchPreflightVerdict = "Verdict preflight"
+matchPreflightWarnings = "Nombre d’avertissements preflight"
 matchTitle = "Titre du PDF"
 matchValues = "Valeurs à faire correspondre"
 needsClassify = "Ajoutez une étape Classifier pour utiliser le routage par type de document, ou faites plutôt correspondre une propriété du document."
@@ -9749,6 +9753,7 @@ failed = "Échec"
 running = "En cours"
 
 [portal.pipelines.inspector]
+archiveLink = "Ouvrir l’archive de versions de ce document"
 multipleBody = "Faites glisser n’importe lequel d’entre eux sur une ligne pour les déplacer ensemble, ou appuyez sur Suppr pour les supprimer."
 multipleSelected_one = "{{count}} étape sélectionnée"
 multipleSelected_other = "{{count}} étapes sélectionnées"
@@ -10145,6 +10150,14 @@ label = "Vérifier que le document respecte la norme"
 desc = "Compresse le document pour réduire la taille du fichier."
 label = "Réduire la taille du fichier"
 
+[portal.policies.wizard.capability.crop]
+desc = "Recadre les pages sur une boîte choisie ou sur le bord du contenu détecté."
+label = "Rogner les pages"
+
+[portal.policies.wizard.capability.cutContour]
+desc = "Lit le contour de finition dans l’illustration pour qu’une découpeuse puisse le suivre."
+label = "Extraire le contour de découpe"
+
 [portal.policies.wizard.capability.flatten]
 desc = "Fusionne les champs de formulaire et les annotations dans la page afin qu’ils ne puissent pas être modifiés."
 label = "Aplatir le document"
@@ -10161,6 +10174,14 @@ label = "Rendre le texte recherchable"
 desc = "Réécrit le document au format d’archivage ISO, en intégrant ses polices et profils de couleur afin qu’il s’affiche toujours de la même manière dans plusieurs années. Invalide les signatures numériques."
 label = "Convertir en PDF/A pour l’archivage"
 
+[portal.policies.wizard.capability.printPreflight]
+desc = "Exécute les contrôles preflight et renvoie une copie où chaque problème est encadré — les routes peuvent envoyer un document en échec en quarantaine avec la preuve annotée jointe."
+label = "Contrôler pour l’impression, sans modifier le fichier"
+
+[portal.policies.wizard.capability.printPreflightFix]
+desc = "Exécute les contrôles preflight, applique les corrections sûres (boîtes de page, fond perdu, couleurs) et rend un verdict que les routes peuvent envoyer en quarantaine."
+label = "Contrôler et corriger pour l’impression"
+
 [portal.policies.wizard.capability.redact]
 desc = "Trouve et noircit les informations sensibles — comme les numéros de sécurité sociale et de carte — afin qu’elles ne puissent pas être lues."
 label = "Masquer les informations sensibles"
@@ -10168,6 +10189,18 @@ label = "Masquer les informations sensibles"
 [portal.policies.wizard.capability.sanitize]
 desc = "Supprime le JavaScript masqué afin que rien ne puisse s’exécuter automatiquement à l’ouverture du document."
 label = "Retirer le contenu actif"
+
+[portal.policies.wizard.capability.scalePages]
+desc = "Redimensionne le contenu des pages vers une taille cible, p. ex. agrandir l’illustration pour couvrir le fond perdu."
+label = "Redimensionner les pages"
+
+[portal.policies.wizard.capability.setPageBoxes]
+desc = "Déclare les boîtes de la page — trim, fond perdu, crop — pour que les étapes d’impression en aval lisent la bonne géométrie."
+label = "Définir les boîtes de page"
+
+[portal.policies.wizard.capability.textToOutlines]
+desc = "Transforme le texte en tracés vectoriels, pour qu’aucune police manquante ou substitution ne puisse l’altérer à l’impression."
+label = "Convertir le texte en tracés"
 
 [portal.policies.wizard.capability.timestampPdf]
 desc = "Prouve que le document existait sous cette forme exacte à un moment donné, à l’aide d’une autorité d’horodatage indépendante. Seul un hash est envoyé - le document ne quitte jamais votre serveur."
@@ -14395,6 +14428,9 @@ complete = "Preflight terminé"
 [printPreflight.verdict]
 clean = "Prêt pour l'impression"
 errors = "{{errors}} problème(s) bloquant(s) détecté(s)"
+fail = "Rejeté"
+pass = "Conforme"
+warn = "Avertissements seuls"
 warnings = "Imprimable avec {{warnings}} avertissement(s)"
 
 [setPageBoxes]

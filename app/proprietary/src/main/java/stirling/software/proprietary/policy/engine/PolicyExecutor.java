@@ -36,6 +36,7 @@ import stirling.software.proprietary.service.AiToolResponseHeaders;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * Runs an ordered chain of tool steps, feeding each step's output files into the next.
@@ -52,6 +53,12 @@ public class PolicyExecutor {
 
     private static final String FILTER_OPERATION_PREFIX = "/api/v1/filter/filter-";
 
+    // Must stay identical to PrepressArchiveService.HEADER_* in app/core — this module compiles
+    // against common only and cannot import them.
+    private static final String PREPRESS_CHAIN_ID_HEADER = "X-Prepress-Chain-Id";
+
+    private static final String PREPRESS_VERSION_HEADER = "X-Prepress-Version";
+
     private final InternalApiClient internalApiClient;
     private final ToolMetadataService toolMetadataService;
     private final TempFileManager tempFileManager;
@@ -62,7 +69,10 @@ public class PolicyExecutor {
     private record ToolResult(List<Resource> files, JsonNode report) {}
 
     // A merge can lose its single-source attribution while continuing an input's billing group.
-    private record PipelineFile(Resource resource, Integer origin, Integer billingOrigin) {}
+    // report is the most recent step report attached to this file — routing reads it off the
+    // document facts at delivery time.
+    private record PipelineFile(
+            Resource resource, Integer origin, Integer billingOrigin, JsonNode report) {}
 
     private record StepOutput(List<PipelineFile> files, JsonNode report) {}
 
@@ -83,7 +93,7 @@ public class PolicyExecutor {
         List<PipelineFile> currentFiles = new ArrayList<>();
         Map<String, List<Resource>> supportingFiles = inputs.supportingFiles();
         for (int k = 0; k < inputs.primary().size(); k++) {
-            currentFiles.add(new PipelineFile(inputs.primary().get(k), k, k));
+            currentFiles.add(new PipelineFile(inputs.primary().get(k), k, k, null));
         }
         // Last non-null report wins: the terminal step defines the output.
         JsonNode lastReport = null;
@@ -109,6 +119,7 @@ public class PolicyExecutor {
         return new PolicyExecutionResult(
                 currentFiles.stream().map(PipelineFile::resource).toList(),
                 currentFiles.stream().map(PipelineFile::origin).toList(),
+                currentFiles.stream().map(PipelineFile::report).toList(),
                 lastReport,
                 lastReportTool);
     }
@@ -137,14 +148,19 @@ public class PolicyExecutor {
             try (AutomationRunContext.Scope doc = documentScope(billingOrigin)) {
                 r = callEndpoint(step, resources, supportingFiles);
             }
+            // Fan-in attribution: a merged file only carries the report every input agreed on —
+            // a silent merge of divergent verdicts cannot claim either one.
+            JsonNode shared = sharedReport(inputFiles);
             for (Resource file : r.files()) {
-                files.add(new PipelineFile(file, origin, billingOrigin));
+                files.add(
+                        new PipelineFile(
+                                file, origin, billingOrigin, mergeReports(shared, r.report())));
             }
             report = r.report();
         } else if (inputFiles.isEmpty()) {
             ToolResult r = callEndpoint(step, List.of(), supportingFiles);
             for (Resource file : r.files()) {
-                files.add(new PipelineFile(file, null, null));
+                files.add(new PipelineFile(file, null, null, r.report()));
             }
             report = r.report();
         } else {
@@ -154,7 +170,12 @@ public class PolicyExecutor {
                     r = callEndpoint(step, List.of(input.resource()), supportingFiles);
                 }
                 for (Resource file : r.files()) {
-                    files.add(new PipelineFile(file, input.origin(), input.billingOrigin()));
+                    files.add(
+                            new PipelineFile(
+                                    file,
+                                    input.origin(),
+                                    input.billingOrigin(),
+                                    mergeReports(input.report(), r.report())));
                 }
                 if (report == null) {
                     report = r.report();
@@ -162,6 +183,43 @@ public class PolicyExecutor {
             }
         }
         return new StepOutput(files, report);
+    }
+
+    /**
+     * Layers the producing step's report over the file's carried one, namespace by namespace: a
+     * step that only adds archive metadata ({@code prepress.*}) must not erase an earlier {@code
+     * preflight} verdict, while a fresh verdict replaces the previous one. A non-object report
+     * replaces wholesale — nothing reliable to merge into.
+     */
+    private static JsonNode mergeReports(JsonNode prior, JsonNode next) {
+        if (next == null) {
+            return prior;
+        }
+        if (prior instanceof ObjectNode priorObj && next instanceof ObjectNode nextObj) {
+            ObjectNode merged = priorObj.deepCopy();
+            merged.setAll(nextObj);
+            return merged;
+        }
+        return next;
+    }
+
+    /**
+     * The report every input carries when they all agree, else null: a multi-input step's output
+     * cannot honestly inherit a verdict its sources disagree on (or that some never had).
+     */
+    private static JsonNode sharedReport(List<PipelineFile> files) {
+        JsonNode shared = null;
+        for (PipelineFile file : files) {
+            if (file.report() == null) {
+                return null;
+            }
+            if (shared == null) {
+                shared = file.report();
+            } else if (!shared.equals(file.report())) {
+                return null;
+            }
+        }
+        return shared;
     }
 
     private static Integer sharedOrigin(List<PipelineFile> files) {
@@ -256,11 +314,34 @@ public class PolicyExecutor {
             }
         }
 
-        JsonNode report = parseReportHeader(headers, endpointPath);
+        JsonNode report = mergeArchiveHeaders(headers, parseReportHeader(headers, endpointPath));
         if (toolMetadataService.shouldUnpackZipResponse(endpointPath)) {
             return new ToolResult(ZipExtractionUtils.extractZip(resource, tempFileManager), report);
         }
         return new ToolResult(List.of(resource), report);
+    }
+
+    /**
+     * Prepress endpoints stamp {@code X-Prepress-Chain-Id}/{@code X-Prepress-Version} on every
+     * versioned response; folded into the report as {@code prepress:{chainId,version}} so the run
+     * can link back to the immutable archive chain — and routing can match on it too.
+     */
+    private JsonNode mergeArchiveHeaders(HttpHeaders headers, JsonNode report) {
+        String chainId = headers.getFirst(PREPRESS_CHAIN_ID_HEADER);
+        if (chainId == null || chainId.isBlank()) {
+            return report;
+        }
+        ObjectNode node =
+                report instanceof ObjectNode objectNode
+                        ? objectNode
+                        : objectMapper.createObjectNode();
+        ObjectNode prepress = node.putObject("prepress");
+        prepress.put("chainId", chainId);
+        String version = headers.getFirst(PREPRESS_VERSION_HEADER);
+        if (version != null && !version.isBlank()) {
+            prepress.put("version", version);
+        }
+        return node;
     }
 
     /** Parse the optional {@link AiToolResponseHeaders#TOOL_REPORT} header, or null. */

@@ -21,12 +21,15 @@ const render = (
   options?: Parameters<typeof baseRender>[1],
 ) => baseRender(ui, { wrapper: PortalTestProviders, ...options });
 
-// Deterministic i18n: keys returned verbatim.
+// Deterministic i18n: keys returned verbatim. initReactI18next/Trans are exported too because the
+// builder pulls in modules (the policies operations catalogue) that reference them at import time.
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
     t: (key: string) => key,
     i18n: { changeLanguage: vi.fn() },
   }),
+  initReactI18next: { type: "3rdParty", init: () => {} },
+  Trans: (props: { children?: unknown }) => props.children,
 }));
 
 vi.mock("@portal/hooks/useAiEngineEnabled", () => ({

@@ -19,6 +19,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import io.swagger.v3.oas.annotations.Operation;
 
 import lombok.RequiredArgsConstructor;
@@ -36,6 +38,7 @@ import stirling.software.SPDF.service.preflight.PreflightReportRenderer;
 import stirling.software.SPDF.service.preflight.PreflightReportText;
 import stirling.software.SPDF.service.preflight.PrintPreflightService;
 import stirling.software.SPDF.service.prepress.PrepressArchiveService;
+import stirling.software.SPDF.service.prepress.PrepressReportHeaders;
 import stirling.software.common.annotations.AutoJobPostMapping;
 import stirling.software.common.annotations.api.SecurityApi;
 import stirling.software.common.enumeration.ResourceWeight;
@@ -59,6 +62,9 @@ public class PrintPreflightController {
     private final PreflightGhostscriptFixer ghostscriptFixer;
     private final PreflightProfileService profileService;
     private final PrepressArchiveService prepressArchive;
+    // Header serialization is the only JSON work here; Spring only exposes a Jackson 3 mapper,
+    // so like the other prepress services this keeps its own Jackson 2 instance.
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Operation(
             summary = "List preflight profiles",
@@ -181,6 +187,10 @@ public class PrintPreflightController {
                             "print-preflight-annotated", file, out.getPath(), filename, null);
             ResponseEntity<Resource> response =
                     WebResponseUtils.pdfFileToWebResponse(out, filename);
+            response.getHeaders()
+                    .set(
+                            PrepressReportHeaders.TOOL_REPORT,
+                            toolReport(PrintPreflightReport.Preflight.of(report.getCounts())));
             PrepressArchiveService.setChainHeaders(response, handle);
             return response;
         }
@@ -225,6 +235,10 @@ public class PrintPreflightController {
                             "print-preflight-report", file, out.getPath(), filename, null);
             ResponseEntity<Resource> response =
                     WebResponseUtils.pdfFileToWebResponse(out, filename);
+            response.getHeaders()
+                    .set(
+                            PrepressReportHeaders.TOOL_REPORT,
+                            toolReport(PrintPreflightReport.Preflight.of(report.getCounts())));
             PrepressArchiveService.setChainHeaders(response, handle);
             return response;
         }
@@ -274,38 +288,58 @@ public class PrintPreflightController {
                     "Preflight fixups on '{}': {}",
                     file.getOriginalFilename(),
                     applied.isEmpty() ? "none applicable" : String.join(", ", applied));
+            // Re-analyse the delivered document so pipeline routing sees the post-fix state —
+            // the pre-fix report cannot say whether the fixups resolved everything (the
+            // fix-preview endpoint already pays this same second analysis pass). gsOutput is
+            // only owned by the response once pdfFileToWebResponse wraps it — every throwing
+            // call before that must close it or the Ghostscript output leaks on disk.
+            PrintPreflightReport postReport;
             ResponseEntity<Resource> response;
             Optional<PrepressArchiveService.Handle> handle;
             if (gsOutput != null) {
-                response = WebResponseUtils.pdfFileToWebResponse(gsOutput, filename);
-                handle =
-                        prepressArchive.recordVersion(
-                                "print-preflight-fix",
-                                file,
-                                gsOutput.getPath(),
-                                filename,
-                                Map.of("fixups", applied));
+                try {
+                    postReport = reanalyzeFixed(request, file, document, gsOutput);
+                    handle =
+                            prepressArchive.recordVersion(
+                                    "print-preflight-fix",
+                                    file,
+                                    gsOutput.getPath(),
+                                    filename,
+                                    Map.of("fixups", applied));
+                    response = WebResponseUtils.pdfFileToWebResponse(gsOutput, filename);
+                } catch (IOException | RuntimeException e) {
+                    gsOutput.close();
+                    throw e;
+                }
             } else {
+                postReport = reanalyzeFixed(request, file, document, null);
                 TempFile out = tempFileManager.createManagedTempFile(".pdf");
                 try {
                     document.save(out.getFile());
+                    handle =
+                            prepressArchive.recordVersion(
+                                    "print-preflight-fix",
+                                    file,
+                                    out.getPath(),
+                                    filename,
+                                    Map.of("fixups", applied));
+                    response = WebResponseUtils.pdfFileToWebResponse(out, filename);
                 } catch (IOException | RuntimeException e) {
                     out.close();
                     throw e;
                 }
-                handle =
-                        prepressArchive.recordVersion(
-                                "print-preflight-fix",
-                                file,
-                                out.getPath(),
-                                filename,
-                                Map.of("fixups", applied));
-                response = WebResponseUtils.pdfFileToWebResponse(out, filename);
             }
             ResponseEntity<Resource> withHeaders =
                     ResponseEntity.status(response.getStatusCode())
                             .headers(response.getHeaders())
                             .header("X-Preflight-Fixups", String.join(", ", applied))
+                            .header(
+                                    PrepressReportHeaders.TOOL_REPORT,
+                                    toolReport(
+                                            PrintPreflightReport.Preflight.afterFix(
+                                                    postReport.getCounts(),
+                                                    applied,
+                                                    report.getCounts())))
                             .body(response.getBody());
             PrepressArchiveService.setChainHeaders(withHeaders, handle);
             return withHeaders;
@@ -372,6 +406,30 @@ public class PrintPreflightController {
                             "warningsAfter", after.getCounts().getWarnings()));
             return ResponseEntity.ok(PrintPreflightFixAudit.of(before, after, applied));
         }
+    }
+
+    /**
+     * Analyse the document the caller actually receives: the Ghostscript output when a GS fixup
+     * rebuilt the file, else the corrected PDFBox document still in memory.
+     */
+    private PrintPreflightReport reanalyzeFixed(
+            PrintPreflightRequest request,
+            MultipartFile file,
+            PDDocument document,
+            TempFile gsOutput)
+            throws IOException {
+        if (gsOutput != null) {
+            try (PDDocument fixed = pdfDocumentFactory.load(gsOutput.getPath())) {
+                return printPreflightService.analyze(
+                        fixed, file.getOriginalFilename(), file.getSize(), request);
+            }
+        }
+        return printPreflightService.analyze(
+                document, file.getOriginalFilename(), file.getSize(), request);
+    }
+
+    private String toolReport(PrintPreflightReport.Preflight summary) {
+        return PrepressReportHeaders.toolReportJson(objectMapper, summary);
     }
 
     private static void validate(MultipartFile file, PrintPreflightRequest request) {

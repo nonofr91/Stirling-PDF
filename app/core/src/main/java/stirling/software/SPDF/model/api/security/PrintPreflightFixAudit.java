@@ -38,6 +38,14 @@ public class PrintPreflightFixAudit {
     private List<Finding> introducedFindings = new ArrayList<>();
 
     /**
+     * Post-fix summary matching {@link PrintPreflightReport#getPreflight()}: this body is the
+     * pipeline step's report, so routing reads the same {@code report.preflight.*} shape here.
+     */
+    public PrintPreflightReport.Preflight getPreflight() {
+        return PrintPreflightReport.Preflight.afterFix(countsAfter, appliedFixups, countsBefore);
+    }
+
+    /**
      * Compares findings by code: a fixup resolving a finding removes its code, one surfacing a new
      * issue introduces a code. A code firing on fewer pages afterwards counts as remaining, not
      * resolved — the counts carry the quantitative change.
