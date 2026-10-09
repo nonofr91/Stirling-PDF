@@ -76,7 +76,7 @@ class EmailOutputSinkTest {
     }
 
     @Test
-    void oneMailPerRunAttachesReportsButNotThePdfs() throws Exception {
+    void oneMailPerRunAttachesTheAnnotatedPdfsByDefault() throws Exception {
         Resource a = named("a.pdf", "aaa");
         Resource b = named("b.pdf", "bb");
         OutputDelivery delivery =
@@ -94,8 +94,12 @@ class EmailOutputSinkTest {
         // Worst verdict of the group wins in the subject; {filename} is the output name.
         assertEquals("[warn] a.pdf — nightly", message.getSubject());
         List<String> attachments = attachmentNames(message);
-        assertEquals(List.of("a-report.json", "b-report.json"), attachments);
-        assertFalse(attachments.stream().anyMatch(n -> n.endsWith(".pdf")));
+        assertEquals(List.of("a.pdf", "b.pdf"), attachments);
+        assertFalse(attachments.stream().anyMatch(n -> n.endsWith(".json")));
+        // The HTML layout carries a per-file verdict table instead of the JSON payload.
+        String html = bodyHtml(message);
+        assertTrue(html.contains("a.pdf"));
+        assertTrue(html.contains("WARN") || html.contains(">warn<"));
         assertEquals(1, receipts.size());
         assertEquals("receipt", receipts.getFirst().getFileId());
     }
@@ -116,9 +120,9 @@ class EmailOutputSinkTest {
         verify(sender, times(2)).send(sent.capture());
         assertEquals("[pass] a.pdf — nightly", sent.getAllValues().get(0).getSubject());
         assertEquals("[fail] b.pdf — nightly", sent.getAllValues().get(1).getSubject());
-        // Each mail carries only its own file's report.
-        assertEquals(List.of("a-report.json"), attachmentNames(sent.getAllValues().get(0)));
-        assertEquals(List.of("b-report.json"), attachmentNames(sent.getAllValues().get(1)));
+        // Each mail carries only its own file's document.
+        assertEquals(List.of("a.pdf"), attachmentNames(sent.getAllValues().get(0)));
+        assertEquals(List.of("b.pdf"), attachmentNames(sent.getAllValues().get(1)));
     }
 
     @Test
@@ -156,16 +160,20 @@ class EmailOutputSinkTest {
     }
 
     @Test
-    void attachOutputsAddsTheProcessedFiles() throws Exception {
+    void attachOutputsFalseKeepsThePdfsOut() throws Exception {
         Resource a = named("a.pdf", "aaa");
         OutputDelivery delivery = delivery(List.of(), Map.of(a, report("pass", 0, 0)));
 
         sink.deliver(
                 delivery,
                 List.of(a),
-                spec(Map.of("to", "ops@example.com", "attachOutputs", "true")));
+                spec(
+                        Map.of(
+                                "to", "ops@example.com",
+                                "attachOutputs", "false",
+                                "attachReport", "true")));
 
-        assertEquals(List.of("a-report.json", "a.pdf"), attachmentNames(sentMail()));
+        assertEquals(List.of("a-report.json"), attachmentNames(sentMail()));
     }
 
     @Test
@@ -173,7 +181,10 @@ class EmailOutputSinkTest {
         Resource a = named("a.pdf", "aaa");
         OutputDelivery delivery = delivery(List.of(), Map.of(a, report("fail", 3, 1)));
 
-        sink.deliver(delivery, List.of(a), spec(Map.of("to", "ops@example.com")));
+        sink.deliver(
+                delivery,
+                List.of(a),
+                spec(Map.of("to", "ops@example.com", "attachReport", "true")));
 
         String json = attachmentText(sentMail(), "a-report.json");
         assertTrue(

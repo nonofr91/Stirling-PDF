@@ -10,9 +10,10 @@ import jakarta.mail.internet.InternetAddress;
  * Parsed configuration of an {@code smtp} destination. {@code subject} and {@code body} are
  * templates rendered per delivery against the run's context ({@code {filename}}, {@code {verdict}},
  * {@code {errorCount}}… — see {@link EmailTemplate}). {@code mode} chooses one mail for the whole
- * delivery ("perRun", default) or one per output file ("perFile"). The processed documents stay out
- * of the mail unless {@code attachOutputs} is set; the producing step's report JSON is attached by
- * default ({@code attachReport}).
+ * delivery ("perRun", default) or one per output file ("perFile"). The processed documents are
+ * attached by default ({@code attachOutputs}) — for prepress steps that is the annotated PDF the
+ * recipient reviews; the producing step's raw report JSON is only attached when {@code
+ * attachReport} is set.
  */
 public record EmailTarget(
         List<String> to,
@@ -54,8 +55,8 @@ public record EmailTarget(
                 subject == null || subject.isBlank() ? DEFAULT_SUBJECT : subject,
                 body == null || body.isBlank() ? DEFAULT_BODY : body,
                 MODE_PER_FILE.equals(mode) ? MODE_PER_FILE : MODE_PER_RUN,
-                bool(options.get("attachReport"), true),
-                bool(options.get("attachOutputs"), false));
+                bool(options.get("attachReport"), false),
+                bool(options.get("attachOutputs"), true));
     }
 
     /**

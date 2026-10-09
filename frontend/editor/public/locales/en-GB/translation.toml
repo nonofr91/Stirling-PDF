@@ -10938,15 +10938,15 @@ label = "Email (SMTP)"
 templatesHelp = "Placeholders: {filename} {fileNames} {fileCount} {pipeline} {verdict} {errorCount} {warningCount} {runId} {date} {status}. Unknown placeholders are left as-is."
 
 [portal.sources.types.smtp.fields.attachOutputs]
-helperText = "Off by default — the report alone stays small enough for any mail server."
-label = "Also attach the processed files"
+helperText = "On by default — the recipient gets the processed PDF, annotations included."
+label = "Attach the processed files"
 
 [portal.sources.types.smtp.fields.attachOutputs.options]
 no = "No"
 yes = "Yes"
 
 [portal.sources.types.smtp.fields.attachReport]
-helperText = "A JSON summary of the verdict, errors and warnings of every step."
+helperText = "Off by default — a JSON summary of the verdict, errors and warnings of every step."
 label = "Attach the step report"
 
 [portal.sources.types.smtp.fields.attachReport.options]
