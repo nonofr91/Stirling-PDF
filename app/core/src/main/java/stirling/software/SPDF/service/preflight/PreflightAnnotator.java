@@ -46,14 +46,15 @@ public final class PreflightAnnotator {
 
     private PreflightAnnotator() {}
 
-    public static void annotate(PDDocument document, List<Finding> findings) throws IOException {
-        annotate(document, findings, null);
+    public static List<PDAnnotation> annotate(PDDocument document, List<Finding> findings)
+            throws IOException {
+        return annotate(document, findings, null);
     }
 
-    public static void annotate(PDDocument document, List<Finding> findings, ResourceBundle bundle)
-            throws IOException {
+    public static List<PDAnnotation> annotate(
+            PDDocument document, List<Finding> findings, ResourceBundle bundle) throws IOException {
         if (document.getNumberOfPages() == 0) {
-            return;
+            return List.of();
         }
         String popupTitle = PreflightReportText.t(bundle, "annotator.title", "Print preflight");
         // Findings without geometry land as one sticky note per affected page.
@@ -165,6 +166,7 @@ public final class PreflightAnnotator {
         for (PDAnnotation annotation : added) {
             annotation.constructAppearances(document);
         }
+        return added;
     }
 
     private static void paintMarkers(PDDocument document, Iterable<Marker> markers)

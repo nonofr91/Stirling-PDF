@@ -5,8 +5,13 @@ import java.awt.geom.NoninvertibleTransformException;
 import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
 import java.io.IOException;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Set;
 
+import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
@@ -30,20 +35,44 @@ public final class PreflightA4Scaler {
 
     private PreflightA4Scaler() {}
 
-    public static void fitToA4(PDDocument document) throws IOException {
+    /**
+     * Fits the document pages to A4. {@code marks} is the set of annotations added by the preflight
+     * annotator — only those text notes are re-parked in the corner; annotations the source
+     * document already carried keep their relative position.
+     */
+    public static void fitToA4(PDDocument document, Collection<? extends PDAnnotation> marks)
+            throws IOException {
+        // page.getAnnotations() re-wraps the same COS dictionaries in fresh PDAnnotation
+        // objects, so identity has to be compared on the underlying dictionary.
+        Set<COSDictionary> markSet = Collections.newSetFromMap(new IdentityHashMap<>());
+        for (PDAnnotation mark : marks) {
+            markSet.add(mark.getCOSObject());
+        }
         for (PDPage page : document.getPages()) {
-            fitPage(document, page);
+            fitPage(document, page, markSet);
         }
     }
 
-    private static void fitPage(PDDocument document, PDPage page) throws IOException {
+    private static void fitPage(PDDocument document, PDPage page, Set<COSDictionary> marks)
+            throws IOException {
         PDRectangle media = page.getMediaBox();
         if (media == null || media.getWidth() <= 0 || media.getHeight() <= 0) {
             return;
         }
+        float unit = page.getCOSObject().getFloat(COSName.USER_UNIT, 1f);
+        if (unit <= 0) {
+            unit = 1f;
+        }
         int rotation = ((page.getRotation() % 360) + 360) % 360;
-        AffineTransform rotate = displayTransform(rotation, media);
-        Rectangle2D displayed = transformBounds(media, rotate);
+        // user space → displayed physical points: /Rotate, then the /UserUnit multiplier.
+        AffineTransform phys = new AffineTransform();
+        phys.scale(unit, unit);
+        phys.concatenate(displayTransform(rotation, media));
+
+        // Viewers display and print the effective CropBox — getCropBox() resolves
+        // inherited entries and falls back to the mediaBox — so that is what gets
+        // fitted to A4, not the mediaBox itself.
+        Rectangle2D displayed = transformBounds(page.getCropBox(), phys);
 
         PDRectangle a4 =
                 displayed.getHeight() >= displayed.getWidth()
@@ -64,35 +93,33 @@ public final class PreflightA4Scaler {
         fit.scale(scale, scale);
         fit.translate(-displayed.getMinX(), -displayed.getMinY());
 
-        AffineTransform unrotate;
+        AffineTransform physInv;
         try {
-            unrotate = rotate.createInverse();
+            physInv = phys.createInverse();
         } catch (NoninvertibleTransformException e) {
             return;
         }
-        // The viewer applies /Rotate after the content, so the in-stream transform must land
-        // the page on A4 through it: unrotate · fit · rotate.
-        AffineTransform m = new AffineTransform(unrotate);
+        // The viewer applies phys (rotation + user unit) after the content, so the
+        // in-stream transform must land the page on A4 through it: phys^-1 · fit · phys.
+        AffineTransform m = new AffineTransform(physInv);
         m.concatenate(fit);
-        m.concatenate(rotate);
+        m.concatenate(phys);
 
         // Read the explicit boxes before the mediaBox changes: their getters clip
         // to the current mediaBox, so reading them afterwards returns a shrunken
         // rectangle that would remap wrong.
-        PDRectangle crop = explicitBox(page, COSName.CROP_BOX) ? page.getCropBox() : null;
         PDRectangle trim = explicitBox(page, COSName.TRIM_BOX) ? page.getTrimBox() : null;
         PDRectangle bleed = explicitBox(page, COSName.BLEED_BOX) ? page.getBleedBox() : null;
 
         wrapContent(document, page, m);
 
-        // The new page's user space is the A4 seen through the viewer's rotation:
-        // content, boxes and annotations are mapped there by m, but the page extent
-        // itself is always exactly rot^-1(A4).
-        PDRectangle newMedia = toRect(transformBounds(a4, unrotate));
+        // The new page's user space is the A4 seen through phys: content, boxes and
+        // annotations are mapped there by m, but the page extent itself is always
+        // exactly phys^-1(A4). The fitted box is the visible one, so the cropBox is
+        // pinned to the full new page — anything it used to exclude stays clipped.
+        PDRectangle newMedia = toRect(transformBounds(a4, physInv));
         page.setMediaBox(newMedia);
-        if (crop != null) {
-            page.setCropBox(toRect(transformBounds(crop, m)));
-        }
+        page.setCropBox(newMedia);
         if (trim != null) {
             page.setTrimBox(toRect(transformBounds(trim, m)));
         }
@@ -100,7 +127,7 @@ public final class PreflightA4Scaler {
             page.setBleedBox(toRect(transformBounds(bleed, m)));
         }
 
-        remapAnnotations(document, page, m, newMedia);
+        remapAnnotations(document, page, m, newMedia, marks);
     }
 
     /** Wraps the existing page content in {@code q <m> cm … Q} so everything scales together. */
@@ -125,13 +152,19 @@ public final class PreflightA4Scaler {
     }
 
     /**
-     * Remaps every annotation rectangle into the new user space. Text notes are re-parked in the
-     * top-right corner instead of scaled: their icon is rendered at a fixed size, so a rect shrunk
-     * by a large-format downscale would pin it invisibly mid-page. Square appearances are rebuilt —
-     * the appearance stream is painted in annotation space and would keep the old size otherwise.
+     * Remaps every annotation rectangle into the new user space. Preflight text notes are re-parked
+     * in the top-right corner instead of scaled: their icon is rendered at a fixed size, so a rect
+     * shrunk by a large-format downscale would pin it invisibly mid-page. Annotations the source
+     * already carried only move with the artwork — their position is user-chosen and their
+     * appearance stream is left alone. Preflight square appearances are rebuilt — the appearance
+     * stream is painted in annotation space and would keep the old size otherwise.
      */
     private static void remapAnnotations(
-            PDDocument document, PDPage page, AffineTransform m, PDRectangle newMedia)
+            PDDocument document,
+            PDPage page,
+            AffineTransform m,
+            PDRectangle newMedia,
+            Set<COSDictionary> marks)
             throws IOException {
         List<PDAnnotation> annotations = page.getAnnotations();
         if (annotations == null || annotations.isEmpty()) {
@@ -143,7 +176,8 @@ public final class PreflightA4Scaler {
             if (rect == null) {
                 continue;
             }
-            if (annotation instanceof PDAnnotationText) {
+            boolean own = marks.contains(annotation.getCOSObject());
+            if (own && annotation instanceof PDAnnotationText) {
                 annotation.setRectangle(
                         new PDRectangle(
                                 newMedia.getUpperRightX() - NOTE_OFFSET_PT,
@@ -154,7 +188,9 @@ public final class PreflightA4Scaler {
                 continue;
             }
             annotation.setRectangle(toRect(transformBounds(rect, m)));
-            annotation.constructAppearances(document);
+            if (own) {
+                annotation.constructAppearances(document);
+            }
         }
     }
 
