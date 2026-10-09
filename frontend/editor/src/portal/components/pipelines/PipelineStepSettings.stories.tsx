@@ -54,6 +54,7 @@ const meta = {
     onChange: () => {},
     assetNames: {},
     onClearBinding: () => {},
+    onWhenChange: () => {},
   },
 } satisfies Meta<typeof PipelineStepSettings>;
 export default meta;

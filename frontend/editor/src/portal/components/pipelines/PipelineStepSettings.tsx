@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import { useTranslation } from "react-i18next";
 import { Icon } from "@app/ui/Icon";
-import { Banner, Chip } from "@app/ui";
+import { Banner, Chip, ToggleSwitch } from "@app/ui";
 import { PreferencesProvider } from "@app/contexts/PreferencesContext";
 import { SidebarProvider } from "@app/contexts/SidebarContext";
 import { type ToolRegistry } from "@app/data/toolsTaxonomy";
@@ -13,6 +13,9 @@ import {
   type WorkingToolStep,
 } from "@app/hooks/tools/shared/toolAutomation";
 
+import { RoutingConditionEditor } from "@app/components/conditions/RoutingConditionEditor";
+import { documentFieldCondition } from "@app/data/classificationConditions";
+import type { MatchesAnyCondition } from "@app/conditions/types";
 import { PolicyExternalApiConfig } from "@portal/components/policies/PolicyExternalApiConfig";
 import { isIntegrationStep } from "@portal/components/pipelines/integrationStep";
 import { isIngestStep } from "@portal/components/pipelines/docparseStep";
@@ -39,6 +42,13 @@ interface PipelineStepSettingsProps {
   assetNames: Record<string, string>;
   /** Drop a field's stored supporting-file binding (the user re-picks a file if the step still needs one). */
   onClearBinding: (field: string) => void;
+  /** The step's per-document gate, or undefined when it always runs. */
+  when?: MatchesAnyCondition;
+  onWhenChange: (when: MatchesAnyCondition | undefined) => void;
+  /** `classification.*` facts exist only if a classify step ran before this one. */
+  classificationAvailable?: boolean;
+  /** `report.preflight.*` facts exist only if a preflight step ran before this one. */
+  preflightAvailable?: boolean;
 }
 
 /** One reopened supporting file shown as a chip: the field it binds and the stored file name(s). */
@@ -91,20 +101,58 @@ export function PipelineStepSettings({
   onChange,
   assetNames,
   onClearBinding,
+  when,
+  onWhenChange,
+  classificationAvailable = false,
+  preflightAvailable = false,
 }: PipelineStepSettingsProps) {
   // Hooks first: selecting a different step re-renders this same instance, so an early return
   // above useTranslation would change the hook count between renders and crash.
   const { t } = useTranslation();
 
+  const gate = (
+    <div className="portal-step-settings__gate">
+      <ToggleSwitch
+        size="sm"
+        checked={when !== undefined}
+        onChange={(enabled) =>
+          onWhenChange(
+            enabled ? documentFieldCondition("document.extension") : undefined,
+          )
+        }
+        label={t(
+          "portal.pipelines.builder.when.toggle",
+          "Run only when a document matches",
+        )}
+        description={t(
+          "portal.pipelines.builder.when.description",
+          "Matching files run through this step; the others bypass it unchanged.",
+        )}
+        data-testid="step-gate-toggle"
+      />
+      {when !== undefined && (
+        <RoutingConditionEditor
+          condition={when}
+          onChange={onWhenChange}
+          classificationAvailable={classificationAvailable}
+          preflightAvailable={preflightAvailable}
+        />
+      )}
+    </div>
+  );
+
   // Same reasoning as the integration branch below: a DocParse step has no registry entry, so
   // its settings come from its own component rather than a tool's.
   if (isIngestStep(step)) {
     return (
-      <IngestStepConfig
-        editorInput={editorInput}
-        parameters={step.params}
-        onChange={(params) => onChange(params as never)}
-      />
+      <>
+        <IngestStepConfig
+          editorInput={editorInput}
+          parameters={step.params}
+          onChange={(params) => onChange(params as never)}
+        />
+        {gate}
+      </>
     );
   }
 
@@ -112,10 +160,13 @@ export function PipelineStepSettings({
   // it has no registry entry to look one up from.
   if (isIntegrationStep(step)) {
     return (
-      <PolicyExternalApiConfig
-        parameters={step.params as unknown as ExternalApiStepParams}
-        onChange={(params) => onChange(params as never)}
-      />
+      <>
+        <PolicyExternalApiConfig
+          parameters={step.params as unknown as ExternalApiStepParams}
+          onChange={(params) => onChange(params as never)}
+        />
+        {gate}
+      </>
     );
   }
 
@@ -179,6 +230,7 @@ export function PipelineStepSettings({
         </div>
       )}
       {toolBody()}
+      {gate}
     </>
   );
 }

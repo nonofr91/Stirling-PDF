@@ -561,6 +561,21 @@ public class PolicyEngine {
             }
 
             @Override
+            public void onStepGate(int stepIndex, int matched, int total) {
+                // Without this, a gate that bypassed every file reads as if the step ran.
+                taskManager.addNote(
+                        runId,
+                        "Step "
+                                + stepIndex
+                                + ": condition matched "
+                                + matched
+                                + "/"
+                                + total
+                                + " files");
+                delegate.onStepGate(stepIndex, matched, total);
+            }
+
+            @Override
             public void onStepComplete(int stepIndex, int stepCount, String operation) {
                 taskManager.addNote(
                         runId,

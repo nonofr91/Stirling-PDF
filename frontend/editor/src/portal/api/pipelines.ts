@@ -1,4 +1,5 @@
 import { apiClient } from "@portal/api/http";
+import type { Condition } from "@app/conditions/types";
 import type { WireRoutingRule } from "@app/policies/types";
 import {
   type SupportingFileBindings,
@@ -25,6 +26,8 @@ export interface PipelineStep {
   operation: string;
   parameters: Record<string, unknown>;
   fileParameters?: SupportingFileBindings;
+  /** Per-document gate (`document.*` + `report.*` facts); absent means unconditional. */
+  when?: Condition;
 }
 
 /** When a policy input fires automatically. `type` keys a trigger bean (e.g. "schedule"). */

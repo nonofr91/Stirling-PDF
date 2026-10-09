@@ -28,6 +28,7 @@ import {
   type ErasedToolParams,
   type RegistryToolOperationConfig,
 } from "@app/hooks/tools/shared/toolOperationTypes";
+import type { Condition } from "@app/conditions/types";
 
 /**
  * How much of a tool's parameters a UI can edit when composing a backend step:
@@ -70,6 +71,11 @@ export interface ToolApiStep {
    * no supporting file. Mirrors the wire {@code PipelineStep.fileParameters}.
    */
   fileParameters?: SupportingFileBindings;
+  /**
+   * Per-document gate evaluated on the same facts as routing (`document.*` plus the carried
+   * `report.*`): files that do not match bypass the step untouched. Absent means unconditional.
+   */
+  when?: Condition;
 }
 
 /** A step being edited in a UI that maps to a known tool: parameters are in the tool's frontend shape. */
@@ -84,6 +90,8 @@ export interface KnownToolStep {
    * File and takes precedence on save.
    */
   fileParameters?: SupportingFileBindings;
+  /** Per-document gate on the step; absent means unconditional. */
+  when?: Condition;
 }
 
 /** A stored step whose endpoint maps to no known tool: preserved verbatim, not editable. */
@@ -94,6 +102,8 @@ export interface UnknownToolStep {
   support: "unknown";
   /** Supporting-file bindings preserved verbatim, so an unknown step's files round-trip untouched. */
   fileParameters?: SupportingFileBindings;
+  /** Per-document gate on the step; absent means unconditional. */
+  when?: Condition;
 }
 
 /** A step being edited in a UI, discriminated by whether its endpoint maps to a known tool. */
@@ -427,7 +437,7 @@ export function serializeToolStep(
   if (!config) {
     // Unmapped step (unknown endpoint on edit): round-trip it unchanged.
     return withFileParameters(
-      { operation: step.operation, parameters: step.params },
+      { operation: step.operation, parameters: step.params, when: step.when },
       step,
     );
   }
@@ -441,7 +451,7 @@ export function serializeToolStep(
   const parameters = config.toApiParams
     ? (config.toApiParams(merged) as Record<string, unknown>)
     : {};
-  return withFileParameters({ operation, parameters }, step);
+  return withFileParameters({ operation, parameters, when: step.when }, step);
 }
 
 /** Attach the step's supporting-file bindings to a serialized step, omitting the field when empty. */
@@ -513,6 +523,7 @@ function unmappedStep(step: ToolApiStep): UnknownToolStep {
     params: { ...step.parameters },
     support: "unknown",
     fileParameters: step.fileParameters,
+    when: step.when,
   };
 }
 
@@ -561,5 +572,6 @@ export function deserializeToolStep(
     params,
     support: classifyToolStepSupport(entry),
     fileParameters: step.fileParameters,
+    when: step.when,
   };
 }

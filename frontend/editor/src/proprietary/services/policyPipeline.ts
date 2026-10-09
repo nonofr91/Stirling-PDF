@@ -12,6 +12,7 @@
  */
 
 import { resolveRunOn, type PolicyRunOn } from "@app/policies/runOn";
+import type { Condition } from "@app/conditions/types";
 import type { StepReport } from "@app/policies/types";
 import type { AutomationConfig } from "@app/types/automation";
 import type { PolicyFolderSettings } from "@app/types/policies";
@@ -26,6 +27,8 @@ export interface BackendPipelineStep {
   operation: string;
   parameters: Record<string, unknown>;
   fileParameters?: Record<string, string>;
+  /** Per-document gate on the step (see PipelineStep.java `when`); absent means unconditional. */
+  when?: Condition;
 }
 
 /** Where the run's outputs are delivered. "inline" = return for download. */

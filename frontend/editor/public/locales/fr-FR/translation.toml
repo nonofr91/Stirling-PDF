@@ -9611,6 +9611,9 @@ viewDefinition = "Afficher la définition"
 [portal.pipelines.builder.blocker]
 aiClassification = "Activez la classification AI dans les paramètres, ou supprimez l’étape Classifier"
 destination = "Choisissez une destination"
+gateIncomplete = "Complétez ou supprimez la condition de : {{tools}}"
+gateNeedsClassify = "Une condition sur le type de document exige une étape Classifier avant : {{tools}}"
+gateNeedsPreflight = "Une condition sur le verdict preflight exige une étape Print Preflight avant : {{tools}}"
 heading = "Pour créer ce pipeline :"
 incompatible = "Corrigez les étapes qui ne peuvent pas s’exécuter dans l’ordre : {{tools}}"
 managerOnly = "Seul un administrateur ou un responsable d’équipe peut modifier une politique"
@@ -9622,6 +9625,11 @@ saveHeading = "Pour enregistrer vos modifications :"
 schedule = "Définissez la fréquence d’exécution"
 setup = "Terminez la configuration : {{tools}}"
 source = "Choisissez une source d’entrée"
+
+[portal.pipelines.builder.when]
+description = "Les fichiers correspondants passent par cette étape ; les autres la contournent sans modification."
+detail = "si {{field}} correspond à {{values}}"
+toggle = "N’exécuter que si un document correspond"
 
 [portal.pipelines.builder.diagnostic]
 fan-in = "Combine chaque fichier entrant"

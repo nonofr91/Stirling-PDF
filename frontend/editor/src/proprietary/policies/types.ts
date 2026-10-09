@@ -17,6 +17,8 @@ export interface WirePipelineStep {
   operation: string;
   parameters: Record<string, unknown>;
   fileParameters?: Record<string, string>;
+  /** Per-document gate on the step (see PipelineStep.java `when`); absent means unconditional. */
+  when?: Condition;
 }
 
 export interface WireOutputOptions {
