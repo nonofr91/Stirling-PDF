@@ -49,6 +49,8 @@ interface PipelineStepSettingsProps {
   classificationAvailable?: boolean;
   /** `report.preflight.*` facts exist only if a preflight step ran before this one. */
   preflightAvailable?: boolean;
+  /** `report.preflight` pre-fixup and fixupsApplied facts exist only if a fix step ran before. */
+  preflightFixAvailable?: boolean;
 }
 
 /** One reopened supporting file shown as a chip: the field it binds and the stored file name(s). */
@@ -105,6 +107,7 @@ export function PipelineStepSettings({
   onWhenChange,
   classificationAvailable = false,
   preflightAvailable = false,
+  preflightFixAvailable = false,
 }: PipelineStepSettingsProps) {
   // Hooks first: selecting a different step re-renders this same instance, so an early return
   // above useTranslation would change the hook count between renders and crash.
@@ -136,6 +139,7 @@ export function PipelineStepSettings({
           onChange={onWhenChange}
           classificationAvailable={classificationAvailable}
           preflightAvailable={preflightAvailable}
+          preflightFixAvailable={preflightFixAvailable}
         />
       )}
     </div>

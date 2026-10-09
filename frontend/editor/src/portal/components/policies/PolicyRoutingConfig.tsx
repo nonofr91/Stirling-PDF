@@ -119,6 +119,7 @@ export function PolicyRoutingConfig({
         classificationAvailable={aiLoading || classificationEnabled}
         // A preflight rule injects the fix step on save, so the field is always offerable.
         preflightAvailable
+        preflightFixAvailable
         classificationUnavailableReason={
           aiLoading
             ? undefined

@@ -46,6 +46,8 @@ interface RoutingRulesProps {
   classificationUnavailableReason?: string;
   /** Preflight report fields require a preflight step somewhere in the pipeline. */
   preflightAvailable?: boolean;
+  /** The pre-fixup and fixupsApplied fields need a preflight fix step, not a plain analysis. */
+  preflightFixAvailable?: boolean;
 }
 
 /**
@@ -61,6 +63,7 @@ export function RoutingRules({
   classificationAvailable = true,
   classificationUnavailableReason,
   preflightAvailable = false,
+  preflightFixAvailable = false,
 }: RoutingRulesProps) {
   const { t } = useTranslation();
 
@@ -116,6 +119,7 @@ export function RoutingRules({
                   onChange={(condition) => update(index, { condition })}
                   classificationAvailable={classificationAvailable}
                   preflightAvailable={preflightAvailable}
+                  preflightFixAvailable={preflightFixAvailable}
                 />
                 <Select
                   inputSize="sm"
@@ -178,6 +182,8 @@ interface RoutingSectionProps extends RoutingRulesProps {
   canClassify: boolean;
   /** Whether the pipeline runs a preflight step whose report a rule can read. */
   canPreflight?: boolean;
+  /** Whether the pipeline runs a preflight fix, unlocking the pre-fixup report fields. */
+  canPreflightFix?: boolean;
   aiClassificationEnabled?: boolean;
 }
 
@@ -185,6 +191,7 @@ interface RoutingSectionProps extends RoutingRulesProps {
 export function RoutingSection({
   canClassify,
   canPreflight = false,
+  canPreflightFix = false,
   aiClassificationEnabled = true,
   ...rules
 }: RoutingSectionProps) {
@@ -250,6 +257,7 @@ export function RoutingSection({
             classificationAvailable={classificationAvailable}
             classificationUnavailableReason={unavailableReason}
             preflightAvailable={canPreflight}
+            preflightFixAvailable={canPreflightFix}
           />
         </>
       )}

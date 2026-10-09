@@ -18,6 +18,8 @@ interface RoutingConditionEditorProps {
   classificationAvailable: boolean;
   /** Report fields only make sense when a preflight step feeds the route. */
   preflightAvailable?: boolean;
+  /** The pre-fixup and fixupsApplied fields are only emitted by a fix step, not an analysis. */
+  preflightFixAvailable?: boolean;
 }
 
 const DOCUMENT_FIELDS = [
@@ -51,6 +53,7 @@ export function RoutingConditionEditor({
   onChange,
   classificationAvailable,
   preflightAvailable = false,
+  preflightFixAvailable = false,
 }: RoutingConditionEditorProps) {
   const { t } = useTranslation();
   const field = condition.input.field;
@@ -145,7 +148,7 @@ export function RoutingConditionEditor({
         "portal.pipelines.builder.routing.matchPreflightPreFailingChecks",
         "Preflight error type before fixups",
       ),
-      disabled: !preflightAvailable,
+      disabled: !preflightFixAvailable,
     },
     {
       value: DOCUMENT_FIELDS[12],
@@ -153,7 +156,7 @@ export function RoutingConditionEditor({
         "portal.pipelines.builder.routing.matchPreflightFixupsApplied",
         "Applied fixup",
       ),
-      disabled: !preflightAvailable,
+      disabled: !preflightFixAvailable,
     },
   ];
 

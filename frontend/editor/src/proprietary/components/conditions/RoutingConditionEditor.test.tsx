@@ -14,7 +14,7 @@ vi.mock("react-i18next", () => ({
 
 function setup(
   condition: MatchesAnyCondition,
-  { preflightAvailable = true } = {},
+  { preflightAvailable = true, preflightFixAvailable = true } = {},
 ) {
   const onChange = vi.fn();
   baseRender(
@@ -23,6 +23,7 @@ function setup(
       onChange={onChange}
       classificationAvailable={false}
       preflightAvailable={preflightAvailable}
+      preflightFixAvailable={preflightFixAvailable}
     />,
     { wrapper: PortalTestProviders },
   );
@@ -43,9 +44,31 @@ describe("RoutingConditionEditor", () => {
     });
   });
 
+  it("keeps the pre-fixup fields gated on a fix step, not a plain analysis", () => {
+    setup(documentFieldCondition("document.extension"), {
+      preflightAvailable: true,
+      preflightFixAvailable: false,
+    });
+
+    fireEvent.click(screen.getByRole("textbox", { name: "Match by" }));
+
+    expect(
+      screen.getByText("Preflight error type").closest("[data-combobox-disabled]"),
+    ).toBeNull();
+    for (const option of [
+      "Preflight error type before fixups",
+      "Applied fixup",
+    ]) {
+      expect(
+        screen.getByText(option).closest("[data-combobox-disabled]"),
+      ).not.toBeNull();
+    }
+  });
+
   it("greys out the report fields when no preflight step feeds the route", () => {
     setup(documentFieldCondition("document.extension"), {
       preflightAvailable: false,
+      preflightFixAvailable: false,
     });
 
     fireEvent.click(screen.getByRole("textbox", { name: "Match by" }));

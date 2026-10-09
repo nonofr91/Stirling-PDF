@@ -207,6 +207,7 @@ export function ProcessingFolderWizard({
             // Always injectable: a preflight rule adds the fix step to the saved pipeline,
             // the same way a classification rule pulls in classify.
             preflightAvailable
+            preflightFixAvailable
             compact
           />
         </>

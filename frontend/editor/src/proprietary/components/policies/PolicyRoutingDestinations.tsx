@@ -17,6 +17,8 @@ interface PolicyRoutingDestinationsProps {
   classificationUnavailableReason?: string;
   /** Preflight report fields require a preflight step in the pipeline; the wizard injects one. */
   preflightAvailable?: boolean;
+  /** The wizard injects the fix variant, so the pre-fixup fields are offerable too. */
+  preflightFixAvailable?: boolean;
   compact?: boolean;
 }
 
@@ -29,6 +31,7 @@ export function PolicyRoutingDestinations({
   classificationAvailable,
   classificationUnavailableReason,
   preflightAvailable = false,
+  preflightFixAvailable = false,
   compact = false,
 }: PolicyRoutingDestinationsProps) {
   const { t } = useTranslation();
@@ -53,6 +56,7 @@ export function PolicyRoutingDestinations({
         classificationAvailable={classificationAvailable}
         classificationUnavailableReason={classificationUnavailableReason}
         preflightAvailable={preflightAvailable}
+        preflightFixAvailable={preflightFixAvailable}
       />
 
       <h3 className="portal-policies__wizard-heading">
