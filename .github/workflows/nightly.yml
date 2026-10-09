@@ -1,8 +1,6 @@
 name: Nightly E2E Tests
 
 on:
-  schedule:
-    - cron: "0 2 * * *" # 2 AM UTC every night
   workflow_dispatch:
   pull_request:
     paths:

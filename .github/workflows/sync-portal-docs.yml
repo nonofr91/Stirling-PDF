@@ -4,8 +4,6 @@ name: Sync Portal Docs
 # opens a PR when it changes. Runs weekly, on manual dispatch, or when the docs
 # repo fires a `docs-updated` repository_dispatch.
 on:
-  schedule:
-    - cron: "0 6 * * 1"
   workflow_dispatch:
     inputs:
       ref:

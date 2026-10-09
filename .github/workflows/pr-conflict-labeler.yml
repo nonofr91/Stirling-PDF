@@ -8,8 +8,6 @@ on:
       - synchronize
       - edited
       - ready_for_review
-  schedule:
-    - cron: "17 */6 * * *"
   workflow_dispatch:
 
 permissions:

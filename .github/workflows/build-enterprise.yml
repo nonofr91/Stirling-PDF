@@ -22,8 +22,6 @@ on:
         default: false
   push:
     branches: ["main"]
-  schedule:
-    - cron: "0 4 * * *"
   workflow_dispatch:
 
 # No `concurrency:` block here on purpose. When this workflow is called via
