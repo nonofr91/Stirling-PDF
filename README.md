@@ -1,11 +1,26 @@
 > **Downstream fork** of [Stirling-PDF](https://github.com/Stirling-Tools/Stirling-PDF), maintained by [@nonofr91](https://github.com/nonofr91) for print-production workflows.
 >
 > The `prepress` branch adds on top of upstream:
+>
+> **Print-prepress tools**
 > - **Cut Contour** — silhouette extraction (alpha / background / AI matting) into a `CutContour` spot color with overprint, optional content layer and bleed, ready for RIPs and plotters
 > - **Page boxes** — set/derive TrimBox, BleedBox & co. (from painted crop marks too), box-aware crop and scale, outlines drawn on a viewer layer
 > - **Generative bleed & crop marks**, **text-to-outlines**
-> - **Print preflight** — fonts, RGB/spot colors, bleed, hairlines, transparency; findings located on the page with an annotated copy
-> - **Network source I/O** — browse and push files over FTP, SFTP and SMB from the editor
+>
+> **Print preflight**
+> - Checks for fonts, RGB/spot colors, bleed, hairlines, transparency and ink coverage — including per-pixel rendered TAC via Ghostscript
+> - Technical separations and non-printing layers (cut, crease, foil, white…) kept out of print findings
+> - Fixups — RGB→CMYK, spot→CMYK (pixel-wise on images), clip-to-CropBox, ink reduction — with a dry-run preview and a per-fixup audit trail
+> - Findings located on the page in an annotated copy scaled to A4; named profiles; reports localized (en/fr); every run emits a pass/warn/fail verdict
+>
+> **Versioned archive** — every prepress operation is kept server-side, chained by content hash: the source is version 1, each transform a new version, audits recorded without a bump
+>
+> **Automation pipelines**
+> - Sources: FTP, SFTP, SMB, watched folders, S3, editor upload — destinations: folder, S3, branded e-mail report, or back to the editor
+> - Steps run per file or fan-in, may carry a report, and can be gated per document (`when`) on document facts or an earlier step's report — e.g. fix only where the verdict failed
+> - Delivery routing on the same facts, plus an AI classification step for document-type routing
+>
+> On the radar: bypass-aware chain validation, ICC/GCR ink management, PDF/X export, imposition.
 >
 > Images: [`pubgen/stirling-pdf`](https://hub.docker.com/r/pubgen/stirling-pdf) (`prepress-<sha>` tags). Upstream sync: [`upstream-sync.yml`](.github/workflows/upstream-sync.yml) — auto-deploy: [`prepress-deploy.yml`](.github/workflows/prepress-deploy.yml).
 >
