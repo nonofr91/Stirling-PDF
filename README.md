@@ -20,6 +20,8 @@
 > - Steps run per file or fan-in, may carry a report, and can be gated per document (`when`) on document facts or an earlier step's report — e.g. run a fixup only where the verdict failed
 > - Delivery routing on the same facts, plus an AI classification step for document-type routing
 >
+> **Docs** — [Prepress usage guide](docs/prepress-guide.md): which tool for which job, every check and fixup, gate & routing recipes · [Fixups roadmap](docs/preflight-fixups-roadmap.md)
+>
 > **Roadmap** — deeper preflight and correction, toward a full prepress automation stack:
 > - More checks: overprinting white/objects, effective image resolution, mixed page geometry, spot-color aliases, annotations and layers in the print area
 > - More fixups: ICC conversions, GCR/UCR black generation and TAC reduction, image resampling to target DPI, transparency flattening, bleed extension to BleedBox
