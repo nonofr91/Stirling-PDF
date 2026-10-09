@@ -17,10 +17,16 @@
 >
 > **Automation pipelines**
 > - Sources: FTP, SFTP, SMB, watched folders, S3, editor upload — destinations: folder, S3, branded e-mail report, or back to the editor
-> - Steps run per file or fan-in, may carry a report, and can be gated per document (`when`) on document facts or an earlier step's report — e.g. fix only where the verdict failed
+> - Steps run per file or fan-in, may carry a report, and can be gated per document (`when`) on document facts or an earlier step's report — e.g. run a fixup only where the verdict failed
 > - Delivery routing on the same facts, plus an AI classification step for document-type routing
 >
-> On the radar: bypass-aware chain validation, ICC/GCR ink management, PDF/X export, imposition.
+> **Roadmap** — deeper preflight and correction, toward a full prepress automation stack:
+> - More checks: overprinting white/objects, effective image resolution, mixed page geometry, spot-color aliases, annotations and layers in the print area
+> - More fixups: ICC conversions, GCR/UCR black generation and TAC reduction, image resampling to target DPI, transparency flattening, bleed extension to BleedBox
+> - PDF/X export (X-1a / X-4 output intents), separations and ink preview in the viewer
+> - Imposition — booklets, step-and-repeat, ganging
+> - Shareable preflight profiles, machine-readable reports for MIS integration
+> - Bypass-aware chain validation for gated pipeline steps
 >
 > Images: [`pubgen/stirling-pdf`](https://hub.docker.com/r/pubgen/stirling-pdf) (`prepress-<sha>` tags). Upstream sync: [`upstream-sync.yml`](.github/workflows/upstream-sync.yml) — auto-deploy: [`prepress-deploy.yml`](.github/workflows/prepress-deploy.yml).
 >
