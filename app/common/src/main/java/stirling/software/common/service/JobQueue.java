@@ -287,31 +287,31 @@ public class JobQueue implements SmartLifecycle {
                 // Get current resource status
                 ResourceMonitor.ResourceStatus status = resourceMonitor.getCurrentStatus().get();
 
-                // Check if we should execute any jobs
-                boolean canExecuteJobs = (status != ResourceMonitor.ResourceStatus.CRITICAL);
+                boolean critical = status == ResourceMonitor.ResourceStatus.CRITICAL;
 
-                if (!canExecuteJobs) {
-                    // Under critical load, don't execute any jobs
-                    log.debug("System under critical load, delaying job execution");
-                    return;
-                }
-
-                // Get jobs from the queue, up to a limit based on resource availability
+                // Get jobs from the queue, up to a limit based on resource availability.
+                // Under critical load no fresh capacity is granted, but jobs that have already
+                // waited past maxWaitTimeMs still drain (checked per job below).
                 int jobsToProcess =
-                        Math.max(
-                                1,
-                                switch (status) {
-                                    case OK -> 3;
-                                    case WARNING -> 1;
-                                    case CRITICAL -> 0;
-                                });
+                        switch (status) {
+                            case OK -> 3;
+                            case WARNING -> 1;
+                            case CRITICAL -> Integer.MAX_VALUE;
+                        };
 
                 for (int i = 0; i < jobsToProcess && !jobQueue.isEmpty(); i++) {
-                    QueuedJob job = jobQueue.poll();
+                    QueuedJob job = jobQueue.peek();
                     if (job == null) break;
 
-                    // Check if it's been waiting too long
                     long waitTimeMs = Instant.now().toEpochMilli() - job.queuedAt.toEpochMilli();
+                    // FIFO: if the oldest job is still within the wait budget, nothing behind it
+                    // has waited longer — stop until resources recover.
+                    if (critical && waitTimeMs <= maxWaitTimeMs) {
+                        log.debug("System under critical load, delaying job execution");
+                        break;
+                    }
+                    jobQueue.poll();
+
                     if (waitTimeMs > maxWaitTimeMs) {
                         log.warn(
                                 "Job {} exceeded maximum wait time ({} ms), executing anyway",
