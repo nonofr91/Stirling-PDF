@@ -7,7 +7,13 @@ import {
   type ComponentType,
   type ReactNode,
 } from "react";
-import { render, renderHook, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { PortalTestProviders } from "@portal/test/TestQueryProvider";
 import { useTranslatedToolCatalog } from "@app/data/useTranslatedToolRegistry";
 import { PreferencesProvider } from "@app/contexts/PreferencesContext";
@@ -30,7 +36,9 @@ import ChangeMetadataSingleStep from "@app/components/tools/changeMetadata/Chang
 import { defaultParameters as changeMetadataDefaults } from "@app/hooks/tools/changeMetadata/useChangeMetadataParameters";
 import OverlayPdfsSettings from "@app/components/tools/overlayPdfs/OverlayPdfsSettings";
 import { defaultParameters as overlayDefaults } from "@app/hooks/tools/overlayPdfs/useOverlayPdfsParameters";
+import type { MatchesAnyCondition } from "@app/conditions/types";
 import { PipelineStepSettings } from "@portal/components/pipelines/PipelineStepSettings";
+import { newIngestStep } from "@portal/components/pipelines/docparseStep";
 
 // Override only useTranslation; keep the rest of react-i18next (initReactI18next et al.) real, so
 // the convert settings' transitive i18n setup still initializes.
@@ -40,6 +48,14 @@ vi.mock("react-i18next", async (importOriginal) => ({
     t: (key: string, fallback?: string) => fallback ?? key,
     i18n: { language: "en-US", changeLanguage: vi.fn() },
   }),
+}));
+
+// The integration-step config fetches its connection catalogue; keep it offline.
+vi.mock("@portal/api/integrations", () => ({
+  fetchIntegrationCapabilities: () => Promise.resolve({ customApi: false }),
+  fetchIntegrations: () => Promise.resolve([]),
+  fetchS3Connections: () => Promise.resolve([]),
+  createIntegration: () => Promise.resolve({}),
 }));
 
 // A stand-in tool-settings UI that uses the shared editor Tooltip. The Tooltip
@@ -118,6 +134,7 @@ describe("PipelineStepSettings", () => {
             onChange={() => {}}
             assetNames={{}}
             onClearBinding={() => {}}
+            onWhenChange={() => {}}
           />
         </PortalTestProviders>,
       ),
@@ -135,6 +152,7 @@ describe("PipelineStepSettings", () => {
             onChange={() => {}}
             assetNames={{}}
             onClearBinding={() => {}}
+            onWhenChange={() => {}}
           />
         </PortalTestProviders>,
       ),
@@ -152,6 +170,7 @@ describe("PipelineStepSettings", () => {
             onChange={() => {}}
             assetNames={{}}
             onClearBinding={() => {}}
+            onWhenChange={() => {}}
           />
         </PortalTestProviders>,
       ),
@@ -169,6 +188,7 @@ describe("PipelineStepSettings", () => {
             onChange={() => {}}
             assetNames={{}}
             onClearBinding={() => {}}
+            onWhenChange={() => {}}
           />
         </PortalTestProviders>,
       ),
@@ -215,6 +235,7 @@ describe("PipelineStepSettings", () => {
             }
             assetNames={{}}
             onClearBinding={() => {}}
+            onWhenChange={() => {}}
           />
           <span data-testid="out">{JSON.stringify(params)}</span>
         </>
@@ -230,6 +251,82 @@ describe("PipelineStepSettings", () => {
       fromExtension: "pdf",
       toExtension: "docx",
     });
+  });
+
+  const gate: MatchesAnyCondition = {
+    input: { source: "document", field: "document.extension" },
+    operator: "matches-any",
+    values: ["pdf"],
+  };
+
+  function renderSettings(
+    overrides: Partial<Parameters<typeof PipelineStepSettings>[0]> = {},
+  ) {
+    const onWhenChange = vi.fn();
+    render(
+      <PortalTestProviders>
+        <PipelineStepSettings
+          step={step}
+          registry={registry}
+          onChange={() => {}}
+          assetNames={{}}
+          onClearBinding={() => {}}
+          onWhenChange={onWhenChange}
+          {...overrides}
+        />
+      </PortalTestProviders>,
+    );
+    return onWhenChange;
+  }
+
+  it("offers the gate toggle and seeds a document-field condition when switched on", () => {
+    const onWhenChange = renderSettings();
+
+    fireEvent.click(screen.getByTestId("step-gate-toggle"));
+
+    expect(onWhenChange).toHaveBeenCalledWith({
+      input: { source: "document", field: "document.extension" },
+      operator: "matches-any",
+      values: [],
+    });
+  });
+
+  it("edits a gated step's condition and clears it when switched off", () => {
+    const onWhenChange = renderSettings({ when: gate });
+
+    // The routing condition editor renders in place: field select + values input.
+    expect(
+      screen.getByRole("textbox", { name: "Match by" }),
+    ).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("textbox", { name: "Values to match" }), {
+      target: { value: "pdf, docx" },
+    });
+    expect(onWhenChange).toHaveBeenCalledWith({
+      input: { source: "document", field: "document.extension" },
+      operator: "matches-any",
+      values: ["pdf", "docx"],
+    });
+
+    fireEvent.click(screen.getByTestId("step-gate-toggle"));
+    expect(onWhenChange).toHaveBeenCalledWith(undefined);
+  });
+
+  it("shows the gate on an ingest step, which early-returns its own config", () => {
+    renderSettings({ step: newIngestStep() });
+
+    expect(screen.getByTestId("step-gate-toggle")).toBeInTheDocument();
+  });
+
+  it("shows the gate on an integration step, which also early-returns", () => {
+    const integrationStep = {
+      toolId: null,
+      operation: "/api/v1/integration/external-api-call",
+      params: {},
+      support: "unknown",
+    } as unknown as WorkingToolStep;
+    renderSettings({ step: integrationStep });
+
+    expect(screen.getByTestId("step-gate-toggle")).toBeInTheDocument();
   });
 });
 

@@ -3,10 +3,13 @@ package stirling.software.proprietary.policy.engine;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
@@ -27,6 +30,9 @@ import stirling.software.common.service.ToolMetadataService;
 import stirling.software.common.util.ExceptionUtils;
 import stirling.software.common.util.TempFileManager;
 import stirling.software.common.util.ZipExtractionUtils;
+import stirling.software.proprietary.document.DocumentFacts;
+import stirling.software.proprietary.document.conditions.Condition;
+import stirling.software.proprietary.document.conditions.ConditionEvaluator;
 import stirling.software.proprietary.policy.model.PipelineDefinition;
 import stirling.software.proprietary.policy.model.PipelineStep;
 import stirling.software.proprietary.policy.model.PolicyInputs;
@@ -107,7 +113,8 @@ public class PolicyExecutor {
                         "Pipeline step " + (i + 1) + " has no operation");
             }
             listener.onStepStart(i + 1, steps.size(), operation);
-            StepOutput stepResult = executeStep(step, currentFiles, supportingFiles);
+            StepOutput stepResult =
+                    executeStep(step, currentFiles, supportingFiles, listener, i + 1);
             currentFiles = stepResult.files();
             if (stepResult.report() != null) {
                 lastReport = stepResult.report();
@@ -125,39 +132,77 @@ public class PolicyExecutor {
     }
 
     /**
-     * Multi-input endpoints get all files in one call; others are called once per file. ZIP
-     * responses are unpacked so each inner file is its own result (e.g. split). For per-file
+     * Multi-input endpoints get all matching files in one call; others are called once per file.
+     * ZIP responses are unpacked so each inner file is its own result (e.g. split). For per-file
      * dispatch the first non-null report wins.
+     *
+     * <p>A {@code when} gate partitions the incoming files first: only matching files are
+     * dispatched (and type-checked), while the rest bypass the step untouched - keeping their
+     * resource, origin and report - and rejoin the stream at the step's output. A gate whose facts
+     * never match (including a generator step's empty input, where there is no document to read
+     * facts from) skips the tool call entirely.
      */
     private StepOutput executeStep(
             PipelineStep step,
             List<PipelineFile> inputFiles,
-            Map<String, List<Resource>> supportingFiles)
+            Map<String, List<Resource>> supportingFiles,
+            PolicyProgressListener listener,
+            int stepIndex)
             throws IOException {
-        List<Resource> resources = inputFiles.stream().map(PipelineFile::resource).toList();
+        Condition when = step.when();
+        List<PipelineFile> matching = inputFiles;
+        List<PipelineFile> bypassed = List.of();
+        Set<PipelineFile> matched = null;
+        if (when != null) {
+            matching = new ArrayList<>();
+            List<PipelineFile> skipped = new ArrayList<>();
+            matched = Collections.newSetFromMap(new IdentityHashMap<>());
+            for (PipelineFile file : inputFiles) {
+                // The same fact shape delivery routing matches on: document.* plus the report the
+                // producing step attached, so report.preflight.* paths read identically here.
+                ObjectNode facts = DocumentFacts.of(file.resource(), objectMapper);
+                if (file.report() != null) {
+                    facts.set("report", file.report());
+                }
+                if (ConditionEvaluator.matches(when, facts)) {
+                    matching.add(file);
+                    matched.add(file);
+                } else {
+                    skipped.add(file);
+                }
+            }
+            bypassed = skipped;
+            listener.onStepGate(stepIndex, matching.size(), inputFiles.size());
+            if (matching.isEmpty()) {
+                return new StepOutput(bypassed, null);
+            }
+        }
+        List<Resource> resources = matching.stream().map(PipelineFile::resource).toList();
         requireAcceptedTypes(step.operation(), resources);
         List<PipelineFile> files = new ArrayList<>();
         JsonNode report = null;
         if (toolMetadataService.isMultiInput(step.operation())) {
-            Integer origin = sharedOrigin(inputFiles);
+            Integer origin = sharedOrigin(matching);
             // Synchronous, ordered dispatch makes the last surviving input's group the newest,
             // matching SaaS's choice when a merge joins several previously processed documents.
-            Integer billingOrigin =
-                    inputFiles.isEmpty() ? null : inputFiles.getLast().billingOrigin();
+            Integer billingOrigin = matching.isEmpty() ? null : matching.getLast().billingOrigin();
             ToolResult r;
             try (AutomationRunContext.Scope doc = documentScope(billingOrigin)) {
                 r = callEndpoint(step, resources, supportingFiles);
             }
             // Fan-in attribution: a merged file only carries the report every input agreed on —
             // a silent merge of divergent verdicts cannot claim either one.
-            JsonNode shared = sharedReport(inputFiles);
+            JsonNode shared = sharedReport(matching);
             for (Resource file : r.files()) {
                 files.add(
                         new PipelineFile(
                                 file, origin, billingOrigin, mergeReports(shared, r.report())));
             }
             report = r.report();
-        } else if (inputFiles.isEmpty()) {
+            // A merge collapses positions, so bypassed files rejoin after the step's products.
+            files.addAll(bypassed);
+        } else if (matching.isEmpty()) {
+            // Unconditional generator step: no inputs to dispatch, the tool produces its own.
             ToolResult r = callEndpoint(step, List.of(), supportingFiles);
             for (Resource file : r.files()) {
                 files.add(new PipelineFile(file, null, null, r.report()));
@@ -165,6 +210,10 @@ public class PolicyExecutor {
             report = r.report();
         } else {
             for (PipelineFile input : inputFiles) {
+                if (when != null && !matched.contains(input)) {
+                    files.add(input);
+                    continue;
+                }
                 ToolResult r;
                 try (AutomationRunContext.Scope doc = documentScope(input.billingOrigin())) {
                     r = callEndpoint(step, List.of(input.resource()), supportingFiles);

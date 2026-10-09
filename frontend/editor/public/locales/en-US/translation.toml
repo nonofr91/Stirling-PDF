@@ -9792,6 +9792,9 @@ viewDefinition = "View definition"
 [portal.pipelines.builder.blocker]
 aiClassification = "Enable AI classification in Settings, or remove the Classify step"
 destination = "Choose a destination"
+gateIncomplete = "Complete or remove the condition on: {{tools}}"
+gateNeedsClassify = "A condition on document type needs a Classify step before: {{tools}}"
+gateNeedsPreflight = "A condition on the preflight verdict needs a Print Preflight step before: {{tools}}"
 heading = "To create this pipeline:"
 incompatible = "Fix steps that can't run in order: {{tools}}"
 managerOnly = "Only an admin or team leader can modify a policy"
@@ -9803,6 +9806,11 @@ saveHeading = "To save your changes:"
 schedule = "Set how often it runs"
 setup = "Finish setting up: {{tools}}"
 source = "Choose an input source"
+
+[portal.pipelines.builder.when]
+description = "Matching files run through this step; the others bypass it unchanged."
+detail = "if {{field}} matches {{values}}"
+toggle = "Run only when a document matches"
 
 [portal.pipelines.builder.diagnostic]
 fan-in = "Combines every incoming file"

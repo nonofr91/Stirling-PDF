@@ -6,6 +6,7 @@ import {
   type ToolRegistryEntry,
 } from "@app/data/toolsTaxonomy";
 import { type ToolId } from "@app/types/toolId";
+import type { MatchesAnyCondition } from "@app/conditions/types";
 import {
   asRegistryConfig,
   ToolType,
@@ -197,6 +198,58 @@ describe("serialize/deserialize round-trip", () => {
       operation: "/api/v1/unknown/thing",
       parameters: { keep: true },
     });
+  });
+
+  const verdictGate: MatchesAnyCondition = {
+    input: { source: "document", field: "report.preflight.verdict" },
+    operator: "matches-any",
+    values: ["fail"],
+  };
+
+  test("a step's when gate round-trips through the wire shape", () => {
+    const step: WorkingToolStep = {
+      toolId: "compress" as ToolId,
+      operation: "/api/v1/misc/compress-pdf",
+      params: { ...compressDefaults },
+      support: "editable",
+      when: verdictGate,
+    };
+
+    const api = serializeToolStep(step, registry);
+    expect(api.when).toEqual(verdictGate);
+
+    const back = deserializeToolStep(api, registry);
+    expect(back.when).toEqual(verdictGate);
+  });
+
+  test("an unmapped step keeps its when gate verbatim", () => {
+    const step = deserializeToolStep(
+      {
+        operation: "/api/v1/unknown/thing",
+        parameters: { keep: true },
+        when: verdictGate,
+      },
+      registry,
+    );
+    expect(step.toolId).toBeNull();
+    expect(serializeToolStep(step, registry)).toEqual({
+      operation: "/api/v1/unknown/thing",
+      parameters: { keep: true },
+      when: verdictGate,
+    });
+  });
+
+  test("when and fileParameters survive a round-trip together", () => {
+    const api = {
+      operation: "/api/v1/unknown/thing",
+      parameters: { keep: true },
+      fileParameters: { stampImage: "asset:xyz" },
+      when: verdictGate,
+    };
+    const step = deserializeToolStep(api, registry);
+    expect(step.fileParameters).toEqual({ stampImage: "asset:xyz" });
+    expect(step.when).toEqual(verdictGate);
+    expect(serializeToolStep(step, registry)).toEqual(api);
   });
 
   test("auto rotate carries its detection settings into the backend step", () => {

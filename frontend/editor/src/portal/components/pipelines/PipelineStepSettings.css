@@ -15,3 +15,10 @@
   flex-wrap: wrap;
   gap: 0.375rem;
 }
+
+.portal-step-settings__gate {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}

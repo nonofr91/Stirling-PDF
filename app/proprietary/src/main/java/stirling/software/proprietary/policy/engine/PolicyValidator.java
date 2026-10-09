@@ -221,6 +221,11 @@ public class PolicyValidator {
      */
     public void validateSteps(List<PipelineStep> steps) {
         for (PipelineStep step : steps) {
+            // A gate that can never match would silently skip the step on every document;
+            // reject it here like a routing rule that can never fire.
+            if (step.when() != null) {
+                ConditionValidator.validate(step.when());
+            }
             for (PipelineStepValidator validator : stepValidators) {
                 validator.validate(step);
             }

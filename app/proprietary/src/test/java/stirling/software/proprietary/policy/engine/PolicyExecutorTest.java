@@ -46,6 +46,8 @@ import stirling.software.common.service.InternalApiTimeoutException;
 import stirling.software.common.service.ToolMetadataService;
 import stirling.software.common.util.TempFileManager;
 import stirling.software.common.util.TempFileRegistry;
+import stirling.software.proprietary.document.conditions.Condition;
+import stirling.software.proprietary.document.conditions.ConditionInput;
 import stirling.software.proprietary.policy.model.OutputSpec;
 import stirling.software.proprietary.policy.model.PipelineDefinition;
 import stirling.software.proprietary.policy.model.PipelineStep;
@@ -558,6 +560,191 @@ class PolicyExecutorTest {
         // pass + fail merged: the output cannot honestly carry either verdict, so routing on
         // report.preflight.* must not match — a quarantine rule silently passing would be worse.
         assertNull(result.reports().get(0));
+    }
+
+    // --- step gates (when) ---
+
+    @Test
+    void gatedStepDispatchesOnlyMatchingFiles() throws IOException {
+        when(toolMetadataService.isMultiInput(ROTATE)).thenReturn(false);
+        when(toolMetadataService.shouldUnpackZipResponse(ROTATE)).thenReturn(false);
+        stubEndpoint(ROTATE, pdf("rotated", "rotated.pdf"));
+
+        PolicyExecutionResult result =
+                executor.execute(
+                        definition(
+                                new PipelineStep(
+                                        ROTATE,
+                                        Map.of(),
+                                        Map.of(),
+                                        gateOn("document.extension", "pdf"))),
+                        PolicyInputs.of(List.of(pdf("a", "a.pdf"), pdf("b", "b.docx"))),
+                        PolicyProgressListener.NOOP);
+
+        // Only the matching file was dispatched; the .docx flowed through untouched.
+        assertEquals(2, result.files().size());
+        assertEquals("rotated.pdf", result.files().get(0).getFilename());
+        assertEquals("b.docx", result.files().get(1).getFilename());
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<MultiValueMap<String, Object>> bodyCaptor =
+                ArgumentCaptor.forClass(MultiValueMap.class);
+        verify(internalApiClient, times(1)).post(eq(ROTATE), bodyCaptor.capture());
+        Resource dispatched = (Resource) bodyCaptor.getValue().getFirst("fileInput");
+        assertEquals("a.pdf", dispatched.getFilename());
+    }
+
+    @Test
+    void gatedStepReportsHowManyFilesMatched() throws IOException {
+        when(toolMetadataService.isMultiInput(ROTATE)).thenReturn(false);
+        when(toolMetadataService.shouldUnpackZipResponse(ROTATE)).thenReturn(false);
+        stubEndpoint(ROTATE, pdf("rotated", "rotated.pdf"));
+        List<String> gates = new ArrayList<>();
+        PolicyProgressListener listener =
+                new PolicyProgressListener() {
+                    @Override
+                    public void onStepGate(int stepIndex, int matched, int total) {
+                        gates.add(stepIndex + ":" + matched + "/" + total);
+                    }
+                };
+
+        executor.execute(
+                definition(
+                        new PipelineStep(
+                                ROTATE, Map.of(), Map.of(), gateOn("document.extension", "pdf"))),
+                PolicyInputs.of(List.of(pdf("a", "a.pdf"), pdf("b", "b.docx"), pdf("c", "c.docx"))),
+                listener);
+
+        assertEquals(List.of("1:1/3"), gates);
+    }
+
+    @Test
+    void gatedStepReadsThePreviousStepsReport() throws IOException {
+        // The prepress diamond: preflight annotates each file with its verdict, then the fix step
+        // runs only where the verdict failed - exactly the "fix if errors" pipeline the gate is
+        // for.
+        String preflight = "/api/v1/security/print-preflight-annotated";
+        String fix = "/api/v1/security/print-preflight-fix";
+        when(toolMetadataService.isMultiInput(anyString())).thenReturn(false);
+        when(toolMetadataService.shouldUnpackZipResponse(anyString())).thenReturn(false);
+        when(internalApiClient.post(eq(preflight), any()))
+                .thenAnswer(
+                        inv -> {
+                            MultiValueMap<String, Object> body = inv.getArgument(1);
+                            Resource input = (Resource) body.getFirst("fileInput");
+                            String verdict = input.getFilename().contains("bad") ? "fail" : "pass";
+                            return ResponseEntity.ok()
+                                    .header(
+                                            "X-Stirling-Tool-Report",
+                                            "{\"preflight\":{\"verdict\":\"" + verdict + "\"}}")
+                                    .body(pdf("checked", input.getFilename()));
+                        });
+        when(internalApiClient.post(eq(fix), any()))
+                .thenAnswer(
+                        inv -> {
+                            MultiValueMap<String, Object> body = inv.getArgument(1);
+                            Resource input = (Resource) body.getFirst("fileInput");
+                            return ResponseEntity.ok(pdf("fixed", "fixed-" + input.getFilename()));
+                        });
+
+        PolicyExecutionResult result =
+                executor.execute(
+                        definition(
+                                new PipelineStep(preflight, Map.of()),
+                                new PipelineStep(
+                                        fix,
+                                        Map.of(),
+                                        Map.of(),
+                                        gateOn("report.preflight.verdict", "fail"))),
+                        PolicyInputs.of(List.of(pdf("a", "good.pdf"), pdf("b", "bad.pdf"))),
+                        PolicyProgressListener.NOOP);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<MultiValueMap<String, Object>> bodyCaptor =
+                ArgumentCaptor.forClass(MultiValueMap.class);
+        verify(internalApiClient, times(1)).post(eq(fix), bodyCaptor.capture());
+        Resource fixed = (Resource) bodyCaptor.getValue().getFirst("fileInput");
+        assertEquals("bad.pdf", fixed.getFilename());
+
+        // The passing file bypassed the fix keeping its slot and its verdict for routing.
+        assertEquals(2, result.files().size());
+        assertEquals("good.pdf", result.files().get(0).getFilename());
+        assertEquals("fixed-bad.pdf", result.files().get(1).getFilename());
+        assertEquals("pass", result.reports().get(0).at("/preflight/verdict").asString());
+        assertEquals("fail", result.reports().get(1).at("/preflight/verdict").asString());
+    }
+
+    @Test
+    void aGateNothingMatchesNeverCallsTheTool() throws IOException {
+        PolicyExecutionResult result =
+                executor.execute(
+                        definition(
+                                new PipelineStep(
+                                        ROTATE,
+                                        Map.of(),
+                                        Map.of(),
+                                        gateOn("report.preflight.verdict", "fail"))),
+                        PolicyInputs.of(List.of(pdf("a", "a.pdf"))),
+                        PolicyProgressListener.NOOP);
+
+        verify(internalApiClient, never()).post(any(), any());
+        assertEquals(1, result.files().size());
+        assertEquals("a.pdf", result.files().get(0).getFilename());
+    }
+
+    @Test
+    void aGatedGeneratorStepNeverRuns() throws IOException {
+        // No input files means no document facts to evaluate, so the gate cannot match.
+        String createPdf = "/api/v1/ai/tools/create-pdf-from-html-agent";
+
+        PolicyExecutionResult result =
+                executor.execute(
+                        definition(
+                                new PipelineStep(
+                                        createPdf,
+                                        Map.of(),
+                                        Map.of(),
+                                        gateOn("document.extension", "pdf"))),
+                        PolicyInputs.of(List.of()),
+                        PolicyProgressListener.NOOP);
+
+        verify(internalApiClient, never()).post(eq(createPdf), any());
+        assertEquals(0, result.files().size());
+    }
+
+    @Test
+    void aGatedMultiInputStepMergesOnlyTheMatchingFiles() throws IOException {
+        when(toolMetadataService.isMultiInput(MERGE)).thenReturn(true);
+        when(toolMetadataService.shouldUnpackZipResponse(MERGE)).thenReturn(false);
+        stubEndpoint(MERGE, pdf("merged", "merged.pdf"));
+
+        PolicyExecutionResult result =
+                executor.execute(
+                        definition(
+                                new PipelineStep(
+                                        MERGE,
+                                        Map.of(),
+                                        Map.of(),
+                                        gateOn("document.extension", "pdf"))),
+                        PolicyInputs.of(
+                                List.of(pdf("a", "a.pdf"), pdf("b", "b.docx"), pdf("c", "c.pdf"))),
+                        PolicyProgressListener.NOOP);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<MultiValueMap<String, Object>> bodyCaptor =
+                ArgumentCaptor.forClass(MultiValueMap.class);
+        verify(internalApiClient, times(1)).post(eq(MERGE), bodyCaptor.capture());
+        List<Object> inputs = bodyCaptor.getValue().get("fileInput");
+        assertEquals(2, inputs.size());
+
+        // The merge's product first, then the bypassed file, still carrying its own identity.
+        assertEquals(2, result.files().size());
+        assertEquals("merged.pdf", result.files().get(0).getFilename());
+        assertEquals("b.docx", result.files().get(1).getFilename());
+    }
+
+    private static Condition gateOn(String field, String... values) {
+        return new Condition.MatchesAny(new ConditionInput.DocumentField(field), List.of(values));
     }
 
     // --- helpers ---
