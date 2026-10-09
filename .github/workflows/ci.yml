@@ -3,12 +3,15 @@ name: CI
 # Lean fork gate: the upstream build.yml fan-out assumes Stirling-Tools
 # infrastructure (GHCR pushes, demo environments, SaaS deploy secrets). This
 # workflow keeps the essential checks — backend tests + spotless, frontend
-# tests + typecheck + lint, engine checks — on every push and on PRs to main.
+# tests + typecheck + lint, engine checks — on pushes to main/prepress and on
+# PRs targeting prepress. PRs to main (prepress→main) are covered by the push
+# trigger on prepress, so they intentionally don't trigger pull_request runs.
 
 on:
   pull_request:
-    branches: ["main"]
+    branches: ["prepress"]
   push:
+    branches: ["main", "prepress"]
   workflow_dispatch:
 
 concurrency:
