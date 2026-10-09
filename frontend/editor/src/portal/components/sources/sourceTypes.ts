@@ -410,7 +410,7 @@ export const CREATABLE_SOURCE_TYPES: CreatableSourceType[] = [
       {
         key: "attachReport",
         control: "select",
-        defaultValue: "true",
+        defaultValue: "false",
         labelKey: "portal.sources.types.smtp.fields.attachReport.label",
         helperTextKey:
           "portal.sources.types.smtp.fields.attachReport.helperText",
@@ -430,7 +430,7 @@ export const CREATABLE_SOURCE_TYPES: CreatableSourceType[] = [
       {
         key: "attachOutputs",
         control: "select",
-        defaultValue: "false",
+        defaultValue: "true",
         labelKey: "portal.sources.types.smtp.fields.attachOutputs.label",
         helperTextKey:
           "portal.sources.types.smtp.fields.attachOutputs.helperText",

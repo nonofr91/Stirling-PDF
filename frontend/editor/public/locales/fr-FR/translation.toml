@@ -10782,15 +10782,15 @@ label = "Courriel (SMTP)"
 templatesHelp = "Variables : {filename} {fileNames} {fileCount} {pipeline} {verdict} {errorCount} {warningCount} {runId} {date} {status}. Les variables inconnues restent telles quelles."
 
 [portal.sources.types.smtp.fields.attachOutputs]
-helperText = "Désactivé par défaut — le rapport seul reste assez léger pour n'importe quel serveur mail."
-label = "Joindre aussi les fichiers traités"
+helperText = "Activé par défaut — le destinataire reçoit le PDF traité, annotations comprises."
+label = "Joindre les fichiers traités"
 
 [portal.sources.types.smtp.fields.attachOutputs.options]
 no = "Non"
 yes = "Oui"
 
 [portal.sources.types.smtp.fields.attachReport]
-helperText = "Un résumé JSON du verdict, des erreurs et des avertissements de chaque étape."
+helperText = "Désactivé par défaut — un résumé JSON du verdict, des erreurs et des avertissements de chaque étape."
 label = "Joindre le rapport d'étape"
 
 [portal.sources.types.smtp.fields.attachReport.options]

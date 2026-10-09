@@ -32,11 +32,11 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * Sends a run's outcome by email. The output documents themselves are only attached when {@code
- * attachOutputs} is set — the destination's default payload is the producing step's report as a
- * JSON attachment, so an operator gets the verdict and findings without the PDF. Subject and body
- * are templates rendered against the run's context (see {@link EmailTemplate}); {@code mode}
- * chooses one mail per delivery or one per file.
+ * Sends a run's outcome by email. The output documents are attached by default ({@code
+ * attachOutputs}) — the PDF an operator reviews, annotations included; the producing step's report
+ * JSON is only attached when {@code attachReport} is set. Subject and body are templates rendered
+ * against the run's context (see {@link EmailTemplate}); {@code mode} chooses one mail per delivery
+ * or one per file.
  */
 @Slf4j
 @Service
@@ -114,9 +114,14 @@ public class EmailOutputSink implements PolicyOutputSink {
                 helper.setFrom(from);
             }
             helper.setSubject(subject);
+            byte[] logo = logoBytes();
             helper.setText(
                     EmailTemplate.renderText(target.body(), vars),
-                    EmailTemplate.renderHtml(target.body(), vars));
+                    EmailLayout.render(
+                            EmailTemplate.renderHtml(target.body(), vars),
+                            rows(delivery, group),
+                            vars,
+                            logo != null));
             boolean attachedReport = false;
             for (int i = 0; i < group.size(); i++) {
                 Resource file = group.get(i);
@@ -138,12 +143,17 @@ public class EmailOutputSink implements PolicyOutputSink {
                     helper.addAttachment(OutputNames.safeName(file.getFilename(), i), file);
                 }
             }
-            if (!attachedReport && target.attachReport() && delivery.runReport() != null) {
+            boolean reportOnly = group.isEmpty();
+            if (delivery.runReport() != null
+                    && ((target.attachReport() && !attachedReport) || reportOnly)) {
                 byte[] json =
                         objectMapper
                                 .writerWithDefaultPrettyPrinter()
                                 .writeValueAsBytes(delivery.runReport());
                 helper.addAttachment("run-report.json", new ByteArrayResource(json));
+            }
+            if (logo != null) {
+                helper.addInline("stirling-logo", new ByteArrayResource(logo), "image/png");
             }
             message.saveChanges();
             sender.send(message);
@@ -217,6 +227,52 @@ public class EmailOutputSink implements PolicyOutputSink {
                             case "warn" -> "completed with warnings";
                             default -> "completed";
                         }));
+    }
+
+    /** One table row per delivered file: verdict, error/warning counts, and applied fixups. */
+    private List<EmailLayout.Row> rows(OutputDelivery delivery, List<Resource> group) {
+        List<EmailLayout.Row> rows = new ArrayList<>();
+        for (int i = 0; i < group.size(); i++) {
+            Resource file = group.get(i);
+            JsonNode preflight = null;
+            JsonNode report = delivery.reportFor(file);
+            if (report != null) {
+                JsonNode node = report.path("preflight");
+                if (!node.isMissingNode() && !node.isNull()) preflight = node;
+            }
+            List<String> fixups = new ArrayList<>();
+            String verdict = "n/a";
+            int errors = 0;
+            int warnings = 0;
+            if (preflight != null) {
+                verdict = preflight.path("verdict").asString("n/a");
+                errors = preflight.path("errors").asInt(0);
+                warnings = preflight.path("warnings").asInt(0);
+                for (JsonNode fixup : preflight.path("fixupsApplied")) {
+                    if (fixup.isTextual()) fixups.add(fixup.asString());
+                }
+            }
+            rows.add(
+                    new EmailLayout.Row(
+                            OutputNames.safeName(file.getFilename(), i),
+                            verdict,
+                            errors,
+                            warnings,
+                            fixups));
+        }
+        return rows;
+    }
+
+    /** The white Stirling banner logo for the mail header; null when the asset is unavailable. */
+    private static byte[] logoBytes() {
+        try (var in =
+                EmailOutputSink.class.getResourceAsStream(
+                        "/static/images/stirling-logo-white.png")) {
+            return in == null ? null : in.readAllBytes();
+        } catch (IOException e) {
+            log.warn("Mail logo unavailable, sending text header instead: {}", e.getMessage());
+            return null;
+        }
     }
 
     private static String worst(String current, String candidate) {
