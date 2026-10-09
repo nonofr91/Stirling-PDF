@@ -1,6 +1,10 @@
 import { useTranslation } from "react-i18next";
-import { Input, Select } from "@app/ui";
+import { Input, MultiSelect, Select } from "@app/ui";
 import { ClassificationConditionEditor } from "@app/components/conditions/ClassificationConditionEditor";
+import {
+  PREFLIGHT_CHECK_IDS,
+  PREFLIGHT_FIXUP_IDS,
+} from "@app/data/preflightChecks";
 import {
   classificationCondition,
   documentFieldCondition,
@@ -25,9 +29,21 @@ const DOCUMENT_FIELDS = [
   "report.preflight.verdict",
   "report.preflight.errors",
   "report.preflight.warnings",
+  "report.preflight.failingChecks",
+  "report.preflight.warningChecks",
+  "report.preflight.infoChecks",
+  "report.preflight.preFailingChecks",
+  "report.preflight.fixupsApplied",
 ] as const;
 
 const PREFLIGHT_VERDICTS = ["pass", "warn", "fail"] as const;
+
+const CHECK_LIST_FIELDS = new Set<string>([
+  "report.preflight.failingChecks",
+  "report.preflight.warningChecks",
+  "report.preflight.infoChecks",
+  "report.preflight.preFailingChecks",
+]);
 
 /** Edits either an AI classification match or a deterministic document-fact match. */
 export function RoutingConditionEditor({
@@ -99,7 +115,53 @@ export function RoutingConditionEditor({
       ),
       disabled: !preflightAvailable,
     },
+    {
+      value: DOCUMENT_FIELDS[8],
+      label: t(
+        "portal.pipelines.builder.routing.matchPreflightFailingChecks",
+        "Preflight error type",
+      ),
+      disabled: !preflightAvailable,
+    },
+    {
+      value: DOCUMENT_FIELDS[9],
+      label: t(
+        "portal.pipelines.builder.routing.matchPreflightWarningChecks",
+        "Preflight warning type",
+      ),
+      disabled: !preflightAvailable,
+    },
+    {
+      value: DOCUMENT_FIELDS[10],
+      label: t(
+        "portal.pipelines.builder.routing.matchPreflightInfoChecks",
+        "Preflight info type",
+      ),
+      disabled: !preflightAvailable,
+    },
+    {
+      value: DOCUMENT_FIELDS[11],
+      label: t(
+        "portal.pipelines.builder.routing.matchPreflightPreFailingChecks",
+        "Preflight error type before fixups",
+      ),
+      disabled: !preflightAvailable,
+    },
+    {
+      value: DOCUMENT_FIELDS[12],
+      label: t(
+        "portal.pipelines.builder.routing.matchPreflightFixupsApplied",
+        "Applied fixup",
+      ),
+      disabled: !preflightAvailable,
+    },
   ];
+
+  const listChoices = CHECK_LIST_FIELDS.has(field)
+    ? PREFLIGHT_CHECK_IDS
+    : field === "report.preflight.fixupsApplied"
+      ? PREFLIGHT_FIXUP_IDS
+      : null;
 
   function changeField(next: string | null) {
     if (!next) return;
@@ -141,6 +203,30 @@ export function RoutingConditionEditor({
             value: verdict,
             label: t(`printPreflight.verdict.${verdict}`, verdict),
           }))}
+          comboboxProps={{ withinPortal: true }}
+        />
+      ) : listChoices ? (
+        <MultiSelect
+          inputSize="sm"
+          aria-label={t(
+            "portal.pipelines.builder.routing.matchValues",
+            "Values to match",
+          )}
+          placeholder={
+            condition.values.length === 0
+              ? t(
+                  "portal.pipelines.builder.routing.codePlaceholder",
+                  "Choose codes",
+                )
+              : undefined
+          }
+          data={[...listChoices]}
+          value={condition.values}
+          onChange={(values) => onChange({ ...condition, values })}
+          invalid={condition.values.length === 0}
+          searchable
+          clearable
+          maxDropdownHeight={280}
           comboboxProps={{ withinPortal: true }}
         />
       ) : (

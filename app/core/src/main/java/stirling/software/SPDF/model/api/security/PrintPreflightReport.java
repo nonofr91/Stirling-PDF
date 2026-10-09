@@ -54,7 +54,7 @@ public class PrintPreflightReport {
      * empty/null on a plain analysis.
      */
     public Preflight getPreflight() {
-        return Preflight.of(counts);
+        return Preflight.of(counts, findings);
     }
 
     @Data
@@ -67,34 +67,73 @@ public class PrintPreflightReport {
 
     /**
      * The step-report shape every preflight endpoint shares: {@code verdict} is {@code fail} when
-     * errors remain, {@code warn} when only warnings remain, {@code pass} otherwise.
+     * errors remain, {@code warn} when only warnings remain, {@code pass} otherwise. The {@code
+     * *Checks} lists carry the distinct {@link Finding#getCode() finding codes} per severity so a
+     * pipeline gate can match on the kind of issue, not only its count; the {@code pre*} variants
+     * are populated by {@link #afterFix} and stay {@code null} on a plain analysis.
      */
     public record Preflight(
             String verdict,
             int errors,
             int warnings,
+            List<String> failingChecks,
+            List<String> warningChecks,
+            List<String> infoChecks,
             List<String> fixupsApplied,
             Integer preErrors,
-            Integer preWarnings) {
+            Integer preWarnings,
+            List<String> preFailingChecks,
+            List<String> preWarningChecks,
+            List<String> preInfoChecks) {
 
-        public static Preflight of(Counts counts) {
+        public static Preflight of(Counts counts, List<Finding> findings) {
             return new Preflight(
                     verdictOf(counts),
                     counts.getErrors(),
                     counts.getWarnings(),
+                    codesOf(findings, Severity.ERROR),
+                    codesOf(findings, Severity.WARNING),
+                    codesOf(findings, Severity.INFO),
                     List.of(),
+                    null,
+                    null,
+                    null,
                     null,
                     null);
         }
 
-        public static Preflight afterFix(Counts post, List<String> fixupsApplied, Counts pre) {
+        public static Preflight afterFix(
+                Counts post,
+                List<Finding> postFindings,
+                List<String> fixupsApplied,
+                Counts pre,
+                List<Finding> preFindings) {
             return new Preflight(
                     verdictOf(post),
                     post.getErrors(),
                     post.getWarnings(),
+                    codesOf(postFindings, Severity.ERROR),
+                    codesOf(postFindings, Severity.WARNING),
+                    codesOf(postFindings, Severity.INFO),
                     List.copyOf(fixupsApplied),
                     pre.getErrors(),
-                    pre.getWarnings());
+                    pre.getWarnings(),
+                    codesOf(preFindings, Severity.ERROR),
+                    codesOf(preFindings, Severity.WARNING),
+                    codesOf(preFindings, Severity.INFO));
+        }
+
+        private static List<String> codesOf(List<Finding> findings, Severity severity) {
+            if (findings == null) {
+                return List.of();
+            }
+            return findings.stream()
+                    .filter(finding -> finding.getSeverity() == severity)
+                    .map(Finding::getCode)
+                    .filter(code -> code != null && !code.isBlank())
+                    .distinct()
+                    .sorted()
+                    .toList();
         }
 
         private static String verdictOf(Counts counts) {
