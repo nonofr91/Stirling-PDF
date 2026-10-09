@@ -39,10 +39,16 @@ public class PrintPreflightFixAudit {
 
     /**
      * Post-fix summary matching {@link PrintPreflightReport#getPreflight()}: this body is the
-     * pipeline step's report, so routing reads the same {@code report.preflight.*} shape here.
+     * pipeline step's report, so routing reads the same {@code report.preflight.*} shape here. The
+     * post state is the remaining plus introduced findings, the pre state resolved plus remaining.
      */
     public PrintPreflightReport.Preflight getPreflight() {
-        return PrintPreflightReport.Preflight.afterFix(countsAfter, appliedFixups, countsBefore);
+        List<Finding> post = new ArrayList<>(remainingFindings);
+        post.addAll(introducedFindings);
+        List<Finding> pre = new ArrayList<>(resolvedFindings);
+        pre.addAll(remainingFindings);
+        return PrintPreflightReport.Preflight.afterFix(
+                countsAfter, post, appliedFixups, countsBefore, pre);
     }
 
     /**

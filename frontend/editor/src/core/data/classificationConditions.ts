@@ -38,3 +38,12 @@ export function requiresPreflight(condition: Condition): boolean {
     condition.input.field.startsWith("report.preflight.")
   );
 }
+
+/** The pre-fixup report fields only exist once a preflight *fix* step ran, not a plain analysis. */
+export function requiresPreflightFix(condition: Condition): boolean {
+  return (
+    condition.input.source === "document" &&
+    (condition.input.field.startsWith("report.preflight.pre") ||
+      condition.input.field === "report.preflight.fixupsApplied")
+  );
+}

@@ -6,10 +6,14 @@ import {
 import {
   requiresClassification,
   requiresPreflight,
+  requiresPreflightFix,
 } from "@app/data/classificationConditions";
 import { isConditionComplete } from "@app/conditions/validation";
 import type { MatchesAnyCondition } from "@app/conditions/types";
-import { PREFLIGHT_STEP_ENDPOINTS } from "@app/policies/operations";
+import {
+  PREFLIGHT_FIX_STEP_ENDPOINTS,
+  PREFLIGHT_STEP_ENDPOINTS,
+} from "@app/policies/operations";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -164,6 +168,9 @@ function isClassifyStep(step: WorkingToolStep): boolean {
 }
 function isPreflightStep(step: WorkingToolStep): boolean {
   return PREFLIGHT_STEP_ENDPOINTS.has(step.operation);
+}
+function isPreflightFixStep(step: WorkingToolStep): boolean {
+  return PREFLIGHT_FIX_STEP_ENDPOINTS.has(step.operation);
 }
 function isClassifyTool(tool: ExecutableTool): boolean {
   return (
@@ -774,6 +781,7 @@ export function PipelineBuilder() {
   const outputValid = returnsToEditor || (destinationReady && vectorReady);
   const classifies = steps.some(isClassifyStep);
   const preflights = steps.some(isPreflightStep);
+  const preflightFixes = steps.some(isPreflightFixStep);
   // A gate reads the document as it stands at that point in the chain: report.preflight.* only
   // exists if a preflight step ran BEFORE this one (unlike routing, which sees the final state),
   // and classification.labels needs a classify step upstream. An incomplete condition would be
@@ -787,6 +795,16 @@ export function PipelineBuilder() {
         step.when &&
         requiresPreflight(step.when) &&
         !steps.slice(0, i).some(isPreflightStep),
+    )
+    .map(stepLabel);
+  // Pre-fixup report fields are emitted only by a fix step, so a gate on them with no fix
+  // upstream can never match — same orphan check, one level deeper.
+  const gateNeedsPreflightFix = steps
+    .filter(
+      (step, i) =>
+        step.when &&
+        requiresPreflightFix(step.when) &&
+        !steps.slice(0, i).some(isPreflightFixStep),
     )
     .map(stepLabel);
   const gateNeedsClassify = steps
@@ -811,6 +829,9 @@ export function PipelineBuilder() {
   // never match, silently sending everything to the fallback.
   const routingHasPreflight = routingRules.every(
     (rule) => !requiresPreflight(rule.condition) || preflights,
+  );
+  const routingHasPreflightFix = routingRules.every(
+    (rule) => !requiresPreflightFix(rule.condition) || preflightFixes,
   );
 
   // The single source of truth for "can this be committed": every reason it can't be, in the order
@@ -847,6 +868,13 @@ export function PipelineBuilder() {
         "Add a Print Preflight step, or turn off routing by preflight verdict",
       ),
     );
+  if (!routingHasPreflightFix)
+    blockers.push(
+      t(
+        "portal.pipelines.builder.blocker.routingNeedsPreflightFix",
+        "Add a Print Preflight fix step, or turn off routing on pre-fixup state",
+      ),
+    );
   if (gateIncomplete.length > 0)
     blockers.push(
       t(
@@ -861,6 +889,14 @@ export function PipelineBuilder() {
         "portal.pipelines.builder.blocker.gateNeedsPreflight",
         "A condition on the preflight verdict needs a Print Preflight step before: {{tools}}",
         { tools: gateNeedsPreflight.join(", ") },
+      ),
+    );
+  if (gateNeedsPreflightFix.length > 0)
+    blockers.push(
+      t(
+        "portal.pipelines.builder.blocker.gateNeedsPreflightFix",
+        "A condition on the pre-fixup state needs a Print Preflight fix step before: {{tools}}",
+        { tools: gateNeedsPreflightFix.join(", ") },
       ),
     );
   if (gateNeedsClassify.length > 0)
@@ -1477,6 +1513,7 @@ export function PipelineBuilder() {
                 onCreateDestination={() => createSourceFor("output")}
                 canClassify={classifies}
                 canPreflight={preflights}
+                canPreflightFix={preflightFixes}
                 aiClassificationEnabled={aiClassificationEnabled}
               />
               <DestinationPicker
@@ -1531,6 +1568,7 @@ export function PipelineBuilder() {
             aiClassificationEnabled && before.some(isClassifyStep)
           }
           preflightAvailable={before.some(isPreflightStep)}
+          preflightFixAvailable={before.some(isPreflightFixStep)}
         />
       );
     }

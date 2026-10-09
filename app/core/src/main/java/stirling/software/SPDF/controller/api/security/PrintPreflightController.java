@@ -196,7 +196,9 @@ public class PrintPreflightController {
             response.getHeaders()
                     .set(
                             PrepressReportHeaders.TOOL_REPORT,
-                            toolReport(PrintPreflightReport.Preflight.of(report.getCounts())));
+                            toolReport(
+                                    PrintPreflightReport.Preflight.of(
+                                            report.getCounts(), report.getFindings())));
             PrepressArchiveService.setChainHeaders(response, handle);
             return response;
         }
@@ -244,7 +246,9 @@ public class PrintPreflightController {
             response.getHeaders()
                     .set(
                             PrepressReportHeaders.TOOL_REPORT,
-                            toolReport(PrintPreflightReport.Preflight.of(report.getCounts())));
+                            toolReport(
+                                    PrintPreflightReport.Preflight.of(
+                                            report.getCounts(), report.getFindings())));
             PrepressArchiveService.setChainHeaders(response, handle);
             return response;
         }
@@ -344,8 +348,10 @@ public class PrintPreflightController {
                                     toolReport(
                                             PrintPreflightReport.Preflight.afterFix(
                                                     postReport.getCounts(),
+                                                    postReport.getFindings(),
                                                     applied,
-                                                    report.getCounts())))
+                                                    report.getCounts(),
+                                                    report.getFindings())))
                             .body(response.getBody());
             PrepressArchiveService.setChainHeaders(withHeaders, handle);
             return withHeaders;

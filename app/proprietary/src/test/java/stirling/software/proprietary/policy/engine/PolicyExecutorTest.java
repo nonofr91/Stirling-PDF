@@ -679,6 +679,84 @@ class PolicyExecutorTest {
     }
 
     @Test
+    void aCheckCodeGateReadsACarriedReportFromAnEarlierStep() throws IOException {
+        // A per-error pipeline: the preflight reports which checks failed, a report-less step
+        // sits in between, and the fix step still reads the carried failingChecks list.
+        String preflight = "/api/v1/security/print-preflight-annotated";
+        String fix = "/api/v1/security/print-preflight-fix";
+        when(toolMetadataService.isMultiInput(anyString())).thenReturn(false);
+        when(toolMetadataService.shouldUnpackZipResponse(anyString())).thenReturn(false);
+        when(internalApiClient.post(eq(preflight), any()))
+                .thenAnswer(
+                        inv -> {
+                            MultiValueMap<String, Object> body = inv.getArgument(1);
+                            Resource input = (Resource) body.getFirst("fileInput");
+                            String checks =
+                                    input.getFilename().contains("rgb")
+                                            ? "[\"COLOR_RGB_USED\"]"
+                                            : input.getFilename().contains("bleed")
+                                                    ? "[\"BLEED_MISSING\"]"
+                                                    : "[]";
+                            return ResponseEntity.ok()
+                                    .header(
+                                            "X-Stirling-Tool-Report",
+                                            "{\"preflight\":{\"verdict\":\"fail\",\"failingChecks\":"
+                                                    + checks
+                                                    + "}}")
+                                    .body(pdf("checked", input.getFilename()));
+                        });
+        when(internalApiClient.post(eq(ROTATE), any()))
+                .thenAnswer(
+                        inv -> {
+                            MultiValueMap<String, Object> body = inv.getArgument(1);
+                            Resource input = (Resource) body.getFirst("fileInput");
+                            return ResponseEntity.ok(pdf("rotated", input.getFilename()));
+                        });
+        when(internalApiClient.post(eq(fix), any()))
+                .thenAnswer(
+                        inv -> {
+                            MultiValueMap<String, Object> body = inv.getArgument(1);
+                            Resource input = (Resource) body.getFirst("fileInput");
+                            return ResponseEntity.ok(pdf("fixed", "fixed-" + input.getFilename()));
+                        });
+
+        PolicyExecutionResult result =
+                executor.execute(
+                        definition(
+                                new PipelineStep(preflight, Map.of()),
+                                new PipelineStep(ROTATE, Map.of()),
+                                new PipelineStep(
+                                        fix,
+                                        Map.of(),
+                                        Map.of(),
+                                        gateOn(
+                                                "report.preflight.failingChecks",
+                                                "COLOR_RGB_USED"))),
+                        PolicyInputs.of(
+                                List.of(
+                                        pdf("a", "clean.pdf"),
+                                        pdf("b", "rgb.pdf"),
+                                        pdf("c", "bleed.pdf"))),
+                        PolicyProgressListener.NOOP);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<MultiValueMap<String, Object>> bodyCaptor =
+                ArgumentCaptor.forClass(MultiValueMap.class);
+        verify(internalApiClient, times(1)).post(eq(fix), bodyCaptor.capture());
+        Resource fixed = (Resource) bodyCaptor.getValue().getFirst("fileInput");
+        assertEquals("rgb.pdf", fixed.getFilename());
+
+        // The two non-matching files kept their slot and their carried preflight report.
+        assertEquals(3, result.files().size());
+        assertEquals("clean.pdf", result.files().get(0).getFilename());
+        assertEquals("fixed-rgb.pdf", result.files().get(1).getFilename());
+        assertEquals("bleed.pdf", result.files().get(2).getFilename());
+        assertEquals(
+                "BLEED_MISSING",
+                result.reports().get(2).at("/preflight/failingChecks/0").asString());
+    }
+
+    @Test
     void aGateNothingMatchesNeverCallsTheTool() throws IOException {
         PolicyExecutionResult result =
                 executor.execute(

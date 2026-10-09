@@ -302,6 +302,15 @@ export const PREFLIGHT_STEP_ENDPOINTS: ReadonlySet<string> = new Set([
   "/api/v1/security/print-preflight-fix",
 ]);
 
+/**
+ * The endpoint whose report carries the pre-fixup state ({@code report.preflight.pre*} and
+ * {@code fixupsApplied}); a plain analysis never emits those fields, so gates and routes on them
+ * only make sense once a fix step ran.
+ */
+export const PREFLIGHT_FIX_STEP_ENDPOINTS: ReadonlySet<string> = new Set([
+  "/api/v1/security/print-preflight-fix",
+]);
+
 export type PolicyToolId = keyof typeof POLICY_OPERATIONS;
 
 export type PolicyParams<Id extends PolicyToolId> =
