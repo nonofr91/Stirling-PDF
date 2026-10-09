@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  cleanup,
   fireEvent,
   render as baseRender,
   screen,
@@ -56,6 +57,14 @@ const bucket = (id: number, name: string): IntegrationConfig =>
   }) as unknown as IntegrationConfig;
 
 describe("Integrations view", () => {
+  afterEach(async () => {
+    // Mantine transitions finish through requestAnimationFrame -> window.setTimeout
+    // chains that can outlive unmount; draining real timers while jsdom is still
+    // alive keeps the post-teardown `window is not defined` flake away.
+    cleanup();
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  });
+
   beforeEach(() => {
     fetchIntegrations.mockReset();
     deleteIntegration.mockReset();

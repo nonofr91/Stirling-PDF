@@ -2,7 +2,7 @@ import { useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { Tooltip } from "@mantine/core";
 import { Icon } from "@app/ui/Icon";
-import { ActionIcon, Button, FilePicker, Spinner } from "@app/ui";
+import { ActionIcon, Button, FilePicker, Spinner, StatusBadge } from "@app/ui";
 import { type RunOutputFile } from "@portal/api/pipelines";
 import "@portal/components/pipelines/PipelineGraphToolbar.css";
 
@@ -27,6 +27,8 @@ export interface PipelineGraphToolbarProps {
   /** The last test run in this session, or null if there has not been one. */
   runResult: RunResultSummary | null;
   onDownloadOutput: (output: RunOutputFile) => void;
+  /** Opens an output's archive chain — fetched via apiClient.local so auth/origin hold in SaaS. */
+  onOpenArchive: (chainId: string) => void;
   /** Opens the definition (JSON + cURL) - an inspect action, sibling to Test, hence its home here. */
   onViewDefinition: () => void;
 }
@@ -43,6 +45,7 @@ export function PipelineGraphToolbar({
   testing,
   runResult,
   onDownloadOutput,
+  onOpenArchive,
   onViewDefinition,
 }: PipelineGraphToolbarProps) {
   const { t } = useTranslation();
@@ -69,7 +72,11 @@ export function PipelineGraphToolbar({
       </FilePicker>
 
       {runResult && (
-        <RunResultStrip result={runResult} onDownload={onDownloadOutput} />
+        <RunResultStrip
+          result={runResult}
+          onDownload={onDownloadOutput}
+          onOpenArchive={onOpenArchive}
+        />
       )}
 
       {/* The graph is the visual definition; reading it as JSON/cURL sits at the far end of its bar. */}
@@ -95,10 +102,11 @@ export function PipelineGraphToolbar({
 interface RunResultStripProps {
   result: RunResultSummary;
   onDownload: (output: RunOutputFile) => void;
+  onOpenArchive: (chainId: string) => void;
 }
 
 /** What the last test run did, beside the button that started it. */
-function RunResultStrip({ result, onDownload }: RunResultStripProps) {
+function RunResultStrip({ result, onDownload, onOpenArchive }: RunResultStripProps) {
   const { t } = useTranslation();
   const outputs = result.outputs ?? [];
 
@@ -137,16 +145,64 @@ function RunResultStrip({ result, onDownload }: RunResultStripProps) {
       )}
 
       {outputs.map((output) => (
-        <Button
+        <span
           key={output.fileId}
-          variant="tertiary"
-          size="sm"
-          onClick={() => onDownload(output)}
-          leftSection={<Icon name="download" size={"1.125rem"} />}
+          className="portal-pipeline-toolbar__result-file"
         >
-          {output.fileName ?? output.fileId}
-        </Button>
+          <Button
+            variant="tertiary"
+            size="sm"
+            onClick={() => onDownload(output)}
+            leftSection={<Icon name="download" size={"1.125rem"} />}
+          >
+            {output.fileName ?? output.fileId}
+          </Button>
+          {output.report?.preflight?.verdict && (
+            <StatusBadge
+              size="sm"
+              tone={verdictTone(output.report.preflight.verdict)}
+            >
+              {t(
+                `printPreflight.verdict.${output.report.preflight.verdict}`,
+                output.report.preflight.verdict,
+              )}
+            </StatusBadge>
+          )}
+          {output.report?.prepress?.chainId && (
+            <Tooltip
+              label={t(
+                "portal.pipelines.inspector.archiveLink",
+                "Open the version archive for this document",
+              )}
+              withinPortal
+            >
+              <ActionIcon
+                variant="tertiary"
+                size="sm"
+                className="portal-pipeline-toolbar__result-archive"
+                onClick={() => onOpenArchive(output.report!.prepress!.chainId!)}
+                aria-label={t(
+                  "portal.pipelines.inspector.archiveLink",
+                  "Open the version archive for this document",
+                )}
+              >
+                <Icon name="file-doc-archive" size={"1rem"} />
+              </ActionIcon>
+            </Tooltip>
+          )}
+        </span>
       ))}
     </div>
   );
+}
+
+function verdictTone(verdict: "pass" | "warn" | "fail") {
+  switch (verdict) {
+    case "pass":
+      return "success" as const;
+    case "warn":
+      return "warning" as const;
+    case "fail":
+      return "danger" as const;
+  }
 }

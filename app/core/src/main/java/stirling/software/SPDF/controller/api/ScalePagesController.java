@@ -23,6 +23,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import stirling.software.SPDF.model.api.general.ScalePagesRequest;
+import stirling.software.SPDF.service.prepress.PrepressArchiveService;
 import stirling.software.common.annotations.AutoJobPostMapping;
 import stirling.software.common.annotations.api.GeneralApi;
 import stirling.software.common.enumeration.ResourceWeight;
@@ -31,6 +32,8 @@ import stirling.software.common.model.tool.ToolIO;
 import stirling.software.common.service.CustomPDFDocumentFactory;
 import stirling.software.common.util.ExceptionUtils;
 import stirling.software.common.util.GeneralUtils;
+import stirling.software.common.util.PageBoxUtils;
+import stirling.software.common.util.TempFile;
 import stirling.software.common.util.TempFileManager;
 import stirling.software.common.util.WebResponseUtils;
 
@@ -41,16 +44,20 @@ public class ScalePagesController {
 
     private final CustomPDFDocumentFactory pdfDocumentFactory;
     private final TempFileManager tempFileManager;
+    private final PrepressArchiveService prepressArchive;
 
     private static PDRectangle getTargetSize(
-            String targetPDRectangle, String orientation, PDDocument sourceDocument) {
+            String targetPDRectangle,
+            String orientation,
+            PDDocument sourceDocument,
+            String pageBox) {
         if ("KEEP".equals(targetPDRectangle)) {
             if (sourceDocument.getNumberOfPages() == 0) {
                 throw ExceptionUtils.createPdfNoPages();
             }
 
             PDPage sourcePage = sourceDocument.getPage(0);
-            PDRectangle sourceSize = sourcePage.getMediaBox();
+            PDRectangle sourceSize = PageBoxUtils.resolvePageBox(sourcePage, pageBox);
 
             if (sourceSize == null) {
                 throw ExceptionUtils.createInvalidPageSizeException("KEEP");
@@ -101,12 +108,14 @@ public class ScalePagesController {
         String targetPDRectangle = request.getPageSize();
         String orientation = request.getOrientation();
         float scaleFactor = request.getScaleFactor();
+        String pageBox = request.getPageBox();
 
         try (PDDocument sourceDocument = pdfDocumentFactory.load(file);
                 PDDocument outputDocument =
                         pdfDocumentFactory.createNewDocumentBasedOnOldDocument(sourceDocument)) {
 
-            PDRectangle targetSize = getTargetSize(targetPDRectangle, orientation, sourceDocument);
+            PDRectangle targetSize =
+                    getTargetSize(targetPDRectangle, orientation, sourceDocument, pageBox);
 
             // Create LayerUtility once outside the loop for better performance
             LayerUtility layerUtility = new LayerUtility(outputDocument);
@@ -114,7 +123,7 @@ public class ScalePagesController {
             int totalPages = sourceDocument.getNumberOfPages();
             for (int i = 0; i < totalPages; i++) {
                 PDPage sourcePage = sourceDocument.getPage(i);
-                PDRectangle sourceSize = sourcePage.getMediaBox();
+                PDRectangle sourceSize = PageBoxUtils.resolvePageBox(sourcePage, pageBox);
 
                 float scaleWidth = targetSize.getWidth() / sourceSize.getWidth();
                 float scaleHeight = targetSize.getHeight() / sourceSize.getHeight();
@@ -131,24 +140,60 @@ public class ScalePagesController {
                                 true,
                                 true)) {
 
-                    float x = (targetSize.getWidth() - sourceSize.getWidth() * scale) / 2;
-                    float y = (targetSize.getHeight() - sourceSize.getHeight() * scale) / 2;
+                    // Align the chosen source box's lower-left corner onto the centered offset so
+                    // that box fills the target page. The target MediaBox keeps the selected box's
+                    // origin, which may not be (0, 0), so both origins enter the offset.
+                    float x =
+                            targetSize.getLowerLeftX()
+                                    + (targetSize.getWidth() - sourceSize.getWidth() * scale) / 2
+                                    - sourceSize.getLowerLeftX() * scale;
+                    float y =
+                            targetSize.getLowerLeftY()
+                                    + (targetSize.getHeight() - sourceSize.getHeight() * scale) / 2
+                                    - sourceSize.getLowerLeftY() * scale;
 
                     contentStream.saveGraphicsState();
                     contentStream.transform(Matrix.getTranslateInstance(x, y));
                     contentStream.transform(Matrix.getScaleInstance(scale, scale));
 
-                    PDFormXObject form = layerUtility.importPageAsForm(sourceDocument, i);
+                    // Bound the form to the selected source box: one larger than the
+                    // CropBox would otherwise lose the artwork outside it.
+                    PDFormXObject form =
+                            PageBoxUtils.importPageAsFormCovering(
+                                    layerUtility, sourceDocument, sourcePage, sourceSize);
+
+                    // Each cm is innermost (CTM × M), so emit the compensation last:
+                    // it cancels the form's /Matrix translation and keeps the
+                    // placement identical to the old CropBox-only form. Rotated
+                    // pages carry rotation in /Matrix — leave them untouched.
+                    if (sourcePage.getRotation() % 360 == 0) {
+                        Matrix formMatrix = form.getMatrix();
+                        contentStream.transform(
+                                Matrix.getTranslateInstance(
+                                        -formMatrix.getTranslateX(), -formMatrix.getTranslateY()));
+                    }
                     contentStream.drawForm(form);
 
                     contentStream.restoreGraphicsState();
                 }
             }
 
-            return WebResponseUtils.pdfDocToWebResponse(
-                    outputDocument,
-                    GeneralUtils.generateFilename(file.getOriginalFilename(), "_scaled.pdf"),
-                    tempFileManager);
+            String filename =
+                    GeneralUtils.generateFilename(file.getOriginalFilename(), "_scaled.pdf");
+            TempFile out = tempFileManager.createManagedTempFile(".pdf");
+            try {
+                outputDocument.save(out.getFile());
+            } catch (IOException | RuntimeException e) {
+                out.close();
+                throw e;
+            }
+            var handle =
+                    prepressArchive.recordVersion(
+                            "scale-pages", file, out.getPath(), filename, null);
+            ResponseEntity<Resource> response =
+                    WebResponseUtils.pdfFileToWebResponse(out, filename);
+            PrepressArchiveService.setChainHeaders(response, handle);
+            return response;
         }
     }
 }

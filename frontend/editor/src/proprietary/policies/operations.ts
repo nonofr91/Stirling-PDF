@@ -20,6 +20,11 @@ import {
   ingestOperationConfig,
 } from "@app/policies/ingestOperation";
 import { pdfaOperationConfig } from "@app/policies/pdfaOperation";
+import { setPageBoxesOperationConfig } from "@app/hooks/tools/setPageBoxes/useSetPageBoxesOperation";
+import { adjustPageScaleOperationConfig } from "@app/hooks/tools/adjustPageScale/useAdjustPageScaleOperation";
+import { cutContourOperationConfig } from "@app/hooks/tools/cutContour/useCutContourOperation";
+import { textToOutlinesOperationConfig } from "@app/hooks/tools/textToOutlines/useTextToOutlinesOperation";
+import { cropOperationConfig } from "@app/hooks/tools/crop/useCropOperation";
 import type { ToolEndpoint } from "@app/types/toolApiTypes";
 import type { WirePipelineStep } from "@app/policies/types";
 
@@ -112,6 +117,64 @@ const complianceCheckOperationConfig: BidirectionalToolConfig<
   fromApiParams: () => ({}),
 };
 
+const PREFLIGHT_ANNOTATED_ENDPOINT =
+  "/api/v1/security/print-preflight-annotated" satisfies ToolEndpoint;
+
+const PREFLIGHT_FIX_ENDPOINT =
+  "/api/v1/security/print-preflight-fix" satisfies ToolEndpoint;
+
+/**
+ * Inspect-only preflight as a policy step, pinned to the annotated endpoint: the JSON report
+ * endpoint returns no file (the document would drop out of the pipeline), while the annotated
+ * endpoint hands back the copy with every issue framed — exactly what a quarantine reviewer
+ * needs — and emits the {@code report.preflight.verdict} header routing reads. Module-private:
+ * the namesake registry config in {@code usePrintPreflightOperation} is the dynamic-endpoint
+ * interactive variant, not this stored-step shape.
+ */
+const printPreflightOperationConfig: BidirectionalToolConfig<
+  { profileName: string },
+  typeof PREFLIGHT_ANNOTATED_ENDPOINT
+> = {
+  endpoint: PREFLIGHT_ANNOTATED_ENDPOINT,
+  defaultParameters: { profileName: "" },
+  toApiParams: (params) =>
+    params.profileName.trim() !== ""
+      ? { profileName: params.profileName.trim() }
+      : {},
+  fromApiParams: (api) => ({ profileName: api.profileName ?? "" }),
+};
+
+/**
+ * The fix variant of print preflight, pinned to its own endpoint: a hot folder fixes what it can,
+ * then routing reads the emitted {@code report.preflight.verdict} (fail -> quarantine). The
+ * interactive tool's dynamic-endpoint config can't describe a stored step, so this declares the
+ * wire shape directly — `fixups` travels as a comma-separated list over the wire.
+ */
+const printPreflightFixOperationConfig: BidirectionalToolConfig<
+  { profileName: string; fixups: string },
+  typeof PREFLIGHT_FIX_ENDPOINT
+> = {
+  endpoint: PREFLIGHT_FIX_ENDPOINT,
+  defaultParameters: { profileName: "", fixups: "" },
+  toApiParams: (params) => ({
+    ...(params.profileName.trim() !== ""
+      ? { profileName: params.profileName.trim() }
+      : {}),
+    ...(params.fixups.trim() !== ""
+      ? {
+          fixups: params.fixups
+            .split(",")
+            .map((code) => code.trim())
+            .filter((code) => code !== ""),
+        }
+      : {}),
+  }),
+  fromApiParams: (api) => ({
+    profileName: api.profileName ?? "",
+    fixups: (api.fixups ?? []).join(","),
+  }),
+};
+
 export const POLICY_OPERATIONS = {
   redact: describeToolOperation(
     "/api/v1/security/auto-redact",
@@ -149,6 +212,34 @@ export const POLICY_OPERATIONS = {
     complianceCheckOperationConfig,
   ),
   classify: describeAiToolOperation("/api/v1/ai/tools/classify-and-label"),
+  // The prepress toolchain — the two preflight steps emit the verdict routing reads (inspect
+  // without changing the file, or fix first); the rest are the geometry/content steps a press
+  // folder usually runs first.
+  printPreflight: describeToolOperation(
+    PREFLIGHT_ANNOTATED_ENDPOINT,
+    printPreflightOperationConfig,
+  ),
+  printPreflightFix: describeToolOperation(
+    PREFLIGHT_FIX_ENDPOINT,
+    printPreflightFixOperationConfig,
+  ),
+  setPageBoxes: describeToolOperation(
+    "/api/v1/general/set-page-boxes",
+    setPageBoxesOperationConfig,
+  ),
+  scalePages: describeToolOperation(
+    "/api/v1/general/scale-pages",
+    adjustPageScaleOperationConfig,
+  ),
+  cutContour: describeToolOperation(
+    "/api/v1/general/cut-contour",
+    cutContourOperationConfig,
+  ),
+  textToOutlines: describeToolOperation(
+    "/api/v1/misc/text-to-outlines",
+    textToOutlinesOperationConfig,
+  ),
+  crop: describeToolOperation("/api/v1/general/crop", cropOperationConfig),
   ingest: describeToolOperation(INGEST_ENDPOINT, ingestOperationConfig),
   purviewApplyLabel: describeIntegrationOperation(
     "/api/v1/integration/purview-apply-label",
@@ -198,6 +289,18 @@ export const POLICY_OPERATIONS = {
     },
   ),
 } as const;
+
+/**
+ * Endpoints whose response is a PDF carrying the X-Stirling-Tool-Report header — the only steps
+ * whose {@code report.preflight.*} a route can actually read, since the report attaches to the
+ * produced file. The JSON variants (plain report, fix preview) emit no file, so their verdict
+ * never reaches a routed output — they don't open the gate and are never injected.
+ */
+export const PREFLIGHT_STEP_ENDPOINTS: ReadonlySet<string> = new Set([
+  "/api/v1/security/print-preflight-annotated",
+  "/api/v1/security/print-preflight-report",
+  "/api/v1/security/print-preflight-fix",
+]);
 
 export type PolicyToolId = keyof typeof POLICY_OPERATIONS;
 

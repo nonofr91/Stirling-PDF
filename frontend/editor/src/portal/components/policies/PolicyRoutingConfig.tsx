@@ -6,6 +6,7 @@ import { Banner, Button, Select } from "@app/ui";
 import type { RoutingSetup } from "@app/components/policies/PolicySetupWizard";
 import type { WireTriggerConfig } from "@app/policies/types";
 import { availableOutputModes } from "@portal/components/pipelines/outputModes";
+import { isReadableSource } from "@portal/components/sources/sourceTypes";
 import { PolicyRoutingDestinations } from "@app/components/policies/PolicyRoutingDestinations";
 import { VIEW_PATHS, toPortalPath } from "@portal/contexts/ViewContext";
 import { useSources } from "@portal/queries/sources";
@@ -45,6 +46,12 @@ export function PolicyRoutingConfig({
       ),
     [sourcesAsync.data],
   );
+  // The watch list is the readable subset — output-only destinations (smtp,
+  // vectordb) can never feed a policy.
+  const watchSources = useMemo(
+    () => sources.filter(isReadableSource),
+    [sources],
+  );
   const destinations = useMemo(
     () => routingDestinations(sources, availableOutputModes()),
     [sources],
@@ -66,7 +73,7 @@ export function PolicyRoutingConfig({
           "Documents arriving here are classified, then sent on by the rules below.",
         )}
       </p>
-      {sources.length === 0 ? (
+      {watchSources.length === 0 ? (
         <Banner
           tone="info"
           description={t(
@@ -93,10 +100,13 @@ export function PolicyRoutingConfig({
             onChange({
               ...value,
               sourceId: id ?? "",
-              trigger: triggerFor(sources.find((s) => s.id === id)?.type),
+              trigger: triggerFor(watchSources.find((s) => s.id === id)?.type),
             })
           }
-          options={sources.map((src) => ({ value: src.id, label: src.name }))}
+          options={watchSources.map((src) => ({
+            value: src.id,
+            label: src.name,
+          }))}
           comboboxProps={{ withinPortal: true }}
         />
       )}
@@ -107,6 +117,8 @@ export function PolicyRoutingConfig({
         destinations={destinations}
         onCreateDestination={connectSource}
         classificationAvailable={aiLoading || classificationEnabled}
+        // A preflight rule injects the fix step on save, so the field is always offerable.
+        preflightAvailable
         classificationUnavailableReason={
           aiLoading
             ? undefined

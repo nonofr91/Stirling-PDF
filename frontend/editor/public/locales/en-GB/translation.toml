@@ -517,6 +517,7 @@ failed = "Failed to adjust colours/contrast"
 title = "Adjusted PDF"
 
 [adjustPageScale]
+pageBox = "Scale relative to page box"
 submit = "Adjust Page Scale"
 tags = "resize,modify,dimension,adapt"
 title = "Adjust Page Scale"
@@ -2337,6 +2338,36 @@ title = "Unsaved Changes"
 [automate.entryMenu]
 label = "Open menu for {{title}}"
 
+[automate.icons]
+build = "Build"
+check = "Check"
+clean = "Clean"
+cloud = "Cloud"
+compress = "Compress"
+convert = "Convert"
+copy = "Copy"
+crop = "Crop"
+cut = "Cut"
+delete = "Delete"
+download = "Download"
+edit = "Edit"
+folder = "Folder"
+magic = "Magic"
+pdf = "PDF"
+play = "Play"
+robot = "Robot"
+rotateLeft = "Rotate Left"
+rotateRight = "Rotate Right"
+search = "Search"
+security = "Security"
+settings = "Settings"
+star = "Star"
+storage = "Storage"
+text = "Text"
+upload = "Upload"
+view = "View"
+work = "Work"
+
 [automate.importModal]
 cancel = "Cancel"
 confirm = "Import"
@@ -2476,7 +2507,16 @@ checking = "Checking backend status..."
 offline = "Backend Offline"
 online = "Backend Online"
 starting = "Backend starting up..."
+unavailable = "Backend is unavailable"
 wait = "Please wait for the backend to finish launching and try again."
+
+[backendHealth.restart]
+attempting = "Attempting to restart... ({{attempt}}/{{max}})"
+failedBody = "The local backend could not be recovered. Please restart the app."
+failedTitle = "Backend failed to restart"
+stoppedTitle = "Backend stopped unexpectedly"
+successBody = "The local backend is back online."
+successTitle = "Backend restarted"
 
 [backendStartup]
 notFoundTitle = "Backend not found"
@@ -4215,6 +4255,7 @@ title = "About PDF Portfolios"
 
 [crop]
 autoCrop = "Auto-crop whitespace"
+cropToBox = "Crop to a named page box"
 noFileSelected = "Add a PDF file to begin cropping"
 reset = "Reset to full PDF"
 submit = "Apply Crop"
@@ -4268,6 +4309,69 @@ precision = "Use coordinate inputs for precise positioning"
 resize = "Drag the corner and edge handles to resize"
 title = "How to Crop PDFs"
 
+[cutContour]
+aiModelId = "AI model id"
+aiModelIdHint = "Catalog model for matting; empty uses the default (u2net)"
+aiThreshold = "AI confidence"
+alphaThreshold = "Alpha threshold"
+alphaThresholdHint = "Pixels more transparent than this count as background"
+backgroundTolerance = "Background tolerance"
+backgroundToleranceHint = "Colour distance from the page edge still counted as background"
+bleedMm = "Bleed beyond cut line (mm)"
+bleedMmHint = "Repeats edge pixels past the contour so trimming never shows a white edge"
+clipArtwork = "Clip page content to the cut contour"
+dpi = "Detection resolution (dpi)"
+extractionMode = "Subject detection"
+help = "Traces the silhouette of the artwork on each page and writes a closed cut path as a CutContour spot colour on a dedicated layer — ready for RIPs, plotters and die cutters."
+keepHoles = "Keep inner holes as cut contours (e.g. the counter of an 'o')"
+layerName = "Layer name (optional)"
+mergeGapMm = "Merge gaps up to (mm)"
+mergeGapMmHint = "Elements closer than this merge under a single outline; 0 keeps pieces separate"
+minAreaMm2 = "Minimum area (mm²)"
+minAreaMm2Hint = "Smaller disconnected parts are dropped as noise"
+offsetMm = "Cut line offset (mm)"
+offsetMmHint = "Moves the cut path outward; negative moves it inside the silhouette"
+processingSteps = "Tag layer as ISO 19593-1 cutting step (non-printing)"
+smoothness = "Smoothing (0–100)"
+spotName = "Spot colour name"
+spotNameError = "Spot name is required"
+spotNameHint = "Case-sensitive; RIPs key on 'CutContour'"
+strokeWidthPt = "Stroke width (pt)"
+submit = "Create Cut Contour"
+trimToContour = "Set TrimBox to the contour bounding box"
+
+[cutContour.cutLine]
+section = "Cut line"
+
+[cutContour.error]
+failed = "An error occurred while creating the cut contour."
+
+[cutContour.modes]
+AI = "AI matting (complex backgrounds)"
+ALPHA = "Transparency (vector/alpha artwork)"
+AUTO = "Automatic (try every source)"
+BACKGROUND = "Uniform background colour"
+
+[cutContour.output]
+section = "Output"
+
+[cutContour.preview]
+loading = "Tracing contour…"
+mode = "Detection used:"
+toggle = "Preview cut contour on the document"
+
+[cutContour.results]
+title = "Cut Contour Results"
+
+[cutContour.roi]
+active = "Perimeter set — the ring inside it defines the background colour"
+clear = "Clear"
+draw = "Draw perimeter"
+drawing = "Draw the perimeter on the document…"
+
+[cutContour.steps]
+configure = "Cut Contour Settings"
+
 [database]
 backupCreated = "Database backup successful"
 fileName = "File Name"
@@ -4287,6 +4391,14 @@ title = "Settings Opened"
 [defaultApp.success]
 message = "Stirling PDF is now your default PDF editor"
 title = "Default App Set"
+
+[desktop.fileSave]
+saveFilesTitle_one = "Save {{count}} file"
+saveFilesTitle_other = "Save {{count}} files"
+
+[desktop.saasError]
+body = "This tool requires cloud processing but encountered an error: {{error}}. Please check your connection and try again."
+title = "Cloud Processing Failed"
 
 [desktop.titleBar]
 maximize = "Maximise"
@@ -4485,7 +4597,37 @@ title = "Endpoint Statistics"
 [error]
 _value = "Error"
 dismissAllErrors = "Dismiss All Errors"
+failedFiles = "Failed files: {{ids}}"
 generic = "An error occurred"
+invalidOrCorruptedFiles = "Process failed due to invalid/corrupted file(s)"
+networkError = "Network error"
+requestError = "Request error"
+requestFailed = "Request failed"
+requestFallback = "There was an error processing your request."
+serverError = "Server error"
+unknown = "Unknown error occurred"
+
+[error.pdfOpen]
+code = "Could not open the PDF (error {{code}})."
+corrupted = "The PDF file is corrupted and could not be read."
+invalid = "This file is not a valid PDF or is corrupted."
+pageLoadFailed = "A page in this PDF could not be loaded."
+passwordProtected = "This PDF is password-protected."
+unknown = "Could not open the PDF (unknown error)."
+unsupportedSecurity = "This PDF uses an unsupported security scheme."
+
+[error.processing]
+cancelled = "Processing was cancelled by user."
+corruption = "This PDF file appears to be corrupted or encrypted. Please try a different file."
+failed = "Processing failed: {{message}}"
+memory = "Insufficient memory to process this file. Try closing other applications or processing a smaller file."
+network = "Network connection failed. Please check your internet connection and try again."
+parsing = "Failed to process PDF: {{message}}"
+timeout = "Processing timed out. This file may be too large or complex to process."
+
+[errorBoundary]
+title = "Something went wrong"
+tryAgain = "Try Again"
 
 [extractImages]
 allowDuplicates = "Save duplicate images"
@@ -4610,6 +4752,7 @@ filesUnavailable = "Could not add: {{names}}"
 fileUnavailable = "{{name}} is no longer available."
 folderPath = "Folder path"
 fromComputer = "From your computer"
+fromNetwork = "From a network server"
 fromPhone = "From your phone"
 limit = "Choose up to {{count}} files."
 selectedLimit = "{{count}} of {{limit}} selected"
@@ -4670,6 +4813,7 @@ expand = "Expand sidebar"
 googleDrive = "Google Drive"
 library = "PDF Library"
 myFiles = "My Files"
+networkSource = "Open from network server"
 noFiles = "No files yet"
 openFileManager = "Browse all files & folders"
 openFromComputer = "Open from computer"
@@ -4905,21 +5049,31 @@ addFolderFailed = "Could not add the folder."
 addFolderFailedDetail = "Could not add the folder: {{message}}"
 cloudDeleteFailed_one = "Couldn't delete 1 file from the cloud."
 cloudDeleteFailed_other = "Couldn't delete {{count}} files from the cloud."
+createOutsideMount = "Cannot create a folder outside a mounted directory"
 deleteFolderFailed = "Could not delete folder."
 deleteFolderFailedDetail = "Could not delete folder: {{message}}"
+diskFoldersUnsupported = "This build cannot create folders on disk"
 downloadFailed = "Could not download the file."
 duplicateFailed = "Could not duplicate the file."
 folderAppearanceFailed = "Could not update folder appearance."
 folderAppearanceFailedDetail = "Could not update folder appearance: {{message}}"
+folderDetachFailed = "Folder was deleted, but some files couldn't be detached locally. Refresh to fix."
+folderOperationFailed = "Folder operation failed"
+folderSyncFailed = "Folder sync failed: {{message}}"
+loadFilesFailed = "Failed to load files"
+moveAcrossKinds = "Folders can only move within their own kind"
 moveFilesFailed = "Could not move files."
 moveFilesFailedDetail = "Could not move files: {{message}}"
 moveFolderFailed = "Could not move folder."
 moveFolderFailedDetail = "Could not move folder: {{message}}"
+moveLocalFolder = "A local folder sits where its directory sits"
 openDiskFileFailed = "Could not open {{name}}."
 openDiskFileFailedDetail = "Could not open {{name}}: {{message}}"
 processingStatusUnavailable = "Could not refresh processing status. File locks have been released until the connection recovers."
 readFolderFailed = "Could not read the folder."
 readFolderFailedDetail = "Could not read the folder: {{message}}"
+recolourLocalFolder = "Local folders cannot be recoloured yet"
+removeDiskSubfolder = "Subfolders of a mounted directory are removed on disk"
 removeFilesFailed = "Could not remove files."
 removeFilesFailedDetail = "Could not remove files: {{message}}"
 removeFolderFailed = "Could not remove folder."
@@ -4948,6 +5102,26 @@ versionHistory = "Version journey"
 activeCount = "{{count}} filters active"
 clearAll = "Clear filters"
 label = "Filters"
+
+[filesPage.folderIcons]
+archive = "Archive"
+code = "Code"
+contract = "Contract"
+health = "Health"
+heart = "Heart"
+home = "Home"
+house = "House"
+id = "ID"
+money = "Money"
+music = "Music"
+none = "No icon"
+photos = "Photos"
+receipt = "Receipt"
+school = "School"
+star = "Star"
+travel = "Travel"
+warning = "Warning"
+work = "Work"
 
 [filesPage.folderKind]
 local = "Local folder"
@@ -5051,6 +5225,22 @@ grid = "Grid view"
 label = "View mode"
 list = "List view"
 
+[fileStorage.unreadable]
+body = "\"{{name}}\" is saved in this browser but its contents can no longer be read. Upload the file again to keep working on it."
+title = "File data is unavailable"
+
+[fileSync.openFailed]
+multiple_one = "Couldn't open {{count}} file including \"{{name}}\"."
+multiple_other = "Couldn't open {{count}} files including \"{{name}}\"."
+single = "Couldn't open \"{{name}}\"."
+singleWithStatus = "Couldn't open \"{{name}}\" (HTTP {{status}})."
+title = "Some files couldn't be opened"
+
+[fileSync.pullFailed]
+body = "Showing only files cached in this browser. Refresh to retry once the connection is back."
+signInTitle = "Sign-in required to load cloud files"
+unreachableTitle = "Could not reach the cloud library"
+
 [fileToPDF]
 tags = "transformation,format,document,picture,slide,text,conversion,office,docs,word,excel,powerpoint"
 title = "File to PDF"
@@ -5058,6 +5248,7 @@ title = "File to PDF"
 [fileUpload]
 dropFilesHere = "Drop files here or click the upload button"
 dropFilesHereOpen = "Drop files here or click the open button"
+droppedFileUnreadable = "Could not read a dropped file."
 filesAvailableCount_one = "{{count}} file available"
 filesAvailableCount_other = "{{count}} files available"
 loadFromStorage = "Load from Storage"
@@ -5089,6 +5280,7 @@ passwordMustBeDifferent = "New password must be different from current password"
 passwordsDoNotMatch = "New passwords do not match"
 passwordTooShort = "Password must be at least 8 characters"
 reEnterNewPassword = "Re-enter new password"
+setPasswordTitle = "Set Your Password"
 title = "First Time Login"
 welcomeMessage = "For security reasons, you must change your password on your first login."
 welcomeTitle = "Welcome!"
@@ -5559,6 +5751,11 @@ desc = "Crop a PDF to reduce its size (maintains text!)"
 tags = "trim,cut,resize,crop,crop PDF,trim PDF,trim margins,remove margins,cut edges,trim borders,remove white space,crop pages,trim pages,reduce margins,set margins"
 title = "Crop PDF"
 
+[home.cutContour]
+desc = "Trace the artwork's silhouette and write a production cut line (CutContour spot colour) with optional clipping and bleed."
+tags = "prepress,cut contour,cutcontour,cut line,die cut,die-cut,sticker,kiss cut,dieline,plotter,detour,silhouette,contour,decoupe,rip"
+title = "Cut Contour"
+
 [home.devAirgapped]
 desc = "Link to air-gapped setup guide"
 tags = "air-gapped,offline,isolated,no internet,disconnected,secure,network isolation,standalone"
@@ -5666,6 +5863,19 @@ desc = "Merges all PDF pages into one large single page"
 tags = "combine,merge,single,single page,one page,merge to single,combine all,stitch pages,concatenate vertical,long page,poster"
 title = "PDF to Single Large Page"
 
+[home.printPreflight]
+desc = "Check a PDF for print production issues: unembedded fonts, RGB/spot colors, low-resolution images, missing or unpainted bleed, hairlines, transparency."
+tags = "preflight,prepress,print,check,report,fonts,embedded,RGB,CMYK,bleed,fond perdu,trim,marks,hairline,dpi,resolution,overprint,transparency,pdfx,pdf/x"
+title = "Print Preflight"
+
+[home.printPreflightCheck]
+desc = "Check a PDF for print production issues and annotate a copy without changing the file."
+title = "Print Preflight Check"
+
+[home.printPreflightFix]
+desc = "Check a PDF for print production issues and apply the safe corrections."
+title = "Print Preflight Fix"
+
 [home.read]
 desc = "View and annotate PDFs. Highlight text, draw, or insert comments for review and collaboration."
 tags = "view,open,display,read,viewer,PDF viewer,PDF reader,open PDF,view PDF,display PDF,preview,browse"
@@ -5741,6 +5951,11 @@ desc = "Detect and split scanned photos into separate pages"
 tags = "detect,split,photos,auto detect,detect photos,split photos,separate photos,split scanned images,multiple photos,auto split,photo detection,image detection,scan separation"
 title = "Detect & Split Scanned Photos"
 
+[home.setPageBoxes]
+desc = "Define MediaBox, CropBox, TrimBox, BleedBox and ArtBox on every page for prepress workflows"
+tags = "prepress,page boxes,mediabox,cropbox,trimbox,bleedbox,artbox,print production,bleed,trim marks"
+title = "Set Page Boxes"
+
 [home.sharedSign]
 desc = "Request signatures from others and track signing sessions"
 title = "Shared Signing"
@@ -5771,6 +5986,11 @@ title = "Split PDF by Sections"
 [home.swagger]
 tags = "API,documentation,test,swagger,API docs,REST API,endpoints,developer,API reference,API testing,OpenAPI,integration,developer docs"
 title = "API Documentation"
+
+[home.textToOutlines]
+desc = "Convert all text to vector outlines so no fonts are needed for printing"
+tags = "text to outlines,outlines,vectorize text,fonts to curves,prepress,print production,outline fonts"
+title = "Text to Outlines"
 
 [home.timestampPdf]
 desc = "Add an RFC 3161 document timestamp to prove when your PDF existed"
@@ -5927,6 +6147,7 @@ signin = "Sign in"
 signingIn = "Signing in..."
 signInWith = "Sign in with"
 signInWithProvider = "Sign in with {{provider}}"
+ssoRedirectFailed = "SSO redirect failed"
 title = "Sign in"
 unexpectedError = "Unexpected error: {{message}}"
 updatePassword = "Update password"
@@ -6083,6 +6304,23 @@ openProcessor = "Open PDF Processor"
 [navFooter.credits]
 count = "{{remaining}} of {{total}}"
 label = "Free credits"
+
+[networkSource]
+browseError = "Cannot list this directory"
+emptyDir = "This directory is empty."
+entries = "Remote files"
+exportDone = "Sent to the network source"
+exportError = "Send failed"
+exportTitle = "Send to network"
+filename = "Remote filename"
+import = "Import"
+importError = "Import failed"
+importTitle = "Open from a network server"
+pickSource = "Choose a source to browse."
+root = "Root"
+sendHere = "Send here"
+sendToNetwork = "Send to network"
+source = "Source"
 
 [notifications]
 adoptFailed = "The document was unlocked but could not be opened here. Try the tool directly."
@@ -6505,6 +6743,17 @@ waitingForEmail = "Waiting for {{email}} to join {{team}}."
 working = "Checking and updating ownership..."
 yourCloudAccess = "You'll become a team member and lose owner access."
 
+[pageBox]
+diagram = "Page box diagram"
+label = "Page box"
+
+[pageBox.options]
+ART_BOX = "ArtBox"
+BLEED_BOX = "BleedBox"
+CROP_BOX = "CropBox"
+MEDIA_BOX = "MediaBox"
+TRIM_BOX = "TrimBox"
+
 [pageEdit]
 deselectAll = "None"
 selectAll = "Check All"
@@ -6523,6 +6772,32 @@ moveRight = "Move right"
 rotateLeft = "Rotate left"
 rotateRight = "Rotate right"
 splitAfter = "Split after"
+
+[pageEditor.commands]
+addSplitAt = "Add split at position {{position}}"
+addSplits_one = "Add {{count}} split"
+addSplits_other = "Add {{count}} splits"
+deletePages_one = "Delete {{count}} page"
+deletePages_other = "Delete {{count}} pages"
+insertFiles_one = "Insert {{count}} file after page {{page}}"
+insertFiles_other = "Insert {{count}} files after page {{page}}"
+insertPageBreaks_one = "Insert {{count}} page break"
+insertPageBreaks_other = "Insert {{count}} page breaks"
+insertPageBreaksAll = "Insert page breaks after all pages"
+removeAllSplits = "Remove all splits"
+removeSplitAt = "Remove split at position {{position}}"
+removeSplits_one = "Remove {{count}} split"
+removeSplits_other = "Remove {{count}} splits"
+reorderPages = "Reorder pages"
+rotatePageLeft = "Rotate page left"
+rotatePageRight = "Rotate page right"
+rotatePagesLeft_one = "Rotate {{count}} page left"
+rotatePagesLeft_other = "Rotate {{count}} pages left"
+rotatePagesRight_one = "Rotate {{count}} page right"
+rotatePagesRight_other = "Rotate {{count}} pages right"
+splitAllPages = "Split all pages"
+toggleSplits_one = "Toggle {{count}} split position"
+toggleSplits_other = "Toggle {{count}} split positions"
 
 [pageEditor.emptyState]
 body = "Add files to start editing pages"
@@ -6933,6 +7208,7 @@ thisPeriod = "This billing period"
 billingPeriod = "Billing period"
 cancelTeamChange = "Keep current plan"
 canCloseWindow = "You can now close this window."
+createSessionFailed = "Failed to create checkout session"
 error = "Payment Error"
 generatingLicense = "Generating your licence key..."
 licenseActivated = "Licence activated! Your licence key has been saved. A confirmation email has been sent to your registered email address."
@@ -6948,6 +7224,7 @@ monthly = "Monthly"
 paymentCanceled = "Payment was cancelled. No charges were made."
 perMonth = "/month"
 perUserBlock = "per 100 users"
+planPeriodUnavailable = "Selected plan period is not available"
 preparing = "Preparing your checkout..."
 redirecting = "Redirecting to secure checkout..."
 success = "Payment Successful!"
@@ -6969,6 +7246,8 @@ upgradeCompleteMessage = "Your subscription has been upgraded successfully. Your
 upgradeSuccess = "Payment successful! Your subscription has been upgraded. The licence has been updated on your server. You will receive a confirmation email shortly."
 upgradeTitle = "Upgrade to {{planName}}"
 yearly = "Yearly"
+
+[payment.addCapacity]
 
 [payment.adjustTeam]
 title = "Adjust Team plan"
@@ -7095,6 +7374,16 @@ freetext = "Annotation text - not page text, so it can't be edited here"
 stamp = "Stamp annotation - not page text, so it can't be edited here"
 widget = "Form field - not page text, so it can't be edited here"
 
+[pdfTextEditor.commands]
+edit = "Edit"
+mergeRuns_one = "Merge {{count}} run into a paragraph"
+mergeRuns_other = "Merge {{count}} runs into a paragraph"
+setColour = "Set colour on {{run}}"
+setOutline = "Set outline on {{run}}"
+typeInto = "Type into {{run}}"
+ungroupParagraph = "Ungroup paragraph {{run}}"
+wrap = "Wrap {{run}}"
+
 [pdfTextEditor.discard]
 body = "Opening {{name}} closes the document you are editing. Your unsaved changes will be lost."
 cancel = "Cancel"
@@ -7109,6 +7398,9 @@ title = "Drop a PDF to open"
 [pdfTextEditor.error]
 decodeImage = "Could not decode the selected image."
 insertImage = "Could not insert the selected image."
+
+[pdfTextEditor.externalEdit]
+pngFileType = "PNG image"
 
 [pdfTextEditor.find]
 close = "Close find bar"
@@ -8137,6 +8429,8 @@ rateUnknown = "We'll show the exact price at checkout."
 [portal.billing.prepaid.consent]
 label = "I understand that when my prepaid capacity is used up or expires after 12 months, processing automatically continues at the standard metered pay-as-you-go rate (up to my spend limit) unless I cancel, and that I can cancel anytime from the billing portal."
 
+[portal.billing.prepaid.deploy]
+
 [portal.billing.prepaid.offer]
 title = "Get 12 months for the price of 10"
 
@@ -8150,9 +8444,15 @@ payOnline = "Pay online"
 poNumber = "PO number (optional)"
 poNumberPlaceholder = "e.g. PO-2026-0142"
 
+[portal.billing.prepaid.pipelines]
+
+[portal.billing.prepaid.posture]
+
 [portal.billing.prepaid.review]
 download = "Download quote (PDF)"
 downloading = "Preparing…"
+
+[portal.billing.prepaid.size]
 
 [portal.billing.processor]
 activate = "Switch on the Processor"
@@ -8248,6 +8548,8 @@ useSuggested = "Use suggested · {{amount}} / month"
 body_one = "At {{rate}}/day you reach the cap in ~{{count}} day (~{{monthEnd}} month-end). Suggested limit ~{{suggested}}."
 body_other = "At {{rate}}/day you reach the cap in ~{{count}} days (~{{monthEnd}} month-end). Suggested limit ~{{suggested}}."
 label = "Projected to exceed."
+
+[portal.billing.spendLimitModal]
 
 [portal.billing.subscribedPlan.capWarn]
 approachingBody = "Raise it now so automated processing never pauses."
@@ -9465,23 +9767,32 @@ viewDefinition = "View definition"
 [portal.pipelines.builder.blocker]
 aiClassification = "Enable AI classification in Settings, or remove the Classify step"
 destination = "Choose a destination"
+gateIncomplete = "Complete or remove the condition on: {{tools}}"
+gateNeedsClassify = "A condition on document type needs a Classify step before: {{tools}}"
+gateNeedsPreflight = "A condition on the preflight verdict needs a Print Preflight step before: {{tools}}"
 heading = "To create this pipeline:"
 incompatible = "Fix steps that can't run in order: {{tools}}"
 managerOnly = "Only an admin or team leader can modify a policy"
 name = "Give the pipeline a name"
 routing = "Give every route document types and a destination"
 routingNeedsClassify = "Add a Classify step, or turn off routing by document type"
+routingNeedsPreflight = "Add a Print Preflight step, or turn off routing by preflight verdict"
 saveHeading = "To save your changes:"
 schedule = "Set how often it runs"
 setup = "Finish setting up: {{tools}}"
 source = "Choose an input source"
 
+[portal.pipelines.builder.when]
+description = "Matching files run through this step; the others bypass it unchanged."
+detail = "if {{field}} matches {{values}}"
+toggle = "Run only when a document matches"
+
 [portal.pipelines.builder.diagnostic]
-fan-in = "Combines every file from the previous step"
-fan-out = "Runs once per file from the previous step"
-format-mismatch = "Needs {{accepts}}, but the previous step produces {{produced}}"
-output-uncertain = "May not run: the previous step's output depends on how it's set up"
-source-mismatch = "Needs {{accepts}}, but this pipeline's input is {{produced}}"
+fan-in = "Combines every incoming file"
+fan-out = "Runs once per incoming file"
+format-mismatch = "Sends {{produced}}, needs {{accepts}}"
+output-uncertain = "May not run: output depends on setup"
+source-mismatch = "Input is {{produced}}, needs {{accepts}}"
 undeclared-operation = "Can't check what this step accepts"
 
 [portal.pipelines.builder.icon]
@@ -9521,6 +9832,9 @@ matchDocumentType = "Document type (AI classification)"
 matchDocumentTypeDisabled = "Document type (AI unavailable)"
 matchExtension = "File extension"
 matchFilename = "Exact filename"
+matchPreflightErrors = "Preflight error count"
+matchPreflightVerdict = "Preflight verdict"
+matchPreflightWarnings = "Preflight warning count"
 matchTitle = "PDF title"
 matchValues = "Values to match"
 needsClassify = "Add a Classify step to use document-type routing, or match on a document property instead."
@@ -9603,6 +9917,7 @@ failed = "Failed"
 running = "Running"
 
 [portal.pipelines.inspector]
+archiveLink = "Open the version archive for this document"
 multipleBody = "Drag any of them onto a line to move them together, or press Delete to remove them."
 multipleSelected_one = "{{count}} step selected"
 multipleSelected_other = "{{count}} steps selected"
@@ -9999,6 +10314,14 @@ label = "Check the document meets the standard"
 desc = "Compresses the document to a smaller file size."
 label = "Reduce file size"
 
+[portal.policies.wizard.capability.crop]
+desc = "Trims pages to a chosen box or the detected content edge."
+label = "Crop pages"
+
+[portal.policies.wizard.capability.cutContour]
+desc = "Reads the finishing contour from the artwork so a cutter can follow it."
+label = "Extract the cut contour"
+
 [portal.policies.wizard.capability.flatten]
 desc = "Merges form fields and annotations into the page so they can't be edited."
 label = "Flatten the document"
@@ -10015,6 +10338,14 @@ label = "Make text searchable"
 desc = "Rewrites the document in the ISO archival format, embedding its fonts and colour profiles so it still renders the same years from now. Invalidates digital signatures."
 label = "Convert to PDF/A for archiving"
 
+[portal.policies.wizard.capability.printPreflight]
+desc = "Runs the print preflight checks and hands back a copy with every issue framed — routes can send a failing document to quarantine with the annotated proof attached."
+label = "Check for print, without changing the file"
+
+[portal.policies.wizard.capability.printPreflightFix]
+desc = "Runs the print preflight checks, applies the corrections it safely can (page boxes, bleed, colour), and reports a verdict routes can send to quarantine."
+label = "Check and fix for print"
+
 [portal.policies.wizard.capability.redact]
 desc = "Finds and blacks out sensitive details — like National Insurance and card numbers — so they can't be read."
 label = "Redact sensitive information"
@@ -10022,6 +10353,18 @@ label = "Redact sensitive information"
 [portal.policies.wizard.capability.sanitize]
 desc = "Removes hidden JavaScript so nothing can run automatically when the document is opened."
 label = "Strip active content"
+
+[portal.policies.wizard.capability.scalePages]
+desc = "Resizes page content to a target size, e.g. growing artwork to cover its bleed."
+label = "Scale pages"
+
+[portal.policies.wizard.capability.setPageBoxes]
+desc = "Declares the page's boxes — trim, bleed, crop — so downstream print steps read the right geometry."
+label = "Set page boxes"
+
+[portal.policies.wizard.capability.textToOutlines]
+desc = "Turns live text into vector paths, so no missing font or substitution can change it at press."
+label = "Convert text to outlines"
 
 [portal.policies.wizard.capability.timestampPdf]
 desc = "Proves the document existed in this exact form at a point in time, using an independent timestamp authority. Only a hash is sent - the document never leaves your server."
@@ -10418,7 +10761,7 @@ subtitle = "Anything from your policy runs and your team's editors that needs yo
 title = "Review"
 
 [portal.settings.sections]
-account-link = "Account link"
+account-link = "Account connection"
 
 [portal.shell.sidebar]
 appEditor = "Editor"
@@ -10595,6 +10938,50 @@ placeholder = "incoming/"
 description = "Poll an SFTP drop folder for new documents."
 label = "SFTP"
 
+[portal.sources.types.smtp]
+description = "Send the run's report by email when it finishes. Uses this server's SMTP settings."
+label = "Email (SMTP)"
+
+[portal.sources.types.smtp.fields]
+templatesHelp = "Placeholders: {filename} {fileNames} {fileCount} {pipeline} {verdict} {errorCount} {warningCount} {runId} {date} {status}. Unknown placeholders are left as-is."
+
+[portal.sources.types.smtp.fields.attachOutputs]
+helperText = "On by default — the recipient gets the processed PDF, annotations included."
+label = "Attach the processed files"
+
+[portal.sources.types.smtp.fields.attachOutputs.options]
+no = "No"
+yes = "Yes"
+
+[portal.sources.types.smtp.fields.attachReport]
+helperText = "Off by default — a JSON summary of the verdict, errors and warnings of every step."
+label = "Attach the step report"
+
+[portal.sources.types.smtp.fields.attachReport.options]
+no = "No"
+yes = "Yes"
+
+[portal.sources.types.smtp.fields.body]
+label = "Message"
+placeholder = "Leave empty to send a generated summary."
+
+[portal.sources.types.smtp.fields.mode]
+helperText = "per-run groups every file into one email; per-file sends one email per processed file."
+label = "Send"
+
+[portal.sources.types.smtp.fields.mode.options]
+perFile = "One email per file"
+perRun = "One email per run"
+
+[portal.sources.types.smtp.fields.subject]
+label = "Subject"
+placeholder = "[{verdict}] {pipeline} — {fileNames}"
+
+[portal.sources.types.smtp.fields.to]
+helperText = "Comma-separated email addresses."
+label = "Recipients"
+placeholder = "ops@example.com, qa@example.com"
+
 [portal.sources.types.sharepoint]
 description = "Pull documents from SharePoint document libraries."
 label = "SharePoint"
@@ -10713,6 +11100,227 @@ unlimited = "{{used}} · Unlimited"
 
 [printFile]
 title = "Print File"
+
+[printPreflight]
+areasTruncated = "Additional locations omitted from the preview"
+counts = "{{errors}} errors · {{warnings}} warnings · {{infos}} info"
+downloadAnnotated = "Annotated PDF"
+downloadFixed = "Fixed PDF"
+fixedAdded = "Fixed — in version history"
+downloadJson = "Download report (JSON)"
+downloadReport = "Report PDF"
+locate = "Show on document"
+locatedHint = "Located issues are framed on the document — use the target button to isolate one."
+noResults = "Run the tool to generate a preflight report."
+pages = "Pages"
+processing = "Running preflight checks..."
+previewFixes = "Preview fixes"
+results = "Results"
+submit = "Run preflight"
+
+[printPreflight.advanced]
+toggle = "Advanced thresholds"
+
+[printPreflight.audit]
+applied = "{{count}} fixup(s) would apply:"
+counts = "Findings: {{errorsBefore}} → {{errorsAfter}} errors · {{warningsBefore}} → {{warningsAfter}} warnings · {{infosBefore}} → {{infosAfter}} info"
+introduced = "Surfaced by the corrections"
+noneApplied = "No fixup has anything to correct on this document."
+remaining = "Still reported"
+resolved = "Resolved"
+title = "Fixup preview"
+
+[printPreflight.category]
+COLOR = "Color"
+CONTENT = "Content"
+DOCUMENT = "Document"
+FONTS = "Fonts"
+GEOMETRY = "Geometry"
+IMAGES = "Images"
+
+[printPreflight.checkBleedCoverage]
+desc = "Render each page to verify the bleed area is actually covered by content, not just declared."
+label = "Check bleed is painted"
+
+[printPreflight.disabledChecks]
+help = "Skip named checks entirely, e.g. SAFETY_MARGIN, INK_COVERAGE_HIGH. Leave empty to run everything."
+label = "Disabled checks (codes, comma-separated)"
+
+[printPreflight.error]
+noReport = "No report returned."
+partial = "Some files could not be analyzed."
+unexpected = "Unexpected error during preflight."
+
+[printPreflight.facts]
+boxes = "Page boxes"
+colors = "Colour spaces"
+dpiRange = "{{min}}–{{max}} dpi"
+effects = "Effects"
+embedded = "{{count}} embedded file(s)"
+emptyPages = "empty page(s) {{pages}}"
+extras = "Interactive & extras"
+flags = "Notices"
+fonts = "Fonts"
+formFields = "{{count}} form field(s)"
+images = "Images"
+inkCoverage = "Max ink coverage"
+invisibleText = "invisible text on page(s) {{pages}}"
+javascript = "JavaScript"
+layersOff = "Layers off for print"
+lowRes = "{{count}} below threshold"
+none = "none"
+outputIntent = "Output intent"
+oversampled = "{{count}} oversampled"
+pageCount = "Pages"
+pageSizes = "Page dimensions"
+patterns = "patterns"
+registration = "registration colour on page(s) {{pages}}"
+rotated = "rotated {{deg}}°"
+shadings = "shadings"
+signatures = "{{count}} signature(s)"
+spotColors = "Spot colours"
+technical = "Technical separations"
+title = "Document facts"
+transparency = "transparency"
+trapped = "trapped: {{value}}"
+type3 = "Type 3"
+userUnit = "UserUnit on page(s) {{pages}}"
+xfa = "XFA"
+
+[printPreflight.fixes]
+help = "Corrections applied when producing a Fixed PDF. The annotated and JSON reports are always analysis-only."
+toggle = "Automatic fixes"
+
+[printPreflight.fixups]
+help = "Leave empty to apply every fixup that has something to correct."
+label = "Fixups to apply"
+placeholder = "All applicable fixups"
+
+[printPreflight.fixups.codes]
+CLIP_TO_CROPBOX = "Clip content to the crop box"
+DISCARD_CROPBOX = "Discard crop boxes"
+DOWNSAMPLE_IMAGES = "Downsample oversampled images"
+ENABLE_LAYER_PRINTING = "Enable printing on layers"
+EXTEND_BLEED = "Generate missing bleed"
+FLATTEN_FORM = "Flatten form fields"
+FLATTEN_TRANSPARENCY = "Flatten transparency"
+KNOCKOUT_WHITE = "Clear overprint on white objects"
+MERGE_SPOT_ALIASES = "Merge spot colour aliases"
+NONE = "None — disable all fixups"
+NORMALIZE_USER_UNIT = "Normalise page scale (UserUnit)"
+OVERPRINT_BLACK_TEXT = "Set black text to overprint"
+PURE_BLACK_TEXT = "Convert rich-black text to pure black"
+REDUCE_INK_COVERAGE = "Reduce ink coverage to the limit"
+REGISTRATION_TO_BLACK = "Map registration colour to black"
+REMOVE_ANNOTATIONS_IN_TRIM = "Remove annotations inside trim"
+REMOVE_ATTACHMENTS = "Remove embedded files"
+REMOVE_EMPTY_PAGES = "Remove empty pages"
+REMOVE_INVISIBLE_TEXT = "Remove invisible text"
+REMOVE_JAVASCRIPT = "Remove JavaScript"
+RGB_TO_CMYK = "Convert RGB to CMYK (Ghostscript)"
+SET_MISSING_BOXES = "Declare missing TrimBox"
+SET_OUTPUT_INTENT = "Attach output intent (ICC)"
+SPOT_TO_CMYK = "Convert spot colours to CMYK"
+TEXT_TO_OUTLINES = "Convert text to outlines (Ghostscript)"
+
+[printPreflight.hairlineThresholdPt]
+help = "Strokes thinner than this are flagged — they may drop out on press."
+label = "Hairline threshold (pt)"
+
+[printPreflight.includeSummaryPage]
+desc = "Prepend the report summary — verdict, facts, fonts, colours — to the annotated PDF copy."
+label = "Summary page in annotated PDF"
+
+[printPreflight.maxImageDpi]
+help = "Images rendered above this effective resolution are flagged as oversampled — dead weight the press cannot use."
+label = "Maximum image resolution (dpi)"
+
+[printPreflight.renderedInkCoverage]
+desc = "Rasterize with Ghostscript and measure true total ink coverage — sees stacking, images and knockouts. Slower than the painted-fill estimate."
+label = "Measure ink on the rendered page"
+
+[printPreflight.maxInkCoveragePercent]
+help = "Painted colours above this total area coverage are reported — ink drying and registration issues. ~320% is a common offset limit."
+label = "Max ink coverage (%)"
+
+[printPreflight.maxSpotCount]
+help = "Warn when more spot separations than this are used — each plate costs makeready. 0 disables the limit."
+label = "Maximum spot colours"
+
+[printPreflight.minFontSizePt]
+help = "Text smaller than this is reported as too small to print reliably."
+label = "Minimum font size (pt)"
+
+[printPreflight.minImage1BitDpi]
+help = "Line art / bitmap images need far more resolution than photos — 1200 dpi is the usual floor."
+label = "Minimum 1-bit image resolution (dpi)"
+
+[printPreflight.minImageDpi]
+help = "Images placed below this effective resolution are flagged. 300 is ideal for offset; 150 is a common minimum."
+label = "Minimum image resolution (dpi)"
+
+[printPreflight.options]
+stepTitle = "Check thresholds"
+
+[printPreflight.profiles]
+custom = "Custom settings"
+delete = "Delete profile"
+deleteFailed = "The profile could not be deleted"
+descLabel = "Description (optional)"
+help = "A saved set of thresholds and fixes. Selecting one replaces every value below."
+label = "Preflight profile"
+loadFailed = "Profiles could not be loaded"
+nameLabel = "Profile name"
+saveAs = "Save as profile…"
+saveFailed = "The profile could not be saved"
+saveModalTitle = "Save profile"
+stepHelp = "A named profile supplies the thresholds, fixups and disabled checks — clear it to tune this step inline."
+suppliesStep = "The named profile supplies every preflight setting for this step."
+
+[printPreflight.profiles.builtin]
+digital-press = "Digital press"
+inspect-only = "Inspect only"
+large-format = "Large format"
+offset-press = "Offset press"
+
+[printPreflight.profiles.builtinDesc]
+digital-press = "Digital presses (toner/inkjet) — more tolerant thresholds, keeps spot and RGB untouched"
+inspect-only = "Analysis with relaxed thresholds and no automatic corrections"
+large-format = "Posters, signage, banners — looser resolution limits, wider safety margin"
+offset-press = "Commercial offset printing — strict thresholds, converts everything to CMYK press-ready"
+
+[printPreflight.reportFormat]
+annotatedPdf = "Annotated PDF"
+fixAuditJson = "Fixup audit JSON (dry run)"
+fixedPdf = "Fixed PDF (apply selected fixups)"
+help = "PDF outputs keep the pipeline flowing; JSON report ends the chain with the findings."
+json = "JSON report"
+label = "Report format"
+reportPdf = "Summary report PDF"
+
+[printPreflight.requiredBleedMm]
+help = "Bleed width expected on every side past the trim. 3 mm is standard in Europe."
+label = "Required bleed (mm)"
+
+[printPreflight.safetyMarginMm]
+help = "Content closer than this to the trim edge is reported — it may be cut off on the guillotine."
+label = "Safety margin inside trim (mm)"
+
+[printPreflight.severity]
+ERROR = "Error"
+INFO = "Info"
+WARNING = "Warning"
+
+[printPreflight.status]
+complete = "Preflight complete"
+
+[printPreflight.verdict]
+clean = "Ready for print"
+errors = "{{errors}} blocking issue(s) found"
+fail = "Fail"
+pass = "Pass"
+warn = "Warnings only"
+warnings = "Printable with {{warnings}} warning(s)"
 
 [processingFolders.setup]
 addFolder = "Add folder"
@@ -11546,6 +12154,61 @@ toolNotAvailableLocally = "Your Stirling-PDF server is offline and \"{{endpoint}
 [session]
 expired = "Your session has expired. Please refresh the page and try again."
 
+[setPageBoxes]
+artBox = "ArtBox"
+bleedBox = "BleedBox"
+bleedMm = "Bleed (mm, expand around TrimBox)"
+boxFormatError = "Expected four numbers: x,y,width,height"
+copyMissingFromMediaBox = "Copy MediaBox into boxes left unset"
+cropBox = "CropBox"
+help = "Set page boxes in points as x,y,width,height. Leave a field empty to keep the existing box."
+inheritedHint = "* box absent from the page — shown value is inherited"
+mediaBox = "MediaBox"
+preview = "Resulting page boxes"
+submit = "Set Page Boxes"
+trimBox = "TrimBox"
+trimMarginMm = "Trim margin (mm, shrink MediaBox into TrimBox)"
+
+[setPageBoxes.cropMarks]
+enable = "Draw crop marks at the TrimBox corners"
+length = "Length (mm)"
+offset = "Offset (mm)"
+section = "Crop marks"
+weight = "Stroke (pt)"
+
+[setPageBoxes.deriveFromCropMarks]
+desc = "Detect painted cut marks to place the TrimBox. Used only when no TrimBox or trim margin is given; fails on pages without clear marks."
+label = "Derive TrimBox from crop marks"
+
+[setPageBoxes.error]
+failed = "An error occurred while setting page boxes."
+
+[setPageBoxes.generateBleed]
+bleedBottomMm = "Bottom (mm)"
+bleedLeftMm = "Left (mm)"
+bleedRightMm = "Right (mm)"
+bleedTopMm = "Top (mm)"
+corners = "Generate bleed in the corners too"
+dpi = "Render DPI"
+enable = "Paint bleed content between TrimBox and BleedBox"
+hint = "A BleedBox alone is only geometry. This paints extra content past the trim edge (like PitStop's Add Bleed) so trimming never shows a white edge."
+inset = "Source inset (mm, skip inner margin)"
+method = "Bleed method"
+section = "Generate bleed"
+sideFallback = "bleedMm"
+
+[setPageBoxes.generateBleed.methods]
+MIRROR = "Mirror edges (vector)"
+MIRROR_IMAGE = "Mirror edges (image)"
+PIXEL_REPEAT = "Repeat last pixel"
+UPSCALE = "Upscale page content"
+
+[setPageBoxes.results]
+title = "Set Page Boxes Results"
+
+[setPageBoxes.steps]
+configure = "Page Box Settings"
+
 [settings]
 backToSections = "All settings"
 title = "Settings"
@@ -11954,11 +12617,18 @@ useLast = "Last used server: {{serverUrl}}"
 [setup.server.error]
 configFetch = "Failed to fetch server configuration (status {{status}})"
 configFetchError = "Failed to fetch server configuration: {{error}}"
+dnsFailed = "Cannot resolve hostname: {{hostname}}"
 emptyUrl = "Please enter a server URL"
+httpOnly = "Server is only accessible via HTTP (not HTTPS)."
+httpsOnly = "Server is only accessible via HTTPS, not HTTP."
 invalidUrl = "Invalid URL format. Please enter a valid URL like https://your-server.com"
+methodMismatch = "Server responds to HEAD requests but not GET requests."
+networkBlocked = "No internet connectivity detected. All network requests are failing."
+serverUnreachable = "Cannot connect to server. Internet works but this specific server is unreachable."
 testFailed = "Connection test failed"
 unknown = "Unknown error"
 unreachable = "Could not connect to server"
+userAgentBlocked = "Server blocks Tauri/desktop app User-Agent but allows browser User-Agent."
 
 [setup.server.error.securityDisabled]
 body = "This server does not have login enabled. To connect to this server, you must enable authentication:"
@@ -12791,6 +13461,20 @@ right = "Right"
 [textInput]
 clear = "Clear input"
 
+[textToOutlines]
+help = "Converts all text in the document into vector outlines. This is irreversible: text can no longer be selected, searched, copied or edited in the output."
+submit = "Convert Text to Outlines"
+useCase = "Useful before sending a document to print when fonts cannot be embedded or licensed, at the cost of larger files and no text accessibility."
+
+[textToOutlines.error]
+failed = "An error occurred while converting text to outlines."
+
+[textToOutlines.results]
+title = "Text to Outlines Results"
+
+[textToOutlines.steps]
+about = "About Text to Outlines"
+
 [time.relative]
 daysAgo = "{{count}}d ago"
 hoursAgo = "{{count}}h ago"
@@ -12917,6 +13601,7 @@ documentSecurity = "Document Security"
 extraction = "Extraction"
 general = "General"
 pageFormatting = "Page Formatting"
+prepress = "Prepress"
 removal = "Removal"
 signing = "Signing"
 verification = "Verification"
@@ -13327,6 +14012,7 @@ enableSepiaFilter = "Enable Sepia Filter"
 engineLoadError = "Failed to initialise PDF viewer engine"
 engineSlowWarning = "PDF engine initialisation is taking longer than expected. Please check your browser WebAssembly and Worker settings, or reload the page."
 firstPage = "First Page"
+hidePageBoxes = "Hide page boxes"
 lastPage = "Last Page"
 loadingEngine = "Loading PDF Engine..."
 moreOptions = "More"
@@ -13337,6 +14023,7 @@ pageNavigation = "Page navigation"
 previousPage = "Previous Page"
 saveChangesErrorBody = "The document could not be saved. Try again."
 saveChangesErrorTitle = "Could not save changes"
+showPageBoxes = "Show page boxes"
 singlePageView = "Single Page View"
 unknownFile = "Unknown file"
 view = "View"
@@ -13462,6 +14149,12 @@ previewUnavailable = "Preview not available for this file type"
 renderMarkdown = "Render markdown"
 sortedBy = "Sorted by: {{column}}"
 textStats = "{{lines}} lines · {{size}}"
+
+[viewer.nonPdf.fileType]
+file = "File"
+image = "Image"
+spreadsheet = "Spreadsheet"
+text = "Text"
 
 [viewer.portfolio]
 addFile = "Add file"

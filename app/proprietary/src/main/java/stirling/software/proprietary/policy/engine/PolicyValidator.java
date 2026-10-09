@@ -177,6 +177,11 @@ public class PolicyValidator {
      *
      * <p>Only errors block; warnings depend on configuration or file content.
      *
+     * <p>A step's {@code when} gate is modeled as unconditional: the single-format chain cannot
+     * express that a gated format-changing step also passes its input through. A valid chain
+     * relying on the bypass can be rejected here, and a bypassed format nothing downstream accepts
+     * is only caught at dispatch by the executor's accepted-type check.
+     *
      * @throws IllegalArgumentException if any step cannot accept what the one before it produces
      */
     public void validateChain(List<PipelineStep> steps) {
@@ -221,6 +226,11 @@ public class PolicyValidator {
      */
     public void validateSteps(List<PipelineStep> steps) {
         for (PipelineStep step : steps) {
+            // A gate that can never match would silently skip the step on every document;
+            // reject it here like a routing rule that can never fire.
+            if (step.when() != null) {
+                ConditionValidator.validate(step.when());
+            }
             for (PipelineStepValidator validator : stepValidators) {
                 validator.validate(step);
             }

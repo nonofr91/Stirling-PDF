@@ -1,0 +1,153 @@
+name: CI
+
+# Lean fork gate: the upstream build.yml fan-out assumes Stirling-Tools
+# infrastructure (GHCR pushes, demo environments, SaaS deploy secrets). This
+# workflow keeps the essential checks — backend tests + spotless, frontend
+# tests + typecheck + lint, engine checks — on pushes to main/prepress and on
+# PRs targeting prepress. PRs to main (prepress→main) are covered by the push
+# trigger on prepress, so they intentionally don't trigger pull_request runs.
+
+on:
+  pull_request:
+    branches: ["prepress"]
+  push:
+    branches: ["main", "prepress"]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    name: detect changed areas
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      engine: ${{ steps.filter.outputs.engine }}
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: filter
+        with:
+          base: ${{ github.event_name == 'push' && github.ref_name || '' }}
+          filters: |
+            backend:
+              - "app/**"
+              - "build.gradle"
+              - "settings.gradle"
+              - "gradle/**"
+              - "gradlew*"
+            frontend:
+              - "frontend/**"
+            engine:
+              - "engine/**"
+
+  backend:
+    name: backend (spotless + tests)
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Restore Gradle cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-fork-${{ runner.os }}-jdk-25-${{ hashFiles('gradle/wrapper/gradle-wrapper.properties', 'gradle/libs.versions.toml', 'settings.gradle', 'build.gradle', 'app/**/build.gradle') }}
+          restore-keys: |
+            gradle-fork-${{ runner.os }}-jdk-25-
+      - name: Set up JDK 25
+        uses: ./.github/actions/java
+        with:
+          java-version: "25"
+      # No MAVEN_* secrets on the fork: the build falls back to Maven Central.
+      # app/proprietary and app/saas are skipped — their dependencies are not
+      # public; common + stirling-pdf cover the prepress work.
+      - name: Spotless + unit tests
+        run: ./gradlew spotlessCheck :common:test :stirling-pdf:test
+        env:
+          GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx4g -XX:+UseG1GC -Dfile.encoding=UTF-8"
+
+  frontend:
+    name: frontend (test + typecheck + lint)
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Prepare env files and generated assets
+        run: |
+          npx tsx editor/scripts/setup-env.mts
+      - name: Unit tests
+        run: npx vitest run --root editor
+      - name: Typecheck (core + proprietary)
+        run: |
+          npx tsc --noEmit --project editor/src/core/tsconfig.json
+          npx tsc --noEmit --project editor/src/proprietary/tsconfig.json
+      - name: Lint
+        run: npx oxlint --config oxlint.config.ts --max-warnings=0
+
+  engine:
+    name: engine (lint + typecheck + test)
+    needs: changes
+    if: needs.changes.outputs.engine == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: engine
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+      - name: Install Python 3.13
+        run: uv python install 3.13.8
+      - name: Sync dependencies
+        run: uv sync --locked --group engine --group engine-dev
+      - name: Prepare env
+        run: uv run --locked --group engine --group engine-dev scripts/setup_env.py
+      - name: Lint + format + typecheck + tests
+        run: |
+          uv run --locked --group engine --group engine-dev ruff check .
+          uv run --locked --group engine --group engine-dev ruff format . --diff
+          uv run --locked --group engine --group engine-dev pyright . --warnings
+          uv run --locked --group engine --group engine-dev pytest tests

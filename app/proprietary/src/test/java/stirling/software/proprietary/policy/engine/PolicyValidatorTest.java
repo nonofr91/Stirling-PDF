@@ -478,6 +478,60 @@ class PolicyValidatorTest {
         assertTrue(ex.getMessage().contains("unknown routing destination"), ex.getMessage());
     }
 
+    // A step gate that can never match is the same hazard as an unmatchable routing rule: the
+    // step silently skips every document while the policy still reads as if it ran.
+
+    @Test
+    void rejectsAStepGateWithNoField() {
+        PipelineStep gated =
+                new PipelineStep(
+                        ROTATE,
+                        Map.of(),
+                        Map.of(),
+                        new Condition.MatchesAny(
+                                new ConditionInput.DocumentField(" "), List.of("pdf")));
+
+        IllegalArgumentException ex =
+                assertThrows(
+                        IllegalArgumentException.class,
+                        () -> validator.validateSteps(List.of(gated)));
+        assertTrue(ex.getMessage().contains("must name a field"), ex.getMessage());
+    }
+
+    @Test
+    void rejectsAStepGateWithNothingToMatchAgainst() {
+        PipelineStep gated =
+                new PipelineStep(
+                        ROTATE,
+                        Map.of(),
+                        Map.of(),
+                        new Condition.MatchesAny(
+                                new ConditionInput.DocumentField("document.extension"),
+                                List.of(" ")));
+
+        IllegalArgumentException ex =
+                assertThrows(
+                        IllegalArgumentException.class,
+                        () -> validator.validateSteps(List.of(gated)));
+        assertTrue(ex.getMessage().contains("nothing to match against"), ex.getMessage());
+    }
+
+    @Test
+    void stillRunsStepValidatorsOnAGatedStep() {
+        PipelineStep gated =
+                new PipelineStep(
+                        ROTATE,
+                        Map.of(),
+                        Map.of(),
+                        new Condition.MatchesAny(
+                                new ConditionInput.DocumentField("document.extension"),
+                                List.of("pdf")));
+
+        validator.validateSteps(List.of(gated));
+
+        verify(stepValidator).validate(gated);
+    }
+
     private static RoutingRule rule(String field, String value, String destinationId) {
         return new RoutingRule(
                 new Condition.MatchesAny(new ConditionInput.DocumentField(field), List.of(value)),

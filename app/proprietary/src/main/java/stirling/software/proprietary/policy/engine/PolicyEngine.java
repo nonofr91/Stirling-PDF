@@ -3,6 +3,7 @@ package stirling.software.proprietary.policy.engine;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -55,9 +56,11 @@ import stirling.software.proprietary.policy.progress.PolicyProgressListener;
 import stirling.software.proprietary.policy.source.Source;
 import stirling.software.proprietary.service.DownstreamEntitlementError;
 
+import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * Runs pipelines asynchronously as tracked jobs. {@link #submit} returns a run id immediately; the
@@ -405,7 +408,14 @@ public class PolicyEngine {
                     taskManager.addNote(runId, "Cancelled before delivery; results discarded");
                     return;
                 }
-                List<ResultFile> outputs = deliver(run, runId, inputs, result.files());
+                List<ResultFile> outputs =
+                        deliver(
+                                run,
+                                runId,
+                                inputs,
+                                result.files(),
+                                result.reports(),
+                                result.report());
                 taskManager.setMultipleFileResults(runId, outputs);
                 taskManager.setComplete(runId);
                 run.complete(outputs);
@@ -551,6 +561,21 @@ public class PolicyEngine {
             }
 
             @Override
+            public void onStepGate(int stepIndex, int matched, int total) {
+                // Without this, a gate that bypassed every file reads as if the step ran.
+                taskManager.addNote(
+                        runId,
+                        "Step "
+                                + stepIndex
+                                + ": condition matched "
+                                + matched
+                                + "/"
+                                + total
+                                + " files");
+                delegate.onStepGate(stepIndex, matched, total);
+            }
+
+            @Override
             public void onStepComplete(int stepIndex, int stepCount, String operation) {
                 taskManager.addNote(
                         runId,
@@ -572,28 +597,58 @@ public class PolicyEngine {
      * grouped by destination so a sink - which sets up a connection per call - is called once each.
      */
     private List<ResultFile> deliver(
-            PolicyRun run, String runId, PolicyInputs inputs, List<Resource> files)
+            PolicyRun run,
+            String runId,
+            PolicyInputs inputs,
+            List<Resource> files,
+            List<JsonNode> reports,
+            JsonNode runReport)
             throws IOException {
-        OutputDelivery delivery =
-                new OutputDelivery(runId, run.getPolicyId(), inputs, JobContext.getOwner());
         List<OutputSpec> fallback = run.getDefinition().outputs();
         if (fallback.isEmpty()) {
             // No destinations means inline delivery (results returned to the caller), preserving
             // ad-hoc/AI behaviour.
             fallback = List.of(OutputSpec.inline());
         }
+        // Reports parallel files by construction in the executor; keyed by identity so a file
+        // delivered to several destinations carries its report to each ResultFile copy.
+        Map<Resource, JsonNode> reportByFile = new IdentityHashMap<>();
+        if (reports != null) {
+            for (int i = 0; i < files.size() && i < reports.size(); i++) {
+                if (reports.get(i) != null) {
+                    reportByFile.put(files.get(i), reports.get(i));
+                }
+            }
+        }
+        OutputDelivery delivery =
+                new OutputDelivery(
+                        runId,
+                        run.getPolicyId(),
+                        inputs,
+                        JobContext.getOwner(),
+                        null,
+                        run.getDefinition().name(),
+                        reportByFile,
+                        runReport);
         List<RoutedDestination> routing = run.getDefinition().routing();
         if (routing.isEmpty()) {
-            return deliverGrouped(delivery, groupedToAll(files, fallback));
+            return deliverGrouped(delivery, groupedToAll(files, fallback), reportByFile);
         }
         Map<OutputSpec, List<Resource>> byDestination = new LinkedHashMap<>();
-        for (Resource file : files) {
-            JsonNode facts = DocumentFacts.of(file, FACTS_MAPPER);
+        for (int i = 0; i < files.size(); i++) {
+            Resource file = files.get(i);
+            ObjectNode facts = DocumentFacts.of(file, FACTS_MAPPER);
+            // The report of the step that produced this file — routing matches on report.* paths
+            // (e.g. report.preflight.verdict), which the document's own facts cannot carry.
+            JsonNode report = reportByFile.get(file);
+            if (report != null) {
+                facts.set("report", report);
+            }
             for (OutputSpec target : destinationsFor(routing, fallback, facts)) {
                 byDestination.computeIfAbsent(target, key -> new ArrayList<>()).add(file);
             }
         }
-        return deliverGrouped(delivery, byDestination);
+        return deliverGrouped(delivery, byDestination, reportByFile);
     }
 
     private static List<OutputSpec> destinationsFor(
@@ -616,14 +671,32 @@ public class PolicyEngine {
     }
 
     private List<ResultFile> deliverGrouped(
-            OutputDelivery delivery, Map<OutputSpec, List<Resource>> byDestination)
+            OutputDelivery delivery,
+            Map<OutputSpec, List<Resource>> byDestination,
+            Map<Resource, JsonNode> reportByFile)
             throws IOException {
         List<ResultFile> outputs = new ArrayList<>();
         for (Map.Entry<OutputSpec, List<Resource>> entry : byDestination.entrySet()) {
-            outputs.addAll(
-                    sinkFor(entry.getKey()).deliver(delivery, entry.getValue(), entry.getKey()));
+            List<Resource> files = entry.getValue();
+            List<ResultFile> delivered =
+                    sinkFor(entry.getKey()).deliver(delivery, files, entry.getKey());
+            // Sinks return one ResultFile per delivered file, in order — the report attaches by
+            // index. A sink that collapses outputs (none today) simply keeps no report.
+            if (delivered.size() == files.size()) {
+                for (int i = 0; i < delivered.size(); i++) {
+                    JsonNode report = reportByFile.get(files.get(i));
+                    if (report != null) {
+                        delivered.get(i).setReport(toReportMap(report));
+                    }
+                }
+            }
+            outputs.addAll(delivered);
         }
         return outputs;
+    }
+
+    private static Map<String, Object> toReportMap(JsonNode report) {
+        return FACTS_MAPPER.convertValue(report, new TypeReference<Map<String, Object>>() {});
     }
 
     private PolicyOutputSink sinkFor(OutputSpec spec) {

@@ -12,6 +12,8 @@ interface RoutingConditionEditorProps {
   condition: MatchesAnyCondition;
   onChange: (condition: MatchesAnyCondition) => void;
   classificationAvailable: boolean;
+  /** Report fields only make sense when a preflight step feeds the route. */
+  preflightAvailable?: boolean;
 }
 
 const DOCUMENT_FIELDS = [
@@ -20,13 +22,19 @@ const DOCUMENT_FIELDS = [
   "document.filename",
   "document.title",
   "document.author",
+  "report.preflight.verdict",
+  "report.preflight.errors",
+  "report.preflight.warnings",
 ] as const;
+
+const PREFLIGHT_VERDICTS = ["pass", "warn", "fail"] as const;
 
 /** Edits either an AI classification match or a deterministic document-fact match. */
 export function RoutingConditionEditor({
   condition,
   onChange,
   classificationAvailable,
+  preflightAvailable = false,
 }: RoutingConditionEditorProps) {
   const { t } = useTranslation();
   const field = condition.input.field;
@@ -67,6 +75,30 @@ export function RoutingConditionEditor({
       value: DOCUMENT_FIELDS[4],
       label: t("portal.pipelines.builder.routing.matchAuthor", "PDF author"),
     },
+    {
+      value: DOCUMENT_FIELDS[5],
+      label: t(
+        "portal.pipelines.builder.routing.matchPreflightVerdict",
+        "Preflight verdict",
+      ),
+      disabled: !preflightAvailable,
+    },
+    {
+      value: DOCUMENT_FIELDS[6],
+      label: t(
+        "portal.pipelines.builder.routing.matchPreflightErrors",
+        "Preflight error count",
+      ),
+      disabled: !preflightAvailable,
+    },
+    {
+      value: DOCUMENT_FIELDS[7],
+      label: t(
+        "portal.pipelines.builder.routing.matchPreflightWarnings",
+        "Preflight warning count",
+      ),
+      disabled: !preflightAvailable,
+    },
   ];
 
   function changeField(next: string | null) {
@@ -93,6 +125,23 @@ export function RoutingConditionEditor({
           condition={condition}
           onChange={onChange}
           disabled={!classificationAvailable}
+        />
+      ) : field === "report.preflight.verdict" ? (
+        <Select
+          inputSize="sm"
+          aria-label={t(
+            "portal.pipelines.builder.routing.matchValues",
+            "Values to match",
+          )}
+          value={condition.values[0] ?? null}
+          onChange={(value) =>
+            onChange({ ...condition, values: value ? [value] : [] })
+          }
+          options={PREFLIGHT_VERDICTS.map((verdict) => ({
+            value: verdict,
+            label: t(`printPreflight.verdict.${verdict}`, verdict),
+          }))}
+          comboboxProps={{ withinPortal: true }}
         />
       ) : (
         <Input

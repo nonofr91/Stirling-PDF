@@ -28,6 +28,7 @@ import {
   type ErasedToolParams,
   type RegistryToolOperationConfig,
 } from "@app/hooks/tools/shared/toolOperationTypes";
+import type { Condition } from "@app/conditions/types";
 
 /**
  * How much of a tool's parameters a UI can edit when composing a backend step:
@@ -70,6 +71,11 @@ export interface ToolApiStep {
    * no supporting file. Mirrors the wire {@code PipelineStep.fileParameters}.
    */
   fileParameters?: SupportingFileBindings;
+  /**
+   * Per-document gate evaluated on the same facts as routing (`document.*` plus the carried
+   * `report.*`): files that do not match bypass the step untouched. Absent means unconditional.
+   */
+  when?: Condition;
 }
 
 /** A step being edited in a UI that maps to a known tool: parameters are in the tool's frontend shape. */
@@ -84,6 +90,8 @@ export interface KnownToolStep {
    * File and takes precedence on save.
    */
   fileParameters?: SupportingFileBindings;
+  /** Per-document gate on the step; absent means unconditional. */
+  when?: Condition;
 }
 
 /** A stored step whose endpoint maps to no known tool: preserved verbatim, not editable. */
@@ -94,6 +102,8 @@ export interface UnknownToolStep {
   support: "unknown";
   /** Supporting-file bindings preserved verbatim, so an unknown step's files round-trip untouched. */
   fileParameters?: SupportingFileBindings;
+  /** Per-document gate on the step; absent means unconditional. */
+  when?: Condition;
 }
 
 /** A step being edited in a UI, discriminated by whether its endpoint maps to a known tool. */
@@ -355,7 +365,12 @@ export function getExecutableTools(
 ): ExecutableTool[] {
   const tools: ExecutableTool[] = [];
   for (const [id, entry] of Object.entries(registry)) {
-    if (!entry || !getToolSupportsAutomate(entry)) continue;
+    if (
+      !entry ||
+      !getToolSupportsAutomate(entry) ||
+      entry.hiddenFromPipelineSteps
+    )
+      continue;
     const config = entry.operationConfig;
     if (!config) continue;
     // A configured endpoint from defaults, else the routing set's first member as a stand-in so a
@@ -422,16 +437,21 @@ export function serializeToolStep(
   if (!config) {
     // Unmapped step (unknown endpoint on edit): round-trip it unchanged.
     return withFileParameters(
-      { operation: step.operation, parameters: step.params },
+      { operation: step.operation, parameters: step.params, when: step.when },
       step,
     );
   }
   const merged = { ...(config.defaultParameters ?? {}), ...step.params };
-  const operation = resolveEndpoint(config, merged) ?? step.operation;
+  // An unmigrated tool (no toApiParams) can't reflect param edits in the body anyway;
+  // re-resolving its endpoint from defaults would rewrite a stored step to whatever the
+  // defaults happen to select, so keep the step's own operation.
+  const operation = config.toApiParams
+    ? (resolveEndpoint(config, merged) ?? step.operation)
+    : step.operation;
   const parameters = config.toApiParams
     ? (config.toApiParams(merged) as Record<string, unknown>)
     : {};
-  return withFileParameters({ operation, parameters }, step);
+  return withFileParameters({ operation, parameters, when: step.when }, step);
 }
 
 /** Attach the step's supporting-file bindings to a serialized step, omitting the field when empty. */
@@ -503,6 +523,7 @@ function unmappedStep(step: ToolApiStep): UnknownToolStep {
     params: { ...step.parameters },
     support: "unknown",
     fileParameters: step.fileParameters,
+    when: step.when,
   };
 }
 
@@ -536,9 +557,14 @@ export function deserializeToolStep(
     ...mapped,
   };
   // Validate against the generated endpoint set instead of casting the matched string.
-  const operation =
-    resolveEndpoint(config, params) ??
-    (isToolEndpoint(step.operation) ? step.operation : undefined);
+  // Without fromApiParams the mapped params are just defaults, so resolution would guess
+  // the wrong endpoint for a dynamic tool — prefer the stored operation then.
+  const storedOperation = isToolEndpoint(step.operation)
+    ? step.operation
+    : undefined;
+  const operation = config?.fromApiParams
+    ? (resolveEndpoint(config, params) ?? storedOperation)
+    : (storedOperation ?? resolveEndpoint(config, params));
   if (operation === undefined) return unmappedStep(step);
   return {
     toolId,
@@ -546,5 +572,6 @@ export function deserializeToolStep(
     params,
     support: classifyToolStepSupport(entry),
     fileParameters: step.fileParameters,
+    when: step.when,
   };
 }

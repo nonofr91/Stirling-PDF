@@ -21,12 +21,13 @@ export interface ModalProps {
   backLabel?: string;
   /** sm=24rem, md=32rem, lg=48rem, xl=64rem. */
   width?: ModalWidth;
+  /** Backdrop z-index override; needed when opened from a higher-stacked modal (e.g. file manager at 1200). */
+  zIndex?: number;
   disableBackdropClose?: boolean;
   disableEscapeClose?: boolean;
   /** Accessible name when no visible title is provided. */
   ariaLabel?: string;
   className?: string;
-  zIndex?: number;
   children?: ReactNode;
 }
 
@@ -40,11 +41,11 @@ export function Modal({
   onBack,
   backLabel,
   width = "md",
+  zIndex,
   disableBackdropClose = false,
   disableEscapeClose = false,
   ariaLabel,
   className,
-  zIndex,
   children,
 }: ModalProps) {
   const { t } = useTranslation();

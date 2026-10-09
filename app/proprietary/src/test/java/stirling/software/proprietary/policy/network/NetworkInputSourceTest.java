@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 
 import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -243,6 +244,24 @@ class NetworkInputSourceTest {
         @Override
         public InputStream open(String path) {
             return new ByteArrayInputStream(server.files.get(path).content());
+        }
+
+        @Override
+        public List<RemoteEntry> browse(String directory) {
+            List<RemoteEntry> out = new ArrayList<>();
+            server.files.forEach(
+                    (path, file) -> {
+                        String name = path.substring(path.lastIndexOf('/') + 1);
+                        out.add(
+                                new RemoteEntry(
+                                        path, name, false, file.content().length, file.mtime()));
+                    });
+            return out;
+        }
+
+        @Override
+        public void write(String path, InputStream data) throws IOException {
+            server.files.put(path, new FakeFile(data.readAllBytes(), System.currentTimeMillis()));
         }
 
         @Override

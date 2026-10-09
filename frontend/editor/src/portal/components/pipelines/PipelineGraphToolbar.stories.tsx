@@ -11,6 +11,7 @@ const meta: Meta<typeof PipelineGraphToolbar> = {
     runResult: null,
     onTest: () => {},
     onDownloadOutput: () => {},
+    onOpenArchive: () => {},
     onViewDefinition: () => {},
   },
 };

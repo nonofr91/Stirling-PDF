@@ -17,6 +17,7 @@ const defaultParameters: AdjustPageScaleParameters = {
   scaleFactor: 1.0,
   pageSize: PageSize.KEEP,
   orientation: "PORTRAIT",
+  pageBox: "MEDIA_BOX",
 };
 
 export const Default: Story = {
@@ -32,6 +33,7 @@ export const CustomPageSize: Story = {
       scaleFactor: 2.5,
       pageSize: PageSize.A4,
       orientation: "LANDSCAPE",
+      pageBox: "MEDIA_BOX",
     },
     onParameterChange: () => {},
   },

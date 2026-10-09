@@ -440,13 +440,33 @@ class CreatePortfolioParams(ApiModel):
     files: list[bytes] = Field(..., description="The files to bundle into the PDF Portfolio.")
 
 
+class PageBox(StrEnum):
+    """
+    Page box used as the crop area when cropToBox is true. Pages without that box fall back to their MediaBox
+    """
+
+    media_box = "MEDIA_BOX"
+    crop_box = "CROP_BOX"
+    trim_box = "TRIM_BOX"
+    bleed_box = "BLEED_BOX"
+    art_box = "ART_BOX"
+
+
 class CropParams(ApiModel):
     """
     This operation takes an input PDF file and crops it according to the given coordinates. Input:PDF Output:PDF Type:SISO
     """
 
     auto_crop: bool | None = Field(None, description="Enable auto-crop to detect and remove white space")
+    crop_to_box: bool = Field(
+        False,
+        description="Crop each page to the named page box instead of explicit x/y/width/height. Ignored when autoCrop is true",
+    )
     height: float | None = Field(None, description="The height of the crop area")
+    page_box: PageBox = Field(
+        PageBox.media_box,
+        description="Page box used as the crop area when cropToBox is true. Pages without that box fall back to their MediaBox",
+    )
     page_numbers: str = Field(
         "all", description="Pages to crop (e.g. '1, 3, 5-8' or 'all'). Omit or leave blank for all pages."
     )
@@ -456,6 +476,177 @@ class CropParams(ApiModel):
     width: float | None = Field(None, description="The width of the crop area")
     x: float | None = Field(None, description="The x-coordinate of the top-left corner of the crop area")
     y: float | None = Field(None, description="The y-coordinate of the top-left corner of the crop area")
+
+
+class ExtractionMode(StrEnum):
+    """
+    How the subject silhouette is extracted. ALPHA uses existing transparency, BACKGROUND flood-fills a uniform background from the page edges, AI runs subject matting (ONNX model required), AUTO tries the sources in autoOrder
+    """
+
+    alpha = "ALPHA"
+    background = "BACKGROUND"
+    ai = "AI"
+    auto = "AUTO"
+
+
+class CutContourParams(ApiModel):
+    """
+    Extracts the subject silhouette of each page (transparency, uniform background or AI matting), then writes a closed vector cut path in a spot colour (default CutContour) on a dedicated ISO 19593-1 cutting layer. Optionally clips the artwork to the contour, extends it with bleed beyond the cut line and updates TrimBox/BleedBox. Input:PDF Output:PDF Type:SISO
+    """
+
+    ai_model_id: str | None = Field(
+        None, description="Matting model id for AI mode; blank selects the catalog default (u2net)"
+    )
+    ai_threshold: float = Field(0.4, description="Confidence threshold applied to AI masks, 0..1", ge=0.0, le=1.0)
+    alpha_threshold: int = Field(
+        16, description="Alpha threshold 0-255; pixels more transparent than this are background", ge=0, le=255
+    )
+    auto_order: str = Field(
+        "ALPHA,BACKGROUND,AI", description="Comma-separated sources AUTO tries in order (subset of ALPHA,BACKGROUND,AI)"
+    )
+    background_tolerance: int = Field(
+        24,
+        description="BACKGROUND mode: per-channel RGB distance from the page-edge colour that still counts as background",
+        ge=0,
+        le=255,
+    )
+    bleed_mm: float = Field(
+        0,
+        description="Millimetres of bleed painted beyond the cut line by repeating edge pixels (irregular-contour bleed); 0 disables",
+        ge=0.0,
+        le=50.0,
+    )
+    clip_artwork: bool = Field(
+        False,
+        description="Replace page content with the artwork clipped to the cut path. When false (default) the original PDF content stays untouched and only the CutContour layer is added",
+    )
+    dpi: int = Field(
+        150, description="Mask render resolution in dpi; large pages are clamped to a memory budget", ge=72, le=600
+    )
+    extraction_mode: ExtractionMode = Field(
+        ExtractionMode.auto,
+        description="How the subject silhouette is extracted. ALPHA uses existing transparency, BACKGROUND flood-fills a uniform background from the page edges, AI runs subject matting (ONNX model required), AUTO tries the sources in autoOrder",
+    )
+    keep_holes: bool = Field(
+        True, description="Keep fully enclosed holes (the counter of an 'o') as inner cut contours"
+    )
+    layer_name: str | None = Field(None, description="Optional-content layer name; blank defaults to the spot name")
+    merge_gap_mm: float = Field(
+        8,
+        description="Artwork elements separated by less than this gap (mm) merge under a single outer cut contour; 0 keeps every piece separate",
+        ge=0.0,
+    )
+    min_area_mm2: float = Field(
+        1, description="Connected components smaller than this area (mm²) are dropped as noise", ge=0.0
+    )
+    offset_mm: float = Field(
+        0,
+        description="Distance the cut path is moved outward from the silhouette in millimetres (negative moves it inside)",
+    )
+    processing_steps: bool = Field(
+        True,
+        description="Tag the cut layer with ISO 19593-1 processing-step metadata (Structural/Cutting) and suppress it in print output",
+    )
+    roi: str | None = Field(
+        None,
+        description='Optional rough perimeter drawn by the user, as flat x,y pairs in page fractions (top-left origin), e.g. "0.1,0.2,0.9,0.2,0.9,0.9,0.1,0.9". The ring inside the polygon provides the background reference and the cut stays bounded by it',
+    )
+    roi_page: int = Field(0, description="1-based page the roi applies to; 0 or unset applies it to every page", ge=0)
+    smoothness: float = Field(
+        20,
+        description="0..100: higher values simplify harder and apply more smoothing passes to the traced contour",
+        ge=0.0,
+        le=100.0,
+    )
+    spot_name: str = Field(
+        "CutContour",
+        description="Spot colour name the RIP keys on. Case-sensitive; keep 'CutContour' unless the shop specifies a different colourant",
+    )
+    stroke_width_pt: float = Field(0.25, description="Cut stroke width in points", ge=0.0)
+    trim_to_contour: bool = Field(
+        False,
+        description="Set TrimBox to the contour bounding box (BleedBox follows the bleed when bleedMm is positive)",
+    )
+
+
+class CutContourPreviewParams(ApiModel):
+    """
+    Same extraction as cut-contour but returns the traced paths as JSON (page coordinates in points) without modifying the PDF, so the UI can draw the contour over the document. Input:PDF Output:JSON Type:SISO
+    """
+
+    ai_model_id: str | None = Field(
+        None, description="Matting model id for AI mode; blank selects the catalog default (u2net)"
+    )
+    ai_threshold: float = Field(0.4, description="Confidence threshold applied to AI masks, 0..1", ge=0.0, le=1.0)
+    alpha_threshold: int = Field(
+        16, description="Alpha threshold 0-255; pixels more transparent than this are background", ge=0, le=255
+    )
+    auto_order: str = Field(
+        "ALPHA,BACKGROUND,AI", description="Comma-separated sources AUTO tries in order (subset of ALPHA,BACKGROUND,AI)"
+    )
+    background_tolerance: int = Field(
+        24,
+        description="BACKGROUND mode: per-channel RGB distance from the page-edge colour that still counts as background",
+        ge=0,
+        le=255,
+    )
+    bleed_mm: float = Field(
+        0,
+        description="Millimetres of bleed painted beyond the cut line by repeating edge pixels (irregular-contour bleed); 0 disables",
+        ge=0.0,
+        le=50.0,
+    )
+    clip_artwork: bool = Field(
+        False,
+        description="Replace page content with the artwork clipped to the cut path. When false (default) the original PDF content stays untouched and only the CutContour layer is added",
+    )
+    dpi: int = Field(
+        150, description="Mask render resolution in dpi; large pages are clamped to a memory budget", ge=72, le=600
+    )
+    extraction_mode: ExtractionMode = Field(
+        ExtractionMode.auto,
+        description="How the subject silhouette is extracted. ALPHA uses existing transparency, BACKGROUND flood-fills a uniform background from the page edges, AI runs subject matting (ONNX model required), AUTO tries the sources in autoOrder",
+    )
+    keep_holes: bool = Field(
+        True, description="Keep fully enclosed holes (the counter of an 'o') as inner cut contours"
+    )
+    layer_name: str | None = Field(None, description="Optional-content layer name; blank defaults to the spot name")
+    merge_gap_mm: float = Field(
+        8,
+        description="Artwork elements separated by less than this gap (mm) merge under a single outer cut contour; 0 keeps every piece separate",
+        ge=0.0,
+    )
+    min_area_mm2: float = Field(
+        1, description="Connected components smaller than this area (mm²) are dropped as noise", ge=0.0
+    )
+    offset_mm: float = Field(
+        0,
+        description="Distance the cut path is moved outward from the silhouette in millimetres (negative moves it inside)",
+    )
+    processing_steps: bool = Field(
+        True,
+        description="Tag the cut layer with ISO 19593-1 processing-step metadata (Structural/Cutting) and suppress it in print output",
+    )
+    roi: str | None = Field(
+        None,
+        description='Optional rough perimeter drawn by the user, as flat x,y pairs in page fractions (top-left origin), e.g. "0.1,0.2,0.9,0.2,0.9,0.9,0.1,0.9". The ring inside the polygon provides the background reference and the cut stays bounded by it',
+    )
+    roi_page: int = Field(0, description="1-based page the roi applies to; 0 or unset applies it to every page", ge=0)
+    smoothness: float = Field(
+        20,
+        description="0..100: higher values simplify harder and apply more smoothing passes to the traced contour",
+        ge=0.0,
+        le=100.0,
+    )
+    spot_name: str = Field(
+        "CutContour",
+        description="Spot colour name the RIP keys on. Case-sensitive; keep 'CutContour' unless the shop specifies a different colourant",
+    )
+    stroke_width_pt: float = Field(0.25, description="Cut stroke width in points", ge=0.0)
+    trim_to_contour: bool = Field(
+        False,
+        description="Set TrimBox to the contour bounding box (BleedBox follows the bleed when bleedMm is positive)",
+    )
 
 
 class DeleteAttachmentParams(ApiModel):
@@ -1238,6 +1429,437 @@ class PdfToXmlParams(ApiModel):
     """
 
 
+class PrintPreflightAnnotatedParams(ApiModel):
+    """
+    Same analysis as print-preflight, but returns a copy of the PDF with each located issue framed by a colored square annotation (red/orange/blue by severity) and a note per page for document-wide findings. Input:PDF Output:PDF Type:SISO
+    """
+
+    check_bleed_coverage: bool = Field(
+        True,
+        description="Render each page and check the bleed band between TrimBox and BleedBox is actually painted, so trimming cannot reveal white",
+    )
+    disabled_checks: list[str] | None = Field(
+        None, description="Finding codes to skip (e.g. SAFETY_MARGIN, INK_COVERAGE_HIGH); empty runs every check"
+    )
+    fixups: list[str] | None = Field(
+        None,
+        description="Fixup codes to apply on the print-preflight-fix endpoint (e.g. EXTEND_BLEED, FLATTEN_FORM, REMOVE_JAVASCRIPT); empty or absent applies every supported fixup that has something to correct, the sentinel NONE applies none",
+    )
+    hairline_threshold_pt: float = Field(
+        0.25,
+        description="Strokes thinner than this width in points are reported as hairlines at risk of disappearing in print",
+        ge=0.0,
+    )
+    include_summary_page: bool = Field(
+        True,
+        description="Prepend summary pages (verdict, document facts, fonts, colours, findings) to the annotated PDF",
+    )
+    max_image_dpi: int = Field(
+        600,
+        description="Images rendered above this effective resolution are reported as oversampled — heavier than print can use",
+        ge=1,
+    )
+    max_ink_coverage_percent: int = Field(
+        320,
+        description="Painted colours whose total ink coverage exceeds this percentage are reported — drying and registration problems above ~320% in offset",
+        ge=0,
+    )
+    max_spot_count: int = Field(
+        0,
+        description="More spot separations than this are reported — each plate costs makeready; 0 disables the limit",
+        ge=0,
+    )
+    min_font_size_pt: float = Field(
+        5,
+        description="Text rendered smaller than this size in points is reported as too small to print reliably",
+        ge=0.0,
+    )
+    min_image1_bit_dpi: int = Field(
+        1200,
+        description="1-bit (bitmap) images rendered below this effective resolution are reported — line art needs far more resolution than continuous tone",
+        ge=1,
+    )
+    min_image_dpi: int = Field(
+        150, description="Images rendered below this effective resolution are reported as low resolution", ge=1
+    )
+    profile_name: str | None = Field(
+        None,
+        description="Named preflight profile to run with — the profile supplies every threshold, fixups and disabledChecks; request-level parameters for those are ignored. Built-ins ship with the app, customs live in configs/preflight-profiles.json",
+        examples=["offset-press"],
+    )
+    rendered_ink_coverage: bool = Field(
+        False,
+        description="Measure total ink coverage from a Ghostscript-rendered CMYK raster instead of painted fills — sees real stacking and knockouts but adds render time (requires the Ghostscript endpoint group)",
+    )
+    report_language: str | None = Field(
+        None,
+        description="BCP-47 tag for the language of generated report text and finding messages (e.g. fr-FR); falls back to the session locale, then English",
+        examples=["fr-FR"],
+    )
+    required_bleed_mm: float = Field(
+        3, description="Bleed width in millimetres required on every side beyond the TrimBox", ge=0.0
+    )
+    safety_margin_mm: float = Field(
+        3,
+        description="Content inside the trim but closer than this distance in millimetres to the trim edge is reported as at risk of being cut off",
+        ge=0.0,
+    )
+
+
+class PrintPreflightFixParams(ApiModel):
+    """
+    Applies opt-in corrections (PitStop-style fixups) to the PDF: flatten forms, merge spot aliases, generate missing bleed, downsample oversampled images, normalize page geometry, drop JavaScript/attachments and attach an output intent. Returns the corrected copy — the uploaded file is never modified. Applied fixup codes are listed in the X-Preflight-Fixups response header. Input:PDF Output:PDF Type:SISO
+    """
+
+    check_bleed_coverage: bool = Field(
+        True,
+        description="Render each page and check the bleed band between TrimBox and BleedBox is actually painted, so trimming cannot reveal white",
+    )
+    disabled_checks: list[str] | None = Field(
+        None, description="Finding codes to skip (e.g. SAFETY_MARGIN, INK_COVERAGE_HIGH); empty runs every check"
+    )
+    fixups: list[str] | None = Field(
+        None,
+        description="Fixup codes to apply on the print-preflight-fix endpoint (e.g. EXTEND_BLEED, FLATTEN_FORM, REMOVE_JAVASCRIPT); empty or absent applies every supported fixup that has something to correct, the sentinel NONE applies none",
+    )
+    hairline_threshold_pt: float = Field(
+        0.25,
+        description="Strokes thinner than this width in points are reported as hairlines at risk of disappearing in print",
+        ge=0.0,
+    )
+    include_summary_page: bool = Field(
+        True,
+        description="Prepend summary pages (verdict, document facts, fonts, colours, findings) to the annotated PDF",
+    )
+    max_image_dpi: int = Field(
+        600,
+        description="Images rendered above this effective resolution are reported as oversampled — heavier than print can use",
+        ge=1,
+    )
+    max_ink_coverage_percent: int = Field(
+        320,
+        description="Painted colours whose total ink coverage exceeds this percentage are reported — drying and registration problems above ~320% in offset",
+        ge=0,
+    )
+    max_spot_count: int = Field(
+        0,
+        description="More spot separations than this are reported — each plate costs makeready; 0 disables the limit",
+        ge=0,
+    )
+    min_font_size_pt: float = Field(
+        5,
+        description="Text rendered smaller than this size in points is reported as too small to print reliably",
+        ge=0.0,
+    )
+    min_image1_bit_dpi: int = Field(
+        1200,
+        description="1-bit (bitmap) images rendered below this effective resolution are reported — line art needs far more resolution than continuous tone",
+        ge=1,
+    )
+    min_image_dpi: int = Field(
+        150, description="Images rendered below this effective resolution are reported as low resolution", ge=1
+    )
+    profile_name: str | None = Field(
+        None,
+        description="Named preflight profile to run with — the profile supplies every threshold, fixups and disabledChecks; request-level parameters for those are ignored. Built-ins ship with the app, customs live in configs/preflight-profiles.json",
+        examples=["offset-press"],
+    )
+    rendered_ink_coverage: bool = Field(
+        False,
+        description="Measure total ink coverage from a Ghostscript-rendered CMYK raster instead of painted fills — sees real stacking and knockouts but adds render time (requires the Ghostscript endpoint group)",
+    )
+    report_language: str | None = Field(
+        None,
+        description="BCP-47 tag for the language of generated report text and finding messages (e.g. fr-FR); falls back to the session locale, then English",
+        examples=["fr-FR"],
+    )
+    required_bleed_mm: float = Field(
+        3, description="Bleed width in millimetres required on every side beyond the TrimBox", ge=0.0
+    )
+    safety_margin_mm: float = Field(
+        3,
+        description="Content inside the trim but closer than this distance in millimetres to the trim edge is reported as at risk of being cut off",
+        ge=0.0,
+    )
+
+
+class PrintPreflightFixPreviewParams(ApiModel):
+    """
+    Dry run of print-preflight-fix: applies the same requested fixups to an in-memory copy, re-analyses the result and reports which fixups applied plus the before/after finding sets — the corrected document is discarded. Use it to audit what the corrections change before committing to them. Input:PDF Output:JSON Type:SISO
+    """
+
+    check_bleed_coverage: bool = Field(
+        True,
+        description="Render each page and check the bleed band between TrimBox and BleedBox is actually painted, so trimming cannot reveal white",
+    )
+    disabled_checks: list[str] | None = Field(
+        None, description="Finding codes to skip (e.g. SAFETY_MARGIN, INK_COVERAGE_HIGH); empty runs every check"
+    )
+    fixups: list[str] | None = Field(
+        None,
+        description="Fixup codes to apply on the print-preflight-fix endpoint (e.g. EXTEND_BLEED, FLATTEN_FORM, REMOVE_JAVASCRIPT); empty or absent applies every supported fixup that has something to correct, the sentinel NONE applies none",
+    )
+    hairline_threshold_pt: float = Field(
+        0.25,
+        description="Strokes thinner than this width in points are reported as hairlines at risk of disappearing in print",
+        ge=0.0,
+    )
+    include_summary_page: bool = Field(
+        True,
+        description="Prepend summary pages (verdict, document facts, fonts, colours, findings) to the annotated PDF",
+    )
+    max_image_dpi: int = Field(
+        600,
+        description="Images rendered above this effective resolution are reported as oversampled — heavier than print can use",
+        ge=1,
+    )
+    max_ink_coverage_percent: int = Field(
+        320,
+        description="Painted colours whose total ink coverage exceeds this percentage are reported — drying and registration problems above ~320% in offset",
+        ge=0,
+    )
+    max_spot_count: int = Field(
+        0,
+        description="More spot separations than this are reported — each plate costs makeready; 0 disables the limit",
+        ge=0,
+    )
+    min_font_size_pt: float = Field(
+        5,
+        description="Text rendered smaller than this size in points is reported as too small to print reliably",
+        ge=0.0,
+    )
+    min_image1_bit_dpi: int = Field(
+        1200,
+        description="1-bit (bitmap) images rendered below this effective resolution are reported — line art needs far more resolution than continuous tone",
+        ge=1,
+    )
+    min_image_dpi: int = Field(
+        150, description="Images rendered below this effective resolution are reported as low resolution", ge=1
+    )
+    profile_name: str | None = Field(
+        None,
+        description="Named preflight profile to run with — the profile supplies every threshold, fixups and disabledChecks; request-level parameters for those are ignored. Built-ins ship with the app, customs live in configs/preflight-profiles.json",
+        examples=["offset-press"],
+    )
+    rendered_ink_coverage: bool = Field(
+        False,
+        description="Measure total ink coverage from a Ghostscript-rendered CMYK raster instead of painted fills — sees real stacking and knockouts but adds render time (requires the Ghostscript endpoint group)",
+    )
+    report_language: str | None = Field(
+        None,
+        description="BCP-47 tag for the language of generated report text and finding messages (e.g. fr-FR); falls back to the session locale, then English",
+        examples=["fr-FR"],
+    )
+    required_bleed_mm: float = Field(
+        3, description="Bleed width in millimetres required on every side beyond the TrimBox", ge=0.0
+    )
+    safety_margin_mm: float = Field(
+        3,
+        description="Content inside the trim but closer than this distance in millimetres to the trim edge is reported as at risk of being cut off",
+        ge=0.0,
+    )
+
+
+class PrintPreflightParams(ApiModel):
+    """
+    Analyzes a PDF for print production and reports issues: fonts not embedded, RGB or spot colors, low-resolution images, missing or unpainted bleed, hairline strokes, transparency, annotations inside the trim and mixed page sizes. Input:PDF Output:JSON Type:SISO
+    """
+
+    check_bleed_coverage: bool = Field(
+        True,
+        description="Render each page and check the bleed band between TrimBox and BleedBox is actually painted, so trimming cannot reveal white",
+    )
+    disabled_checks: list[str] | None = Field(
+        None, description="Finding codes to skip (e.g. SAFETY_MARGIN, INK_COVERAGE_HIGH); empty runs every check"
+    )
+    fixups: list[str] | None = Field(
+        None,
+        description="Fixup codes to apply on the print-preflight-fix endpoint (e.g. EXTEND_BLEED, FLATTEN_FORM, REMOVE_JAVASCRIPT); empty or absent applies every supported fixup that has something to correct, the sentinel NONE applies none",
+    )
+    hairline_threshold_pt: float = Field(
+        0.25,
+        description="Strokes thinner than this width in points are reported as hairlines at risk of disappearing in print",
+        ge=0.0,
+    )
+    include_summary_page: bool = Field(
+        True,
+        description="Prepend summary pages (verdict, document facts, fonts, colours, findings) to the annotated PDF",
+    )
+    max_image_dpi: int = Field(
+        600,
+        description="Images rendered above this effective resolution are reported as oversampled — heavier than print can use",
+        ge=1,
+    )
+    max_ink_coverage_percent: int = Field(
+        320,
+        description="Painted colours whose total ink coverage exceeds this percentage are reported — drying and registration problems above ~320% in offset",
+        ge=0,
+    )
+    max_spot_count: int = Field(
+        0,
+        description="More spot separations than this are reported — each plate costs makeready; 0 disables the limit",
+        ge=0,
+    )
+    min_font_size_pt: float = Field(
+        5,
+        description="Text rendered smaller than this size in points is reported as too small to print reliably",
+        ge=0.0,
+    )
+    min_image1_bit_dpi: int = Field(
+        1200,
+        description="1-bit (bitmap) images rendered below this effective resolution are reported — line art needs far more resolution than continuous tone",
+        ge=1,
+    )
+    min_image_dpi: int = Field(
+        150, description="Images rendered below this effective resolution are reported as low resolution", ge=1
+    )
+    profile_name: str | None = Field(
+        None,
+        description="Named preflight profile to run with — the profile supplies every threshold, fixups and disabledChecks; request-level parameters for those are ignored. Built-ins ship with the app, customs live in configs/preflight-profiles.json",
+        examples=["offset-press"],
+    )
+    rendered_ink_coverage: bool = Field(
+        False,
+        description="Measure total ink coverage from a Ghostscript-rendered CMYK raster instead of painted fills — sees real stacking and knockouts but adds render time (requires the Ghostscript endpoint group)",
+    )
+    report_language: str | None = Field(
+        None,
+        description="BCP-47 tag for the language of generated report text and finding messages (e.g. fr-FR); falls back to the session locale, then English",
+        examples=["fr-FR"],
+    )
+    required_bleed_mm: float = Field(
+        3, description="Bleed width in millimetres required on every side beyond the TrimBox", ge=0.0
+    )
+    safety_margin_mm: float = Field(
+        3,
+        description="Content inside the trim but closer than this distance in millimetres to the trim edge is reported as at risk of being cut off",
+        ge=0.0,
+    )
+
+
+class PrintPreflightProfilesParams(ApiModel):
+    """
+    Creates or replaces a custom preflight profile under its name. Built-in names are reserved.
+    """
+
+    builtin: bool | None = Field(None, description="Shipped with the application — true for built-ins, ignored on save")
+    check_bleed_coverage: bool | None = Field(
+        None, description="Render each page and check the bleed band is actually painted"
+    )
+    description: str | None = Field(None, description="Human-readable summary shown in the profile picker")
+    disabled_checks: list[str] | None = Field(None, description="Finding codes to skip entirely")
+    fixups: list[str] | None = Field(None, description='Fixup codes to apply; "NONE" disables all fixups')
+    hairline_threshold_pt: float | None = Field(
+        None, description="Strokes thinner than this width in points are reported as hairlines"
+    )
+    include_summary_page: bool | None = Field(None, description="Prepend summary pages to the annotated PDF")
+    max_image_dpi: int | None = Field(
+        None, description="Images rendered above this effective resolution are reported as oversampled"
+    )
+    max_ink_coverage_percent: int | None = Field(
+        None, description="Painted colours whose total ink coverage exceeds this percentage are reported"
+    )
+    max_spot_count: int | None = Field(
+        None, description="More spot separations than this are reported; 0 disables the limit"
+    )
+    min_font_size_pt: float | None = Field(
+        None, description="Text rendered smaller than this size in points is reported"
+    )
+    min_image1_bit_dpi: int | None = Field(
+        None, description="1-bit images rendered below this effective resolution are reported"
+    )
+    min_image_dpi: int | None = Field(None, description="Images rendered below this effective resolution are reported")
+    name: str | None = Field(
+        None, description="Unique profile name — the key used in profileName", examples=["offset-press"]
+    )
+    rendered_ink_coverage: bool | None = Field(
+        None, description="Measure ink coverage from a rendered CMYK raster instead of painted fills"
+    )
+    required_bleed_mm: float | None = Field(
+        None, description="Bleed width in millimetres required on every side beyond the TrimBox"
+    )
+    safety_margin_mm: float | None = Field(
+        None, description="Content closer than this distance in millimetres to the trim edge is reported"
+    )
+
+
+class PrintPreflightReportParams(ApiModel):
+    """
+    Same analysis as print-preflight, but returns a standalone PDF report: verdict, document facts, fonts, colours, images and the full findings list — without the source document's pages. Input:PDF Output:PDF Type:SISO
+    """
+
+    check_bleed_coverage: bool = Field(
+        True,
+        description="Render each page and check the bleed band between TrimBox and BleedBox is actually painted, so trimming cannot reveal white",
+    )
+    disabled_checks: list[str] | None = Field(
+        None, description="Finding codes to skip (e.g. SAFETY_MARGIN, INK_COVERAGE_HIGH); empty runs every check"
+    )
+    fixups: list[str] | None = Field(
+        None,
+        description="Fixup codes to apply on the print-preflight-fix endpoint (e.g. EXTEND_BLEED, FLATTEN_FORM, REMOVE_JAVASCRIPT); empty or absent applies every supported fixup that has something to correct, the sentinel NONE applies none",
+    )
+    hairline_threshold_pt: float = Field(
+        0.25,
+        description="Strokes thinner than this width in points are reported as hairlines at risk of disappearing in print",
+        ge=0.0,
+    )
+    include_summary_page: bool = Field(
+        True,
+        description="Prepend summary pages (verdict, document facts, fonts, colours, findings) to the annotated PDF",
+    )
+    max_image_dpi: int = Field(
+        600,
+        description="Images rendered above this effective resolution are reported as oversampled — heavier than print can use",
+        ge=1,
+    )
+    max_ink_coverage_percent: int = Field(
+        320,
+        description="Painted colours whose total ink coverage exceeds this percentage are reported — drying and registration problems above ~320% in offset",
+        ge=0,
+    )
+    max_spot_count: int = Field(
+        0,
+        description="More spot separations than this are reported — each plate costs makeready; 0 disables the limit",
+        ge=0,
+    )
+    min_font_size_pt: float = Field(
+        5,
+        description="Text rendered smaller than this size in points is reported as too small to print reliably",
+        ge=0.0,
+    )
+    min_image1_bit_dpi: int = Field(
+        1200,
+        description="1-bit (bitmap) images rendered below this effective resolution are reported — line art needs far more resolution than continuous tone",
+        ge=1,
+    )
+    min_image_dpi: int = Field(
+        150, description="Images rendered below this effective resolution are reported as low resolution", ge=1
+    )
+    profile_name: str | None = Field(
+        None,
+        description="Named preflight profile to run with — the profile supplies every threshold, fixups and disabledChecks; request-level parameters for those are ignored. Built-ins ship with the app, customs live in configs/preflight-profiles.json",
+        examples=["offset-press"],
+    )
+    rendered_ink_coverage: bool = Field(
+        False,
+        description="Measure total ink coverage from a Ghostscript-rendered CMYK raster instead of painted fills — sees real stacking and knockouts but adds render time (requires the Ghostscript endpoint group)",
+    )
+    report_language: str | None = Field(
+        None,
+        description="BCP-47 tag for the language of generated report text and finding messages (e.g. fr-FR); falls back to the session locale, then English",
+        examples=["fr-FR"],
+    )
+    required_bleed_mm: float = Field(
+        3, description="Bleed width in millimetres required on every side beyond the TrimBox", ge=0.0
+    )
+    safety_margin_mm: float = Field(
+        3,
+        description="Content inside the trim but closer than this distance in millimetres to the trim edge is reported as at risk of being cut off",
+        ge=0.0,
+    )
+
+
 class CustomMode(StrEnum):
     """
     The custom mode for page rearrangement. Valid values are:
@@ -1463,6 +2085,18 @@ class Orientation1(StrEnum):
     landscape = "LANDSCAPE"
 
 
+class PageBox1(StrEnum):
+    """
+    Page box each source page is measured from when computing the scale. Pages without that box fall back to their MediaBox
+    """
+
+    media_box = "MEDIA_BOX"
+    crop_box = "CROP_BOX"
+    trim_box = "TRIM_BOX"
+    bleed_box = "BLEED_BOX"
+    art_box = "ART_BOX"
+
+
 class PageSize(StrEnum):
     """
     The scale of pages in the output PDF. Acceptable values are A0-A6, LETTER, LEGAL, KEEP.
@@ -1488,6 +2122,10 @@ class ScalePagesParams(ApiModel):
     orientation: Orientation1 = Field(
         Orientation1.portrait,
         description="Orientation to apply to the target page size. Ignored when pageSize is KEEP.",
+    )
+    page_box: PageBox1 = Field(
+        PageBox1.media_box,
+        description="Page box each source page is measured from when computing the scale. Pages without that box fall back to their MediaBox",
     )
     page_size: PageSize = Field(
         ..., description="The scale of pages in the output PDF. Acceptable values are A0-A6, LETTER, LEGAL, KEEP."
@@ -1546,6 +2184,102 @@ class ScannerEffectParams(ApiModel):
     rotation: Rotation = Field(..., description="Rotation preset", examples=["none"])
     rotation_value: int | None = None
     yellowish: bool | None = Field(None, description="Simulate yellowed paper", examples=[False])
+
+
+class BleedMethod(StrEnum):
+    """
+    How bleed content is generated. MIRROR reflects the page's vector content across the trim edge (lossless). MIRROR_IMAGE mirrors a rendered strip (robust on shadings/transparency). PIXEL_REPEAT stretches the last edge pixel (safer when text touches the trim edge). UPSCALE enlarges the page content until it covers the BleedBox (final printed size shrinks slightly)
+    """
+
+    mirror = "MIRROR"
+    mirror_image = "MIRROR_IMAGE"
+    pixel_repeat = "PIXEL_REPEAT"
+    upscale = "UPSCALE"
+
+
+class SetPageBoxesParams(ApiModel):
+    """
+    Sets MediaBox, CropBox, TrimBox, BleedBox and/or ArtBox on every page of the input PDF, either from explicit rectangles or from prepress shortcuts (bleed around trim, trim inset from media). Can also generate real bleed content between the TrimBox and BleedBox (mirrored or repeated edge content, like PitStop's Add Bleed) and draw crop marks. Input:PDF Output:PDF Type:SISO
+    """
+
+    add_crop_marks: bool = Field(
+        False, description="Draw crop marks at the TrimBox corners, in the slug area beyond the bleed"
+    )
+    art_box: str | None = Field(
+        None,
+        description='ArtBox as "x,y,width,height" in points, applied to every page',
+        examples=["20,20,555.28,801.89"],
+    )
+    bleed_bottom_mm: float = Field(
+        -1, description="Bleed width in millimetres on the bottom edge. Negative falls back to bleedMm"
+    )
+    bleed_box: str | None = Field(
+        None,
+        description='BleedBox as "x,y,width,height" in points, applied to every page',
+        examples=["14.17,14.17,567.11,813.71"],
+    )
+    bleed_corners: bool = Field(True, description="Generate bleed in the corners in addition to the edges")
+    bleed_dpi: int = Field(300, description="Render resolution used by MIRROR_IMAGE and PIXEL_REPEAT", ge=72, le=600)
+    bleed_inset_mm: float = Field(
+        0,
+        description="Skip this many millimetres of content inside the trim edge before mirroring, to jump over an inner white margin",
+        ge=0.0,
+    )
+    bleed_left_mm: float = Field(
+        -1, description="Bleed width in millimetres on the left edge. Negative falls back to bleedMm"
+    )
+    bleed_method: BleedMethod = Field(
+        BleedMethod.mirror,
+        description="How bleed content is generated. MIRROR reflects the page's vector content across the trim edge (lossless). MIRROR_IMAGE mirrors a rendered strip (robust on shadings/transparency). PIXEL_REPEAT stretches the last edge pixel (safer when text touches the trim edge). UPSCALE enlarges the page content until it covers the BleedBox (final printed size shrinks slightly)",
+    )
+    bleed_mm: float = Field(
+        0,
+        description="BleedBox expanded by this many millimetres around the resolved TrimBox on every page. Ignored when bleedBox is set",
+        ge=0.0,
+    )
+    bleed_right_mm: float = Field(
+        -1, description="Bleed width in millimetres on the right edge. Negative falls back to bleedMm"
+    )
+    bleed_top_mm: float = Field(
+        -1, description="Bleed width in millimetres on the top edge. Negative falls back to bleedMm"
+    )
+    copy_missing_from_media_box: bool = Field(
+        False,
+        description="Copy the MediaBox into any of CropBox/TrimBox/BleedBox/ArtBox still unset after the other parameters are applied",
+    )
+    crop_box: str | None = Field(
+        None,
+        description='CropBox as "x,y,width,height" in points, applied to every page',
+        examples=["0,0,595.28,841.89"],
+    )
+    crop_mark_length_mm: float = Field(5, description="Crop mark length in millimetres", ge=0.0)
+    crop_mark_offset_mm: float = Field(
+        3, description="Gap in millimetres between the trim edge and where each crop mark starts", ge=0.0
+    )
+    crop_mark_weight_pt: float = Field(0.25, description="Crop mark stroke width in points", ge=0.0)
+    derive_from_crop_marks: bool = Field(
+        False,
+        description="Derive the TrimBox from crop marks painted on the page (like pdfToolbox's derive geometry fixup). Used only when no explicit trimBox or trimMarginMm resolves a trim; fails the page when the mark layout is absent or ambiguous",
+    )
+    generate_bleed: bool = Field(
+        False,
+        description="Paint real bleed content between TrimBox and BleedBox on every page (mirrored or repeated edge content), so trimming leaves no white edge. Requires a positive bleedMm or per-side amount, or an explicit bleedBox larger than the trim",
+    )
+    media_box: str | None = Field(
+        None,
+        description='MediaBox as "x,y,width,height" in points, applied to every page',
+        examples=["0,0,595.28,841.89"],
+    )
+    trim_box: str | None = Field(
+        None,
+        description='TrimBox as "x,y,width,height" in points, applied to every page',
+        examples=["20,20,555.28,801.89"],
+    )
+    trim_margin_mm: float = Field(
+        0,
+        description="TrimBox set to the MediaBox shrunk by this margin in millimetres on every side. Ignored when trimBox is set",
+        ge=0.0,
+    )
 
 
 class SplitBySizeOrCountParams(ApiModel):
@@ -1665,6 +2399,12 @@ class TextRange(ApiModel):
         description="A short, distinctive phrase (5–15 words) that marks where redaction begins (inclusive). Must appear verbatim in the document — e.g. a section heading or a unique sentence fragment.",
         min_length=1,
     )
+
+
+class TextToOutlinesParams(ApiModel):
+    """
+    Converts all text in the PDF to vector outlines using Ghostscript (-dNoOutputFonts), removing font dependencies for prepress workflows. Input:PDF Output:PDF Type:SISO
+    """
 
 
 class TimestampPdfParams(ApiModel):
@@ -1853,6 +2593,8 @@ class Model(
         | VectorToPdfParams
         | BookletImpositionParams
         | CropParams
+        | CutContourParams
+        | CutContourPreviewParams
         | EditTableOfContentsParams
         | EditTextParams
         | MergePdfsParams
@@ -1864,6 +2606,7 @@ class Model(
         | RemovePagesParams
         | RotatePdfParams
         | ScalePagesParams
+        | SetPageBoxesParams
         | SplitBySizeOrCountParams
         | SplitForPosterPrintParams
         | SplitPagesParams
@@ -1891,12 +2634,19 @@ class Model(
         | RepairParams
         | ReplaceInvertPdfParams
         | ScannerEffectParams
+        | TextToOutlinesParams
         | UnlockPdfFormsParams
         | UpdateMetadataParams
         | AccessibilityReportParams
         | AddPasswordParams
         | AddWatermarkParams
         | AutoRedactParams
+        | PrintPreflightParams
+        | PrintPreflightAnnotatedParams
+        | PrintPreflightFixParams
+        | PrintPreflightFixPreviewParams
+        | PrintPreflightProfilesParams
+        | PrintPreflightReportParams
         | RedactParams
         | RedactExecuteParams
         | RemoveCertSignParams
@@ -1934,6 +2684,8 @@ class Model(
         | VectorToPdfParams
         | BookletImpositionParams
         | CropParams
+        | CutContourParams
+        | CutContourPreviewParams
         | EditTableOfContentsParams
         | EditTextParams
         | MergePdfsParams
@@ -1945,6 +2697,7 @@ class Model(
         | RemovePagesParams
         | RotatePdfParams
         | ScalePagesParams
+        | SetPageBoxesParams
         | SplitBySizeOrCountParams
         | SplitForPosterPrintParams
         | SplitPagesParams
@@ -1972,12 +2725,19 @@ class Model(
         | RepairParams
         | ReplaceInvertPdfParams
         | ScannerEffectParams
+        | TextToOutlinesParams
         | UnlockPdfFormsParams
         | UpdateMetadataParams
         | AccessibilityReportParams
         | AddPasswordParams
         | AddWatermarkParams
         | AutoRedactParams
+        | PrintPreflightParams
+        | PrintPreflightAnnotatedParams
+        | PrintPreflightFixParams
+        | PrintPreflightFixPreviewParams
+        | PrintPreflightProfilesParams
+        | PrintPreflightReportParams
         | RedactParams
         | RedactExecuteParams
         | RemoveCertSignParams
@@ -2016,6 +2776,8 @@ type ParamToolModel = (
     | VectorToPdfParams
     | BookletImpositionParams
     | CropParams
+    | CutContourParams
+    | CutContourPreviewParams
     | EditTableOfContentsParams
     | EditTextParams
     | MergePdfsParams
@@ -2027,6 +2789,7 @@ type ParamToolModel = (
     | RemovePagesParams
     | RotatePdfParams
     | ScalePagesParams
+    | SetPageBoxesParams
     | SplitBySizeOrCountParams
     | SplitForPosterPrintParams
     | SplitPagesParams
@@ -2054,12 +2817,19 @@ type ParamToolModel = (
     | RepairParams
     | ReplaceInvertPdfParams
     | ScannerEffectParams
+    | TextToOutlinesParams
     | UnlockPdfFormsParams
     | UpdateMetadataParams
     | AccessibilityReportParams
     | AddPasswordParams
     | AddWatermarkParams
     | AutoRedactParams
+    | PrintPreflightParams
+    | PrintPreflightAnnotatedParams
+    | PrintPreflightFixParams
+    | PrintPreflightFixPreviewParams
+    | PrintPreflightProfilesParams
+    | PrintPreflightReportParams
     | RedactParams
     | RedactExecuteParams
     | RemoveCertSignParams
@@ -2099,6 +2869,8 @@ class ToolEndpoint(StrEnum):
     VECTOR_TO_PDF = "/api/v1/convert/vector/pdf"
     BOOKLET_IMPOSITION = "/api/v1/general/booklet-imposition"
     CROP = "/api/v1/general/crop"
+    CUT_CONTOUR = "/api/v1/general/cut-contour"
+    CUT_CONTOUR_PREVIEW = "/api/v1/general/cut-contour-preview"
     EDIT_TABLE_OF_CONTENTS = "/api/v1/general/edit-table-of-contents"
     EDIT_TEXT = "/api/v1/general/edit-text"
     MERGE_PDFS = "/api/v1/general/merge-pdfs"
@@ -2110,6 +2882,7 @@ class ToolEndpoint(StrEnum):
     REMOVE_PAGES = "/api/v1/general/remove-pages"
     ROTATE_PDF = "/api/v1/general/rotate-pdf"
     SCALE_PAGES = "/api/v1/general/scale-pages"
+    SET_PAGE_BOXES = "/api/v1/general/set-page-boxes"
     SPLIT_BY_SIZE_OR_COUNT = "/api/v1/general/split-by-size-or-count"
     SPLIT_FOR_POSTER_PRINT = "/api/v1/general/split-for-poster-print"
     SPLIT_PAGES = "/api/v1/general/split-pages"
@@ -2137,12 +2910,19 @@ class ToolEndpoint(StrEnum):
     REPAIR = "/api/v1/misc/repair"
     REPLACE_INVERT_PDF = "/api/v1/misc/replace-invert-pdf"
     SCANNER_EFFECT = "/api/v1/misc/scanner-effect"
+    TEXT_TO_OUTLINES = "/api/v1/misc/text-to-outlines"
     UNLOCK_PDF_FORMS = "/api/v1/misc/unlock-pdf-forms"
     UPDATE_METADATA = "/api/v1/misc/update-metadata"
     ACCESSIBILITY_REPORT = "/api/v1/security/accessibility-report"
     ADD_PASSWORD = "/api/v1/security/add-password"
     ADD_WATERMARK = "/api/v1/security/add-watermark"
     AUTO_REDACT = "/api/v1/security/auto-redact"
+    PRINT_PREFLIGHT = "/api/v1/security/print-preflight"
+    PRINT_PREFLIGHT_ANNOTATED = "/api/v1/security/print-preflight-annotated"
+    PRINT_PREFLIGHT_FIX = "/api/v1/security/print-preflight-fix"
+    PRINT_PREFLIGHT_FIX_PREVIEW = "/api/v1/security/print-preflight-fix-preview"
+    PRINT_PREFLIGHT_PROFILES = "/api/v1/security/print-preflight-profiles"
+    PRINT_PREFLIGHT_REPORT = "/api/v1/security/print-preflight-report"
     REDACT = "/api/v1/security/redact"
     REDACT_EXECUTE = "/api/v1/security/redact-execute"
     REMOVE_CERT_SIGN = "/api/v1/security/remove-cert-sign"
@@ -2180,6 +2960,8 @@ OPERATIONS: dict[ToolEndpoint, ParamToolModelType] = {
     ToolEndpoint.VECTOR_TO_PDF: VectorToPdfParams,
     ToolEndpoint.BOOKLET_IMPOSITION: BookletImpositionParams,
     ToolEndpoint.CROP: CropParams,
+    ToolEndpoint.CUT_CONTOUR: CutContourParams,
+    ToolEndpoint.CUT_CONTOUR_PREVIEW: CutContourPreviewParams,
     ToolEndpoint.EDIT_TABLE_OF_CONTENTS: EditTableOfContentsParams,
     ToolEndpoint.EDIT_TEXT: EditTextParams,
     ToolEndpoint.MERGE_PDFS: MergePdfsParams,
@@ -2191,6 +2973,7 @@ OPERATIONS: dict[ToolEndpoint, ParamToolModelType] = {
     ToolEndpoint.REMOVE_PAGES: RemovePagesParams,
     ToolEndpoint.ROTATE_PDF: RotatePdfParams,
     ToolEndpoint.SCALE_PAGES: ScalePagesParams,
+    ToolEndpoint.SET_PAGE_BOXES: SetPageBoxesParams,
     ToolEndpoint.SPLIT_BY_SIZE_OR_COUNT: SplitBySizeOrCountParams,
     ToolEndpoint.SPLIT_FOR_POSTER_PRINT: SplitForPosterPrintParams,
     ToolEndpoint.SPLIT_PAGES: SplitPagesParams,
@@ -2218,12 +3001,19 @@ OPERATIONS: dict[ToolEndpoint, ParamToolModelType] = {
     ToolEndpoint.REPAIR: RepairParams,
     ToolEndpoint.REPLACE_INVERT_PDF: ReplaceInvertPdfParams,
     ToolEndpoint.SCANNER_EFFECT: ScannerEffectParams,
+    ToolEndpoint.TEXT_TO_OUTLINES: TextToOutlinesParams,
     ToolEndpoint.UNLOCK_PDF_FORMS: UnlockPdfFormsParams,
     ToolEndpoint.UPDATE_METADATA: UpdateMetadataParams,
     ToolEndpoint.ACCESSIBILITY_REPORT: AccessibilityReportParams,
     ToolEndpoint.ADD_PASSWORD: AddPasswordParams,
     ToolEndpoint.ADD_WATERMARK: AddWatermarkParams,
     ToolEndpoint.AUTO_REDACT: AutoRedactParams,
+    ToolEndpoint.PRINT_PREFLIGHT: PrintPreflightParams,
+    ToolEndpoint.PRINT_PREFLIGHT_ANNOTATED: PrintPreflightAnnotatedParams,
+    ToolEndpoint.PRINT_PREFLIGHT_FIX: PrintPreflightFixParams,
+    ToolEndpoint.PRINT_PREFLIGHT_FIX_PREVIEW: PrintPreflightFixPreviewParams,
+    ToolEndpoint.PRINT_PREFLIGHT_PROFILES: PrintPreflightProfilesParams,
+    ToolEndpoint.PRINT_PREFLIGHT_REPORT: PrintPreflightReportParams,
     ToolEndpoint.REDACT: RedactParams,
     ToolEndpoint.REDACT_EXECUTE: RedactExecuteParams,
     ToolEndpoint.REMOVE_CERT_SIGN: RemoveCertSignParams,

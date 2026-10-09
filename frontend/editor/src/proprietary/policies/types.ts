@@ -17,6 +17,8 @@ export interface WirePipelineStep {
   operation: string;
   parameters: Record<string, unknown>;
   fileParameters?: Record<string, string>;
+  /** Per-document gate on the step (see PipelineStep.java `when`); absent means unconditional. */
+  when?: Condition;
 }
 
 export interface WireOutputOptions {
@@ -109,10 +111,28 @@ export type PolicyRunStatus =
   | "FAILED"
   | "CANCELLED";
 
+/** The structured report a pipeline step attached to its output file. */
+export interface StepReport {
+  preflight?: {
+    verdict?: "pass" | "warn" | "fail";
+    errors?: number;
+    warnings?: number;
+    fixupsApplied?: string[];
+    preErrors?: number | null;
+    preWarnings?: number | null;
+  };
+  prepress?: {
+    chainId?: string;
+    version?: string;
+  };
+}
+
 /** One file a run produced, downloadable via /api/v1/general/files/{fileId}. */
 export interface RunOutputFile {
   fileId: string;
   fileName: string | null;
+  /** The producing step's report (e.g. preflight verdict), when the tool emitted one. */
+  report?: StepReport | null;
 }
 
 export interface PolicyRunView {

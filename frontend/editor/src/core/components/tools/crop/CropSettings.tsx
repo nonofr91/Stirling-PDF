@@ -10,6 +10,17 @@ import {
 } from "@app/hooks/tools/shared/useViewScopedFiles";
 import CropAreaSelector from "@app/components/tools/crop/CropAreaSelector";
 import CropCoordinateInputs from "@app/components/tools/crop/CropCoordinateInputs";
+import PageBoxSelect from "@app/components/tools/shared/PageBoxSelect";
+import PageBoxDiagram from "@app/components/tools/shared/PageBoxDiagram";
+import { PageBox, PAGE_BOXES } from "@app/constants/pageBoxConstants";
+import {
+  readPageBoxSnapshots,
+  pdfRectToPageFractions,
+  PageBoxSnapshot,
+} from "@app/utils/pageBoxReader";
+import { useSetPageOverlay } from "@app/contexts/PageOverlayContext";
+import { PAGE_BOX_COLORS } from "@app/constants/pageBoxConstants";
+import { getFormFillFileId } from "@app/types/fileContext";
 import CropPageSelection from "@app/components/tools/crop/CropPageSelection";
 import { DEFAULT_CROP_AREA } from "@app/constants/cropConstants";
 import { PAGE_SIZES } from "@app/constants/pageSizeConstants";
@@ -36,6 +47,30 @@ const CropSettings = ({ parameters, disabled = false }: CropSettingsProps) => {
   const [selectedFile = null] = useViewScopedFiles();
 
   const [pdfBounds, setPdfBounds] = useState<PDFBounds | null>(null);
+  const [pageRotation, setPageRotation] = useState(0);
+  const [boxSnapshots, setBoxSnapshots] = useState<
+    (PageBoxSnapshot | null)[] | null
+  >(null);
+  const setOverlay = useSetPageOverlay();
+  // The diagram and placeholders show the first page; the published overlay
+  // uses every page's own boxes.
+  const boxSnapshot = boxSnapshots?.[0] ?? null;
+
+  // Named-box cropping needs every page's effective boxes — pages of a
+  // heterogeneous document do not share geometry.
+  useEffect(() => {
+    let cancelled = false;
+    if (!selectedFile || !parameters.parameters.cropToBox) {
+      setBoxSnapshots(null);
+      return;
+    }
+    readPageBoxSnapshots(selectedFile).then((s) => {
+      if (!cancelled) setBoxSnapshots(s);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedFile, parameters.parameters.cropToBox]);
 
   useEffect(() => {
     const loadPDFDimensions = async () => {
@@ -57,6 +92,7 @@ const CropSettings = ({ parameters, disabled = false }: CropSettingsProps) => {
 
         const firstPage = await pdf.getPage(1);
         const viewport = firstPage.getViewport({ scale: 1 });
+        setPageRotation(firstPage.rotate ?? 0);
 
         const pdfWidth = viewport.width;
         const pdfHeight = viewport.height;
@@ -115,6 +151,83 @@ const CropSettings = ({ parameters, disabled = false }: CropSettingsProps) => {
 
   // Current crop area
   const cropArea = parameters.getCropArea();
+  const { cropToBox, autoCrop, pageBox } = parameters.parameters;
+
+  // Mirror the tool's geometry on the viewer's pages. Manual cropArea lives in
+  // the pdf.js viewport space (page rotation applied), while the overlay layer
+  // sits inside the page's rotation transform (unrotated space) — on a rotated
+  // document the two frames differ, so the manual rect is only pushed when the
+  // page carries no rotation. Named boxes are in unrotated user space and stay
+  // aligned under any rotation.
+  useEffect(() => {
+    const documentKey = selectedFile ? getFormFillFileId(selectedFile) : null;
+    if (!documentKey) {
+      setOverlay(null);
+      return;
+    }
+    if (cropToBox) {
+      if (!boxSnapshots) {
+        setOverlay(null);
+        return;
+      }
+      setOverlay({
+        documentKey,
+        rects: [],
+        rectsPerPage: boxSnapshots.map((pageSnapshot) =>
+          pageSnapshot
+            ? PAGE_BOXES.map((name) => ({
+                ...pdfRectToPageFractions(
+                  pageSnapshot.boxes[name],
+                  pageSnapshot.boxes.CROP_BOX,
+                ),
+                color: PAGE_BOX_COLORS[name],
+                dashed: !pageSnapshot.explicit.has(name),
+                emphasized: name === pageBox,
+                label: name.replace("_BOX", ""),
+                kind: "box",
+              }))
+            : [],
+        ),
+      });
+    } else if (
+      !autoCrop &&
+      pdfBounds &&
+      pageRotation % 360 === 0 &&
+      cropArea.width > 0 &&
+      cropArea.height > 0
+    ) {
+      const viewport = {
+        x: 0,
+        y: 0,
+        width: pdfBounds.actualWidth,
+        height: pdfBounds.actualHeight,
+      };
+      setOverlay({
+        documentKey,
+        rects: [
+          {
+            ...pdfRectToPageFractions(cropArea, viewport),
+            color: "var(--color-primary-500)",
+            emphasized: true,
+          },
+        ],
+      });
+    } else {
+      setOverlay(null);
+    }
+  }, [
+    selectedFile,
+    cropToBox,
+    autoCrop,
+    pageBox,
+    boxSnapshots,
+    pdfBounds,
+    pageRotation,
+    cropArea,
+    setOverlay,
+  ]);
+
+  useEffect(() => () => setOverlay(null), [setOverlay]);
 
   // Handle crop area changes from the selector
   const handleCropAreaChange = (newCropArea: Rectangle) => {
@@ -168,14 +281,58 @@ const CropSettings = ({ parameters, disabled = false }: CropSettingsProps) => {
       <Checkbox
         label={t("crop.autoCrop", "Auto-crop whitespace")}
         checked={parameters.parameters.autoCrop}
-        onChange={(e) =>
-          parameters.updateParameter("autoCrop", e.currentTarget.checked)
-        }
+        onChange={(e) => {
+          parameters.updateParameter("autoCrop", e.currentTarget.checked);
+          if (e.currentTarget.checked) {
+            parameters.updateParameter("cropToBox", false);
+          }
+        }}
         disabled={disabled}
       />
 
-      {/* PDF Preview with Crop Selector - Only show when autoCrop is false */}
-      {!parameters.parameters.autoCrop && (
+      {/* Crop to Page Box Checkbox + box selection */}
+      <Checkbox
+        label={t("crop.cropToBox", "Crop to a named page box")}
+        checked={parameters.parameters.cropToBox}
+        onChange={(e) => {
+          parameters.updateParameter("cropToBox", e.currentTarget.checked);
+          if (e.currentTarget.checked) {
+            parameters.updateParameter("autoCrop", false);
+          }
+        }}
+        disabled={disabled}
+      />
+
+      {parameters.parameters.cropToBox && (
+        <PageBoxSelect
+          value={parameters.parameters.pageBox}
+          onChange={(v: PageBox) => parameters.updateParameter("pageBox", v)}
+          disabled={disabled}
+        />
+      )}
+
+      {parameters.parameters.cropToBox && boxSnapshot && (
+        <PageBoxDiagram
+          mediaBox={boxSnapshot.boxes.MEDIA_BOX}
+          highlight={parameters.parameters.pageBox}
+          background={
+            selectedStub?.thumbnailUrl && boxSnapshot.rotation % 360 === 0
+              ? {
+                  src: selectedStub.thumbnailUrl,
+                  rect: boxSnapshot.boxes.CROP_BOX,
+                }
+              : undefined
+          }
+          boxes={PAGE_BOXES.map((name) => ({
+            name,
+            rect: boxSnapshot.boxes[name],
+            inherited: !boxSnapshot.explicit.has(name),
+          }))}
+        />
+      )}
+
+      {/* PDF Preview with Crop Selector - Only show for manual rectangle mode */}
+      {!parameters.parameters.autoCrop && !parameters.parameters.cropToBox && (
         <Stack gap="xs">
           <Group justify="space-between" align="center">
             <Text size="sm" fw={500}>
@@ -227,8 +384,8 @@ const CropSettings = ({ parameters, disabled = false }: CropSettingsProps) => {
         </Stack>
       )}
 
-      {/* Manual Coordinate Input - Only show when autoCrop is false */}
-      {!parameters.parameters.autoCrop && (
+      {/* Manual Coordinate Input - Only show for manual rectangle mode */}
+      {!parameters.parameters.autoCrop && !parameters.parameters.cropToBox && (
         <CropCoordinateInputs
           cropArea={cropArea}
           onCoordinateChange={handleCoordinateChange}

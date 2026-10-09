@@ -24,9 +24,12 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -34,6 +37,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.core.io.AbstractResource;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.ResponseEntity;
@@ -46,6 +50,8 @@ import stirling.software.common.service.InternalApiTimeoutException;
 import stirling.software.common.service.ToolMetadataService;
 import stirling.software.common.util.TempFileManager;
 import stirling.software.common.util.TempFileRegistry;
+import stirling.software.proprietary.document.conditions.Condition;
+import stirling.software.proprietary.document.conditions.ConditionInput;
 import stirling.software.proprietary.policy.model.OutputSpec;
 import stirling.software.proprietary.policy.model.PipelineDefinition;
 import stirling.software.proprietary.policy.model.PipelineStep;
@@ -376,6 +382,474 @@ class PolicyExecutorTest {
 
         assertEquals(1, result.files().size());
         assertEquals("in.pdf", result.files().get(0).getFilename());
+    }
+
+    @Test
+    void stepReportIsAttachedToEachFileItProduced() throws IOException {
+        String fix = "/api/v1/security/print-preflight-fix";
+        when(toolMetadataService.isMultiInput(fix)).thenReturn(false);
+        when(toolMetadataService.shouldUnpackZipResponse(fix)).thenReturn(false);
+        // The fix endpoint reports a verdict per dispatched file; per-file dispatch must keep
+        // each file's own verdict instead of sharing the first non-null one.
+        when(internalApiClient.post(eq(fix), any()))
+                .thenAnswer(
+                        inv -> {
+                            MultiValueMap<String, Object> body = inv.getArgument(1);
+                            Resource input = (Resource) body.getFirst("fileInput");
+                            String verdict = input.getFilename().contains("bad") ? "fail" : "pass";
+                            return ResponseEntity.ok()
+                                    .header(
+                                            "X-Stirling-Tool-Report",
+                                            "{\"preflight\":{\"verdict\":\""
+                                                    + verdict
+                                                    + "\",\"errors\":0,\"warnings\":0}}")
+                                    .body(pdf("fixed", input.getFilename()));
+                        });
+
+        PolicyExecutionResult result =
+                executor.execute(
+                        definition(new PipelineStep(fix, Map.of())),
+                        PolicyInputs.of(List.of(pdf("a", "good.pdf"), pdf("b", "bad.pdf"))),
+                        PolicyProgressListener.NOOP);
+
+        assertEquals(2, result.reports().size());
+        assertEquals("pass", result.reports().get(0).at("/preflight/verdict").asString());
+        assertEquals("fail", result.reports().get(1).at("/preflight/verdict").asString());
+    }
+
+    @Test
+    void archiveChainHeadersAreFoldedIntoTheReport() throws IOException {
+        String fix = "/api/v1/security/print-preflight-fix";
+        when(toolMetadataService.isMultiInput(fix)).thenReturn(false);
+        when(toolMetadataService.shouldUnpackZipResponse(fix)).thenReturn(false);
+        // A versioned prepress response carries the chain headers even without a tool report —
+        // the run must still link back to the immutable archive chain.
+        when(internalApiClient.post(eq(fix), any()))
+                .thenAnswer(
+                        inv ->
+                                ResponseEntity.ok()
+                                        .header("X-Prepress-Chain-Id", "abc123")
+                                        .header("X-Prepress-Version", "4")
+                                        .body(pdf("fixed", "fixed.pdf")));
+
+        PolicyExecutionResult result =
+                executor.execute(
+                        definition(new PipelineStep(fix, Map.of())),
+                        PolicyInputs.of(List.of(pdf("in", "in.pdf"))),
+                        PolicyProgressListener.NOOP);
+
+        assertNotNull(result.reports().get(0));
+        assertEquals("abc123", result.reports().get(0).at("/prepress/chainId").asString());
+        assertEquals("4", result.reports().get(0).at("/prepress/version").asString());
+    }
+
+    @Test
+    void silentStepKeepsThePreviousReportOnTheFile() throws IOException {
+        String fix = "/api/v1/security/print-preflight-fix";
+        when(toolMetadataService.isMultiInput(anyString())).thenReturn(false);
+        when(toolMetadataService.shouldUnpackZipResponse(anyString())).thenReturn(false);
+        when(internalApiClient.post(eq(fix), any()))
+                .thenAnswer(
+                        inv ->
+                                ResponseEntity.ok()
+                                        .header(
+                                                "X-Stirling-Tool-Report",
+                                                "{\"preflight\":{\"verdict\":\"warn\"}}")
+                                        .body(pdf("fixed", "fixed.pdf")));
+        // Compress emits no report: the file must keep its preflight verdict for routing.
+        stubEndpoint(COMPRESS, pdf("compressed", "compressed.pdf"));
+
+        PolicyExecutionResult result =
+                executor.execute(
+                        definition(
+                                new PipelineStep(fix, Map.of()),
+                                new PipelineStep(COMPRESS, Map.of())),
+                        PolicyInputs.of(List.of(pdf("in", "in.pdf"))),
+                        PolicyProgressListener.NOOP);
+
+        assertEquals(1, result.reports().size());
+        assertEquals("warn", result.reports().get(0).at("/preflight/verdict").asString());
+    }
+
+    @Test
+    void archiveOnlyReportLayersOverTheCarriedVerdict() throws IOException {
+        String fix = "/api/v1/security/print-preflight-fix";
+        String cut = "/api/v1/security/cut-contour";
+        when(toolMetadataService.isMultiInput(anyString())).thenReturn(false);
+        when(toolMetadataService.shouldUnpackZipResponse(anyString())).thenReturn(false);
+        when(internalApiClient.post(eq(fix), any()))
+                .thenAnswer(
+                        inv ->
+                                ResponseEntity.ok()
+                                        .header(
+                                                "X-Stirling-Tool-Report",
+                                                "{\"preflight\":{\"verdict\":\"fail\",\"errors\":1}}")
+                                        .body(pdf("fixed", "fixed.pdf")));
+        // A versioned prepress step emits chain headers only: layering them over the carried
+        // report must keep the verdict, or fail routes lose the file to the fallback.
+        when(internalApiClient.post(eq(cut), any()))
+                .thenAnswer(
+                        inv ->
+                                ResponseEntity.ok()
+                                        .header("X-Prepress-Chain-Id", "chain9")
+                                        .header("X-Prepress-Version", "2")
+                                        .body(pdf("cut", "cut.pdf")));
+
+        PolicyExecutionResult result =
+                executor.execute(
+                        definition(
+                                new PipelineStep(fix, Map.of()), new PipelineStep(cut, Map.of())),
+                        PolicyInputs.of(List.of(pdf("in", "in.pdf"))),
+                        PolicyProgressListener.NOOP);
+
+        assertEquals("fail", result.reports().get(0).at("/preflight/verdict").asString());
+        assertEquals("chain9", result.reports().get(0).at("/prepress/chainId").asString());
+    }
+
+    @Test
+    void silentMergeKeepsAVerdictAllInputsAgreeOn() throws IOException {
+        String fix = "/api/v1/security/print-preflight-fix";
+        when(toolMetadataService.isMultiInput(fix)).thenReturn(false);
+        when(toolMetadataService.shouldUnpackZipResponse(fix)).thenReturn(false);
+        when(internalApiClient.post(eq(fix), any()))
+                .thenAnswer(
+                        inv ->
+                                ResponseEntity.ok()
+                                        .header(
+                                                "X-Stirling-Tool-Report",
+                                                "{\"preflight\":{\"verdict\":\"fail\",\"errors\":2}}")
+                                        .body(pdf("fixed", "f.pdf")));
+        when(toolMetadataService.isMultiInput(MERGE)).thenReturn(true);
+        when(toolMetadataService.shouldUnpackZipResponse(MERGE)).thenReturn(false);
+        stubEndpoint(MERGE, pdf("merged", "merged.pdf")); // silent merge emits no report
+
+        PolicyExecutionResult result =
+                executor.execute(
+                        definition(
+                                new PipelineStep(fix, Map.of()), new PipelineStep(MERGE, Map.of())),
+                        PolicyInputs.of(List.of(pdf("a", "a.pdf"), pdf("b", "b.pdf"))),
+                        PolicyProgressListener.NOOP);
+
+        assertEquals("fail", result.reports().get(0).at("/preflight/verdict").asString());
+    }
+
+    @Test
+    void silentMergeDropsAVerdictInputsDisagreeOn() throws IOException {
+        String fix = "/api/v1/security/print-preflight-fix";
+        when(toolMetadataService.isMultiInput(fix)).thenReturn(false);
+        when(toolMetadataService.shouldUnpackZipResponse(fix)).thenReturn(false);
+        when(internalApiClient.post(eq(fix), any()))
+                .thenAnswer(
+                        inv -> {
+                            MultiValueMap<String, Object> body = inv.getArgument(1);
+                            Resource input = (Resource) body.getFirst("fileInput");
+                            String verdict = input.getFilename().contains("bad") ? "fail" : "pass";
+                            return ResponseEntity.ok()
+                                    .header(
+                                            "X-Stirling-Tool-Report",
+                                            "{\"preflight\":{\"verdict\":\"" + verdict + "\"}}")
+                                    .body(pdf("fixed", input.getFilename()));
+                        });
+        when(toolMetadataService.isMultiInput(MERGE)).thenReturn(true);
+        when(toolMetadataService.shouldUnpackZipResponse(MERGE)).thenReturn(false);
+        stubEndpoint(MERGE, pdf("merged", "merged.pdf"));
+
+        PolicyExecutionResult result =
+                executor.execute(
+                        definition(
+                                new PipelineStep(fix, Map.of()), new PipelineStep(MERGE, Map.of())),
+                        PolicyInputs.of(List.of(pdf("a", "good.pdf"), pdf("b", "bad.pdf"))),
+                        PolicyProgressListener.NOOP);
+
+        // pass + fail merged: the output cannot honestly carry either verdict, so routing on
+        // report.preflight.* must not match — a quarantine rule silently passing would be worse.
+        assertNull(result.reports().get(0));
+    }
+
+    // --- step gates (when) ---
+
+    @Test
+    void gatedStepDispatchesOnlyMatchingFiles() throws IOException {
+        when(toolMetadataService.isMultiInput(ROTATE)).thenReturn(false);
+        when(toolMetadataService.shouldUnpackZipResponse(ROTATE)).thenReturn(false);
+        stubEndpoint(ROTATE, pdf("rotated", "rotated.pdf"));
+
+        PolicyExecutionResult result =
+                executor.execute(
+                        definition(
+                                new PipelineStep(
+                                        ROTATE,
+                                        Map.of(),
+                                        Map.of(),
+                                        gateOn("document.extension", "pdf"))),
+                        PolicyInputs.of(List.of(pdf("a", "a.pdf"), pdf("b", "b.docx"))),
+                        PolicyProgressListener.NOOP);
+
+        // Only the matching file was dispatched; the .docx flowed through untouched.
+        assertEquals(2, result.files().size());
+        assertEquals("rotated.pdf", result.files().get(0).getFilename());
+        assertEquals("b.docx", result.files().get(1).getFilename());
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<MultiValueMap<String, Object>> bodyCaptor =
+                ArgumentCaptor.forClass(MultiValueMap.class);
+        verify(internalApiClient, times(1)).post(eq(ROTATE), bodyCaptor.capture());
+        Resource dispatched = (Resource) bodyCaptor.getValue().getFirst("fileInput");
+        assertEquals("a.pdf", dispatched.getFilename());
+    }
+
+    @Test
+    void gatedStepReportsHowManyFilesMatched() throws IOException {
+        when(toolMetadataService.isMultiInput(ROTATE)).thenReturn(false);
+        when(toolMetadataService.shouldUnpackZipResponse(ROTATE)).thenReturn(false);
+        stubEndpoint(ROTATE, pdf("rotated", "rotated.pdf"));
+        List<String> gates = new ArrayList<>();
+        PolicyProgressListener listener =
+                new PolicyProgressListener() {
+                    @Override
+                    public void onStepGate(int stepIndex, int matched, int total) {
+                        gates.add(stepIndex + ":" + matched + "/" + total);
+                    }
+                };
+
+        executor.execute(
+                definition(
+                        new PipelineStep(
+                                ROTATE, Map.of(), Map.of(), gateOn("document.extension", "pdf"))),
+                PolicyInputs.of(List.of(pdf("a", "a.pdf"), pdf("b", "b.docx"), pdf("c", "c.docx"))),
+                listener);
+
+        assertEquals(List.of("1:1/3"), gates);
+    }
+
+    @Test
+    void gatedStepReadsThePreviousStepsReport() throws IOException {
+        // The prepress diamond: preflight annotates each file with its verdict, then the fix step
+        // runs only where the verdict failed - exactly the "fix if errors" pipeline the gate is
+        // for.
+        String preflight = "/api/v1/security/print-preflight-annotated";
+        String fix = "/api/v1/security/print-preflight-fix";
+        when(toolMetadataService.isMultiInput(anyString())).thenReturn(false);
+        when(toolMetadataService.shouldUnpackZipResponse(anyString())).thenReturn(false);
+        when(internalApiClient.post(eq(preflight), any()))
+                .thenAnswer(
+                        inv -> {
+                            MultiValueMap<String, Object> body = inv.getArgument(1);
+                            Resource input = (Resource) body.getFirst("fileInput");
+                            String verdict = input.getFilename().contains("bad") ? "fail" : "pass";
+                            return ResponseEntity.ok()
+                                    .header(
+                                            "X-Stirling-Tool-Report",
+                                            "{\"preflight\":{\"verdict\":\"" + verdict + "\"}}")
+                                    .body(pdf("checked", input.getFilename()));
+                        });
+        when(internalApiClient.post(eq(fix), any()))
+                .thenAnswer(
+                        inv -> {
+                            MultiValueMap<String, Object> body = inv.getArgument(1);
+                            Resource input = (Resource) body.getFirst("fileInput");
+                            return ResponseEntity.ok(pdf("fixed", "fixed-" + input.getFilename()));
+                        });
+
+        PolicyExecutionResult result =
+                executor.execute(
+                        definition(
+                                new PipelineStep(preflight, Map.of()),
+                                new PipelineStep(
+                                        fix,
+                                        Map.of(),
+                                        Map.of(),
+                                        gateOn("report.preflight.verdict", "fail"))),
+                        PolicyInputs.of(List.of(pdf("a", "good.pdf"), pdf("b", "bad.pdf"))),
+                        PolicyProgressListener.NOOP);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<MultiValueMap<String, Object>> bodyCaptor =
+                ArgumentCaptor.forClass(MultiValueMap.class);
+        verify(internalApiClient, times(1)).post(eq(fix), bodyCaptor.capture());
+        Resource fixed = (Resource) bodyCaptor.getValue().getFirst("fileInput");
+        assertEquals("bad.pdf", fixed.getFilename());
+
+        // The passing file bypassed the fix keeping its slot and its verdict for routing.
+        assertEquals(2, result.files().size());
+        assertEquals("good.pdf", result.files().get(0).getFilename());
+        assertEquals("fixed-bad.pdf", result.files().get(1).getFilename());
+        assertEquals("pass", result.reports().get(0).at("/preflight/verdict").asString());
+        assertEquals("fail", result.reports().get(1).at("/preflight/verdict").asString());
+    }
+
+    @Test
+    void aGateNothingMatchesNeverCallsTheTool() throws IOException {
+        PolicyExecutionResult result =
+                executor.execute(
+                        definition(
+                                new PipelineStep(
+                                        ROTATE,
+                                        Map.of(),
+                                        Map.of(),
+                                        gateOn("report.preflight.verdict", "fail"))),
+                        PolicyInputs.of(List.of(pdf("a", "a.pdf"))),
+                        PolicyProgressListener.NOOP);
+
+        verify(internalApiClient, never()).post(any(), any());
+        assertEquals(1, result.files().size());
+        assertEquals("a.pdf", result.files().get(0).getFilename());
+    }
+
+    @Test
+    void aGatedGeneratorStepNeverRuns() throws IOException {
+        // No input files means no document facts to evaluate, so the gate cannot match.
+        String createPdf = "/api/v1/ai/tools/create-pdf-from-html-agent";
+
+        PolicyExecutionResult result =
+                executor.execute(
+                        definition(
+                                new PipelineStep(
+                                        createPdf,
+                                        Map.of(),
+                                        Map.of(),
+                                        gateOn("document.extension", "pdf"))),
+                        PolicyInputs.of(List.of()),
+                        PolicyProgressListener.NOOP);
+
+        verify(internalApiClient, never()).post(eq(createPdf), any());
+        assertEquals(0, result.files().size());
+    }
+
+    @Test
+    void aGatedMultiInputStepMergesOnlyTheMatchingFiles() throws IOException {
+        when(toolMetadataService.isMultiInput(MERGE)).thenReturn(true);
+        when(toolMetadataService.shouldUnpackZipResponse(MERGE)).thenReturn(false);
+        stubEndpoint(MERGE, pdf("merged", "merged.pdf"));
+
+        PolicyExecutionResult result =
+                executor.execute(
+                        definition(
+                                new PipelineStep(
+                                        MERGE,
+                                        Map.of(),
+                                        Map.of(),
+                                        gateOn("document.extension", "pdf"))),
+                        PolicyInputs.of(
+                                List.of(pdf("a", "a.pdf"), pdf("b", "b.docx"), pdf("c", "c.pdf"))),
+                        PolicyProgressListener.NOOP);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<MultiValueMap<String, Object>> bodyCaptor =
+                ArgumentCaptor.forClass(MultiValueMap.class);
+        verify(internalApiClient, times(1)).post(eq(MERGE), bodyCaptor.capture());
+        List<Object> inputs = bodyCaptor.getValue().get("fileInput");
+        assertEquals(2, inputs.size());
+
+        // The merge's product first, then the bypassed file, still carrying its own identity.
+        assertEquals(2, result.files().size());
+        assertEquals("merged.pdf", result.files().get(0).getFilename());
+        assertEquals("b.docx", result.files().get(1).getFilename());
+    }
+
+    @Test
+    void aGateOnTheFilenameNeverOpensTheDocument() throws IOException {
+        // Remote inputs are stream-backed: a gate that only needs listing facts must not pull the
+        // object - a stream that fails on open proves the facts came for free.
+        Resource remote =
+                new AbstractResource() {
+                    @Override
+                    public String getFilename() {
+                        return "remote.pdf";
+                    }
+
+                    @Override
+                    public String getDescription() {
+                        return "remote object";
+                    }
+
+                    @Override
+                    public long contentLength() {
+                        return 42;
+                    }
+
+                    @Override
+                    public InputStream getInputStream() {
+                        throw new IllegalStateException("a name-only gate must not read");
+                    }
+                };
+        when(toolMetadataService.isMultiInput(ROTATE)).thenReturn(false);
+        stubEndpoint(ROTATE, pdf("rotated", "rotated.pdf"));
+
+        PolicyExecutionResult result =
+                executor.execute(
+                        definition(
+                                new PipelineStep(
+                                        ROTATE,
+                                        Map.of(),
+                                        Map.of(),
+                                        gateOn("document.extension", "pdf"))),
+                        PolicyInputs.of(List.of(remote)),
+                        PolicyProgressListener.NOOP);
+
+        verify(internalApiClient, times(1)).post(eq(ROTATE), any());
+        assertEquals("rotated.pdf", result.files().get(0).getFilename());
+    }
+
+    @Test
+    void aGateNeedingPdfFactsReadsTheStreamOnce() throws IOException {
+        // Facts that only the document carries - page count here - cost one read, spooled to a
+        // temp file so the parse never buffers the input in heap.
+        byte[] realPdf = onePagePdf();
+        AtomicInteger opens = new AtomicInteger();
+        Resource streamBacked =
+                new AbstractResource() {
+                    @Override
+                    public String getFilename() {
+                        return "streamed.pdf";
+                    }
+
+                    @Override
+                    public String getDescription() {
+                        return "streamed object";
+                    }
+
+                    @Override
+                    public long contentLength() {
+                        return realPdf.length;
+                    }
+
+                    @Override
+                    public InputStream getInputStream() {
+                        opens.incrementAndGet();
+                        return new ByteArrayInputStream(realPdf);
+                    }
+                };
+        when(toolMetadataService.isMultiInput(ROTATE)).thenReturn(false);
+        stubEndpoint(ROTATE, pdf("rotated", "rotated.pdf"));
+
+        PolicyExecutionResult result =
+                executor.execute(
+                        definition(
+                                new PipelineStep(
+                                        ROTATE,
+                                        Map.of(),
+                                        Map.of(),
+                                        gateOn("document.pageCount", "1"))),
+                        PolicyInputs.of(List.of(streamBacked)),
+                        PolicyProgressListener.NOOP);
+
+        verify(internalApiClient, times(1)).post(eq(ROTATE), any());
+        assertEquals("rotated.pdf", result.files().get(0).getFilename());
+        assertEquals(1, opens.get());
+    }
+
+    private static byte[] onePagePdf() throws IOException {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try (PDDocument doc = new PDDocument()) {
+            doc.addPage(new PDPage());
+            doc.save(baos);
+        }
+        return baos.toByteArray();
+    }
+
+    private static Condition gateOn(String field, String... values) {
+        return new Condition.MatchesAny(new ConditionInput.DocumentField(field), List.of(values));
     }
 
     // --- helpers ---

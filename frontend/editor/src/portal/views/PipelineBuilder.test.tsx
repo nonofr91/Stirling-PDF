@@ -12,6 +12,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { qk } from "@portal/queries/keys";
 import type { Policy, TriggerOutcome } from "@portal/api/pipelines";
 import type { Source, SourceView } from "@portal/api/sources";
+import type { MatchesAnyCondition } from "@app/conditions/types";
 import type { ToolRegistryCatalog } from "@app/contexts/ToolRegistryContext";
 import type { ToolRegistryEntry } from "@app/data/toolsTaxonomy";
 import { PipelineBuilder } from "@portal/views/PipelineBuilder";
@@ -21,12 +22,15 @@ const render = (
   options?: Parameters<typeof baseRender>[1],
 ) => baseRender(ui, { wrapper: PortalTestProviders, ...options });
 
-// Deterministic i18n: keys returned verbatim.
+// Deterministic i18n: keys returned verbatim. initReactI18next/Trans are exported too because the
+// builder pulls in modules (the policies operations catalogue) that reference them at import time.
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
     t: (key: string) => key,
     i18n: { changeLanguage: vi.fn() },
   }),
+  initReactI18next: { type: "3rdParty", init: () => {} },
+  Trans: (props: { children?: unknown }) => props.children,
 }));
 
 vi.mock("@portal/hooks/useAiEngineEnabled", () => ({
@@ -1466,5 +1470,246 @@ describe("PipelineBuilder", () => {
     fireEvent.click(screen.getByLabelText("portal.pipelines.builder.back"));
 
     expect(await screen.findByText("pipelines list")).toBeInTheDocument();
+  });
+
+  // A step's `when` gate rides on the wire step all the way down and back, and a gate reading
+  // facts no earlier step produces is caught in the builder rather than at run time.
+
+  const VERDICT_GATE: MatchesAnyCondition = {
+    input: { source: "document", field: "report.preflight.verdict" },
+    operator: "matches-any",
+    values: ["fail"],
+  };
+
+  const PREFLIGHT_STEP = {
+    operation: "/api/v1/security/print-preflight-fix",
+    parameters: {},
+  };
+
+  async function nameThePipeline(name: string) {
+    fireEvent.change(
+      await screen.findByRole("textbox", {
+        name: "portal.pipelines.composer.name",
+      }),
+      { target: { value: name } },
+    );
+  }
+
+  it("saves a step's gate condition", async () => {
+    renderBuilder("/processor/pipelines/new");
+    await nameThePipeline("Gated compress");
+    await addTool("Compress");
+
+    // The new step is selected, so its settings are already open in the inspector.
+    fireEvent.click(await screen.findByTestId("step-gate-toggle"));
+    fireEvent.change(
+      await screen.findByRole("textbox", {
+        name: "portal.pipelines.builder.routing.matchValues",
+      }),
+      { target: { value: "pdf" } },
+    );
+
+    await pickInputSource("Claims intake");
+    await pickDestination();
+    fireEvent.click(screen.getByText("portal.pipelines.composer.create"));
+
+    await waitFor(() => expect(savePipeline).toHaveBeenCalledTimes(1));
+    expect(savePipeline.mock.calls[0][0].steps[0].when).toEqual({
+      input: { source: "document", field: "document.extension" },
+      operator: "matches-any",
+      values: ["pdf"],
+    });
+  });
+
+  it("carries a saved gate through an unrelated edit", async () => {
+    fetchPipeline.mockResolvedValue({
+      ...POLICY,
+      inputs: [{ sourceId: "src-in", trigger: null }],
+      outputIds: ["src-in"],
+      steps: [
+        PREFLIGHT_STEP,
+        {
+          operation: "/api/v1/misc/compress-pdf",
+          parameters: {},
+          when: VERDICT_GATE,
+        },
+      ],
+    });
+    renderBuilder("/processor/pipelines/plc-1");
+
+    fireEvent.click(
+      await screen.findByLabelText("portal.pipelines.builder.rename"),
+    );
+    fireEvent.change(
+      await screen.findByLabelText("portal.pipelines.composer.name"),
+      { target: { value: "Renamed" } },
+    );
+    fireEvent.click(screen.getByText("portal.pipelines.composer.save"));
+
+    await waitFor(() => expect(savePipeline).toHaveBeenCalledTimes(1));
+    expect(savePipeline.mock.calls[0][0].steps[1].when).toEqual(VERDICT_GATE);
+  });
+
+  it("sends the gate with a test run", async () => {
+    fetchPipeline.mockResolvedValue({
+      ...POLICY,
+      inputs: [{ sourceId: "src-in", trigger: null }],
+      outputIds: ["src-in"],
+      steps: [
+        PREFLIGHT_STEP,
+        {
+          operation: "/api/v1/misc/compress-pdf",
+          parameters: {},
+          when: VERDICT_GATE,
+        },
+      ],
+    });
+    renderBuilder("/processor/pipelines/plc-1");
+    await screen.findByText("portal.pipelines.builder.testRun");
+    const picker = document.querySelector<HTMLInputElement>(
+      'input[type="file"][accept="application/pdf"]',
+    );
+    if (!picker) throw new Error("test-run file input not rendered");
+    fireEvent.change(picker, {
+      target: {
+        files: [new File(["x"], "in.pdf", { type: "application/pdf" })],
+      },
+    });
+
+    await waitFor(() => expect(runPipelineTest).toHaveBeenCalledTimes(1));
+    const definition = runPipelineTest.mock.calls[0][0] as {
+      steps: { when?: unknown }[];
+    };
+    expect(definition.steps[1].when).toEqual(VERDICT_GATE);
+  });
+
+  it("blocks saving while a step's gate is incomplete", async () => {
+    renderBuilder("/processor/pipelines/new");
+    await nameThePipeline("Gated");
+    await addTool("Compress");
+    // Toggled on but no values to match: the backend validator would reject it anyway.
+    fireEvent.click(await screen.findByTestId("step-gate-toggle"));
+    await pickInputSource("Claims intake");
+    await pickDestination();
+
+    expect(
+      screen.getByText("portal.pipelines.composer.create").closest("button"),
+    ).toBeDisabled();
+    fireEvent.click(screen.getByText("portal.pipelines.composer.create"));
+    expect(savePipeline).not.toHaveBeenCalled();
+  });
+
+  it("blocks a verdict gate with no preflight step before it", async () => {
+    fetchPipeline.mockResolvedValue({
+      ...POLICY,
+      inputs: [{ sourceId: "src-in", trigger: null }],
+      outputIds: ["src-in"],
+      // A gate on report.preflight.verdict can never match: nothing wrote a report ahead of it.
+      steps: [
+        {
+          operation: "/api/v1/misc/compress-pdf",
+          parameters: {},
+          when: VERDICT_GATE,
+        },
+      ],
+    });
+    renderBuilder("/processor/pipelines/plc-1");
+
+    fireEvent.click(
+      await screen.findByLabelText("portal.pipelines.builder.rename"),
+    );
+    fireEvent.change(
+      await screen.findByLabelText("portal.pipelines.composer.name"),
+      { target: { value: "Renamed" } },
+    );
+    fireEvent.click(screen.getByText("portal.pipelines.composer.save"));
+
+    await waitFor(() => expect(savePipeline).not.toHaveBeenCalled());
+  });
+
+  it("offers the verdict field only once a preflight step precedes the gate", async () => {
+    // jsdom lacks scrollIntoView, which the Mantine combobox calls when it opens.
+    HTMLElement.prototype.scrollIntoView = vi.fn();
+    fetchPipeline.mockResolvedValue({
+      ...POLICY,
+      inputs: [{ sourceId: "src-in", trigger: null }],
+      outputIds: ["src-in"],
+      steps: [
+        PREFLIGHT_STEP,
+        { operation: "/api/v1/misc/compress-pdf", parameters: {} },
+      ],
+    });
+    renderBuilder("/processor/pipelines/plc-1");
+
+    // Select the second step (compress): nodes are input, preflight, compress, output.
+    const nodes = await waitFor(() => {
+      const found = graphNodes();
+      if (found.length < 4) throw new Error("the graph has not rendered yet");
+      return found;
+    });
+    fireEvent.click(nodes[2]);
+
+    fireEvent.click(await screen.findByTestId("step-gate-toggle"));
+    await screen.findByRole("textbox", {
+      name: "portal.pipelines.builder.routing.matchBy",
+    });
+
+    // Mantine keeps its options mounted while the dropdown is closed; query them
+    // hidden rather than fight jsdom over pointer events.
+    const verdict = await screen.findByRole("option", {
+      name: "portal.pipelines.builder.routing.matchPreflightVerdict",
+      hidden: true,
+    });
+    expect(verdict).not.toHaveAttribute("data-combobox-disabled");
+    fireEvent.click(verdict);
+
+    // The verdict field swaps the free-text input for the fixed pass/warn/fail list.
+    fireEvent.click(
+      await screen.findByRole("option", {
+        name: "printPreflight.verdict.fail",
+        hidden: true,
+      }),
+    );
+
+    fireEvent.click(
+      await screen.findByLabelText("portal.pipelines.builder.rename"),
+    );
+    fireEvent.change(
+      await screen.findByLabelText("portal.pipelines.composer.name"),
+      { target: { value: "Gated" } },
+    );
+    fireEvent.click(screen.getByText("portal.pipelines.composer.save"));
+
+    await waitFor(() => expect(savePipeline).toHaveBeenCalledTimes(1));
+    expect(savePipeline.mock.calls[0][0].steps[1].when).toEqual(VERDICT_GATE);
+  });
+
+  it("disables the verdict field when no step ahead writes a preflight report", async () => {
+    fetchPipeline.mockResolvedValue({
+      ...POLICY,
+      inputs: [{ sourceId: "src-in", trigger: null }],
+      outputIds: ["src-in"],
+      steps: [{ operation: "/api/v1/misc/compress-pdf", parameters: {} }],
+    });
+    renderBuilder("/processor/pipelines/plc-1");
+
+    const nodes = await waitFor(() => {
+      const found = graphNodes();
+      if (found.length < 3) throw new Error("the graph has not rendered yet");
+      return found;
+    });
+    fireEvent.click(nodes[1]);
+
+    fireEvent.click(await screen.findByTestId("step-gate-toggle"));
+    await screen.findByRole("textbox", {
+      name: "portal.pipelines.builder.routing.matchBy",
+    });
+
+    expect(
+      await screen.findByRole("option", {
+        name: "portal.pipelines.builder.routing.matchPreflightVerdict",
+        hidden: true,
+      }),
+    ).toHaveAttribute("data-combobox-disabled");
   });
 });

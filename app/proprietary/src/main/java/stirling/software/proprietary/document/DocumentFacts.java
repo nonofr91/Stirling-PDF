@@ -76,6 +76,19 @@ public final class DocumentFacts {
         return root;
     }
 
+    /**
+     * Only the facts that cost no content read - filename, extension and size - for callers whose
+     * comparison reads just those or a carried namespace like {@code report.*} added afterwards.
+     * Everything {@link #of} would have parsed out of the document is simply absent, which the
+     * best-effort contract already allows. On remote inputs this is the difference between reading
+     * a listing entry and buffering a whole object.
+     */
+    public static ObjectNode ofShallow(Resource file, ObjectMapper objectMapper) {
+        ObjectNode root = objectMapper.createObjectNode();
+        base(root, file.getFilename(), sizeOf(file));
+        return root;
+    }
+
     /** The one-shot path: read the bytes once, then treat it as an in-memory document. */
     private static ObjectNode ofBuffered(Resource file, ObjectMapper objectMapper) {
         try {

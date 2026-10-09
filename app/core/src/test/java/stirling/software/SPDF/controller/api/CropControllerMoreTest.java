@@ -8,6 +8,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.awt.Color;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
@@ -20,7 +21,10 @@ import java.util.List;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
+import org.apache.pdfbox.rendering.ImageType;
+import org.apache.pdfbox.rendering.PDFRenderer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -58,10 +62,19 @@ import stirling.software.common.util.TempFileManager;
 @DisplayName("CropController additional branch tests")
 class CropControllerMoreTest {
 
+    private static byte[] drainBody(ResponseEntity<Resource> response) throws IOException {
+        java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
+        try (java.io.InputStream in = response.getBody().getInputStream()) {
+            in.transferTo(baos);
+        }
+        return baos.toByteArray();
+    }
+
     @TempDir Path tempDir;
     @Mock private CustomPDFDocumentFactory pdfDocumentFactory;
     @Mock private TempFileManager tempFileManager;
     @Mock private EndpointConfiguration endpointConfiguration;
+    @Mock private stirling.software.SPDF.service.prepress.PrepressArchiveService prepressArchive;
     @InjectMocks private CropController cropController;
 
     @BeforeEach
@@ -268,6 +281,105 @@ class CropControllerMoreTest {
             image.setRGB(0, 0, 0xFFFFFF);
             int[] bounds = (int[]) detect.invoke(null, image);
             assertThat(bounds).containsExactly(0, 0, 0, 0);
+        }
+    }
+
+    @Nested
+    @DisplayName("Non-zero MediaBox origin")
+    class NonZeroOrigin {
+
+        /** A red square at the MediaBox's lower-left corner, on a page that starts at (100,100). */
+        private MockMultipartFile offsetOriginPdf() throws IOException {
+            Path p = tempDir.resolve("offset.pdf");
+            try (PDDocument doc = new PDDocument()) {
+                PDPage page = new PDPage(new PDRectangle(100, 100, 400, 300));
+                doc.addPage(page);
+                try (PDPageContentStream stream = new PDPageContentStream(doc, page)) {
+                    stream.setNonStrokingColor(new Color(200, 30, 30));
+                    stream.addRect(100, 100, 50, 50);
+                    stream.fill();
+                }
+                doc.save(p.toFile());
+            }
+            return new MockMultipartFile(
+                    "fileInput",
+                    "offset.pdf",
+                    MediaType.APPLICATION_PDF_VALUE,
+                    Files.readAllBytes(p));
+        }
+
+        @Test
+        @DisplayName("manual crop keeps artwork at its absolute page coordinates")
+        void manualCropKeepsAbsolutePlacement() throws Exception {
+            MockMultipartFile file = offsetOriginPdf();
+            CropPdfForm request = form(file, false);
+            request.setX(100f);
+            request.setY(100f);
+            request.setWidth(400f);
+            request.setHeight(300f);
+
+            when(pdfDocumentFactory.load(request)).thenReturn(Loader.loadPDF(file.getBytes()));
+            when(pdfDocumentFactory.createNewDocumentBasedOnOldDocument(any(PDDocument.class)))
+                    .thenAnswer(inv -> new PDDocument());
+
+            ResponseEntity<Resource> response = cropController.cropPdf(request);
+
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+            try (PDDocument result = Loader.loadPDF(drainBody(response))) {
+                BufferedImage img =
+                        new PDFRenderer(result).renderImageWithDPI(0, 72, ImageType.RGB);
+                // The red square sits at the MediaBox lower-left: bottom-left pixels must be
+                // red. A missing form-matrix compensation shifts it outside the clip.
+                Color c = new Color(img.getRGB(10, img.getHeight() - 10));
+                assertThat(c.getRed()).as("bottom-left pixel").isGreaterThan(120);
+                assertThat(c.getGreen()).isLessThan(120);
+                assertThat(c.getBlue()).isLessThan(120);
+            }
+        }
+
+        @Test
+        @DisplayName("crop to named CropBox with a non-zero origin keeps the selected area")
+        void cropToBoxKeepsSelectedArea() throws Exception {
+            Path p = tempDir.resolve("offset-crop.pdf");
+            try (PDDocument doc = new PDDocument()) {
+                PDPage page = new PDPage(new PDRectangle(100, 100, 400, 300));
+                page.setCropBox(new PDRectangle(150, 150, 200, 200));
+                doc.addPage(page);
+                try (PDPageContentStream stream = new PDPageContentStream(doc, page)) {
+                    stream.setNonStrokingColor(new Color(30, 30, 200));
+                    stream.addRect(150, 150, 200, 200);
+                    stream.fill();
+                }
+                doc.save(p.toFile());
+            }
+            MockMultipartFile file =
+                    new MockMultipartFile(
+                            "fileInput",
+                            "offset-crop.pdf",
+                            MediaType.APPLICATION_PDF_VALUE,
+                            Files.readAllBytes(p));
+
+            CropPdfForm request = form(file, false);
+            request.setCropToBox(true);
+            request.setPageBox("CROP_BOX");
+
+            when(pdfDocumentFactory.load(request)).thenReturn(Loader.loadPDF(file.getBytes()));
+            when(pdfDocumentFactory.createNewDocumentBasedOnOldDocument(any(PDDocument.class)))
+                    .thenAnswer(inv -> new PDDocument());
+
+            ResponseEntity<Resource> response = cropController.cropPdf(request);
+
+            assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+            try (PDDocument result = Loader.loadPDF(drainBody(response))) {
+                PDRectangle media = result.getPage(0).getMediaBox();
+                assertThat(media.getLowerLeftX()).isEqualTo(150f);
+                assertThat(media.getWidth()).isEqualTo(200f);
+                BufferedImage img =
+                        new PDFRenderer(result).renderImageWithDPI(0, 72, ImageType.RGB);
+                Color c = new Color(img.getRGB(img.getWidth() / 2, img.getHeight() / 2));
+                assertThat(c.getBlue()).as("center pixel").isGreaterThan(120);
+                assertThat(c.getRed()).isLessThan(120);
+            }
         }
     }
 }

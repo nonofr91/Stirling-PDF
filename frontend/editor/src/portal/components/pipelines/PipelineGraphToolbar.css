@@ -46,3 +46,20 @@
   color: var(--c-text-muted);
   min-width: 0;
 }
+
+/* One output row: download button + optional verdict badge and archive link. */
+.portal-pipeline-toolbar__result-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.portal-pipeline-toolbar__result-archive {
+  display: inline-flex;
+  align-items: center;
+  color: var(--c-text-muted);
+}
+
+.portal-pipeline-toolbar__result-archive:hover {
+  color: var(--c-text);
+}

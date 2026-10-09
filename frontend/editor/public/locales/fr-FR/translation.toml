@@ -513,6 +513,7 @@ failed = "Échec de l’ajustement des couleurs/du contraste"
 title = "PDF ajusté"
 
 [adjustPageScale]
+pageBox = "Mettre à l’échelle par rapport à la boîte de page"
 submit = "Ajuster l’échelle de page"
 tags = "redimensionner,modifier,dimension,adapter"
 title = "Ajuster l’échelle de page"
@@ -4242,6 +4243,7 @@ title = "À propos des portfolios PDF"
 
 [crop]
 autoCrop = "Recadrer automatiquement les marges blanches"
+cropToBox = "Recadrer sur une boîte de page nommée"
 noFileSelected = "Ajoutez un fichier PDF pour commencer le recadrage"
 reset = "Réinitialiser au PDF complet"
 submit = "Appliquer le recadrage"
@@ -4675,6 +4677,7 @@ filesUnavailable = "Impossible d’ajouter : {{names}}"
 fileUnavailable = "{{name}} n’est plus disponible."
 folderPath = "Chemin du dossier"
 fromComputer = "Depuis votre ordinateur"
+fromNetwork = "Depuis un serveur réseau"
 fromPhone = "Depuis votre téléphone"
 limit = "Choisissez jusqu’à {{count}} fichiers."
 selectedLimit = "{{count}} sur {{limit}} sélectionnés"
@@ -4735,6 +4738,7 @@ expand = "Développer la barre latérale"
 googleDrive = "Google Drive"
 library = "Bibliothèque PDF"
 myFiles = "Bibliothèque de fichiers"
+networkSource = "Ouvrir depuis un serveur réseau"
 noFiles = "Aucun fichier pour le moment"
 openFileManager = "Parcourir tous les fichiers et dossiers"
 openFromComputer = "Ouvrir depuis l’ordinateur"
@@ -9607,16 +9611,25 @@ viewDefinition = "Afficher la définition"
 [portal.pipelines.builder.blocker]
 aiClassification = "Activez la classification AI dans les paramètres, ou supprimez l’étape Classifier"
 destination = "Choisissez une destination"
+gateIncomplete = "Complétez ou supprimez la condition de : {{tools}}"
+gateNeedsClassify = "Une condition sur le type de document exige une étape Classifier avant : {{tools}}"
+gateNeedsPreflight = "Une condition sur le verdict preflight exige une étape Print Preflight avant : {{tools}}"
 heading = "Pour créer ce pipeline :"
 incompatible = "Corrigez les étapes qui ne peuvent pas s’exécuter dans l’ordre : {{tools}}"
 managerOnly = "Seul un administrateur ou un responsable d’équipe peut modifier une politique"
 name = "Donnez un nom au pipeline"
 routing = "Donnez à chaque route des types de documents et une destination"
 routingNeedsClassify = "Ajoutez une étape Classifier, ou désactivez le routage par type de document"
+routingNeedsPreflight = "Ajoutez une étape Print Preflight, ou désactivez le routage par verdict preflight"
 saveHeading = "Pour enregistrer vos modifications :"
 schedule = "Définissez la fréquence d’exécution"
 setup = "Terminez la configuration : {{tools}}"
 source = "Choisissez une source d’entrée"
+
+[portal.pipelines.builder.when]
+description = "Les fichiers correspondants passent par cette étape ; les autres la contournent sans modification."
+detail = "si {{field}} correspond à {{values}}"
+toggle = "N’exécuter que si un document correspond"
 
 [portal.pipelines.builder.diagnostic]
 fan-in = "Combine chaque fichier entrant"
@@ -9663,6 +9676,9 @@ matchDocumentType = "Type de document (classification AI)"
 matchDocumentTypeDisabled = "Type de document (AI indisponible)"
 matchExtension = "Extension de fichier"
 matchFilename = "Nom de fichier exact"
+matchPreflightErrors = "Nombre d’erreurs preflight"
+matchPreflightVerdict = "Verdict preflight"
+matchPreflightWarnings = "Nombre d’avertissements preflight"
 matchTitle = "Titre du PDF"
 matchValues = "Valeurs à faire correspondre"
 needsClassify = "Ajoutez une étape Classifier pour utiliser le routage par type de document, ou faites plutôt correspondre une propriété du document."
@@ -9745,6 +9761,7 @@ failed = "Échec"
 running = "En cours"
 
 [portal.pipelines.inspector]
+archiveLink = "Ouvrir l’archive de versions de ce document"
 multipleBody = "Faites glisser n’importe lequel d’entre eux sur une ligne pour les déplacer ensemble, ou appuyez sur Suppr pour les supprimer."
 multipleSelected_one = "{{count}} étape sélectionnée"
 multipleSelected_other = "{{count}} étapes sélectionnées"
@@ -10141,6 +10158,14 @@ label = "Vérifier que le document respecte la norme"
 desc = "Compresse le document pour réduire la taille du fichier."
 label = "Réduire la taille du fichier"
 
+[portal.policies.wizard.capability.crop]
+desc = "Recadre les pages sur une boîte choisie ou sur le bord du contenu détecté."
+label = "Rogner les pages"
+
+[portal.policies.wizard.capability.cutContour]
+desc = "Lit le contour de finition dans l’illustration pour qu’une découpeuse puisse le suivre."
+label = "Extraire le contour de découpe"
+
 [portal.policies.wizard.capability.flatten]
 desc = "Fusionne les champs de formulaire et les annotations dans la page afin qu’ils ne puissent pas être modifiés."
 label = "Aplatir le document"
@@ -10157,6 +10182,14 @@ label = "Rendre le texte recherchable"
 desc = "Réécrit le document au format d’archivage ISO, en intégrant ses polices et profils de couleur afin qu’il s’affiche toujours de la même manière dans plusieurs années. Invalide les signatures numériques."
 label = "Convertir en PDF/A pour l’archivage"
 
+[portal.policies.wizard.capability.printPreflight]
+desc = "Exécute les contrôles preflight et renvoie une copie où chaque problème est encadré — les routes peuvent envoyer un document en échec en quarantaine avec la preuve annotée jointe."
+label = "Contrôler pour l’impression, sans modifier le fichier"
+
+[portal.policies.wizard.capability.printPreflightFix]
+desc = "Exécute les contrôles preflight, applique les corrections sûres (boîtes de page, fond perdu, couleurs) et rend un verdict que les routes peuvent envoyer en quarantaine."
+label = "Contrôler et corriger pour l’impression"
+
 [portal.policies.wizard.capability.redact]
 desc = "Trouve et noircit les informations sensibles — comme les numéros de sécurité sociale et de carte — afin qu’elles ne puissent pas être lues."
 label = "Masquer les informations sensibles"
@@ -10164,6 +10197,18 @@ label = "Masquer les informations sensibles"
 [portal.policies.wizard.capability.sanitize]
 desc = "Supprime le JavaScript masqué afin que rien ne puisse s’exécuter automatiquement à l’ouverture du document."
 label = "Retirer le contenu actif"
+
+[portal.policies.wizard.capability.scalePages]
+desc = "Redimensionne le contenu des pages vers une taille cible, p. ex. agrandir l’illustration pour couvrir le fond perdu."
+label = "Redimensionner les pages"
+
+[portal.policies.wizard.capability.setPageBoxes]
+desc = "Déclare les boîtes de la page — trim, fond perdu, crop — pour que les étapes d’impression en aval lisent la bonne géométrie."
+label = "Définir les boîtes de page"
+
+[portal.policies.wizard.capability.textToOutlines]
+desc = "Transforme le texte en tracés vectoriels, pour qu’aucune police manquante ou substitution ne puisse l’altérer à l’impression."
+label = "Convertir le texte en tracés"
 
 [portal.policies.wizard.capability.timestampPdf]
 desc = "Prouve que le document existait sous cette forme exacte à un moment donné, à l’aide d’une autorité d’horodatage indépendante. Seul un hash est envoyé - le document ne quitte jamais votre serveur."
@@ -10736,6 +10781,50 @@ placeholder = "Bucket entier"
 [portal.sources.types.sftp]
 description = "Interrogez un dossier de dépôt SFTP pour détecter de nouveaux documents."
 label = "SFTP"
+
+[portal.sources.types.smtp]
+description = "Envoie le rapport du run par e-mail à la fin du traitement. Utilise la configuration SMTP du serveur."
+label = "Courriel (SMTP)"
+
+[portal.sources.types.smtp.fields]
+templatesHelp = "Variables : {filename} {fileNames} {fileCount} {pipeline} {verdict} {errorCount} {warningCount} {runId} {date} {status}. Les variables inconnues restent telles quelles."
+
+[portal.sources.types.smtp.fields.attachOutputs]
+helperText = "Activé par défaut — le destinataire reçoit le PDF traité, annotations comprises."
+label = "Joindre les fichiers traités"
+
+[portal.sources.types.smtp.fields.attachOutputs.options]
+no = "Non"
+yes = "Oui"
+
+[portal.sources.types.smtp.fields.attachReport]
+helperText = "Désactivé par défaut — un résumé JSON du verdict, des erreurs et des avertissements de chaque étape."
+label = "Joindre le rapport d'étape"
+
+[portal.sources.types.smtp.fields.attachReport.options]
+no = "Non"
+yes = "Oui"
+
+[portal.sources.types.smtp.fields.body]
+label = "Message"
+placeholder = "Laisser vide pour envoyer un résumé généré."
+
+[portal.sources.types.smtp.fields.mode]
+helperText = "per-run regroupe tous les fichiers dans un seul e-mail ; per-file envoie un e-mail par fichier traité."
+label = "Envoi"
+
+[portal.sources.types.smtp.fields.mode.options]
+perFile = "Un e-mail par fichier"
+perRun = "Un e-mail par run"
+
+[portal.sources.types.smtp.fields.subject]
+label = "Objet"
+placeholder = "[{verdict}] {pipeline} — {fileNames}"
+
+[portal.sources.types.smtp.fields.to]
+helperText = "Adresses e-mail séparées par des virgules."
+label = "Destinataires"
+placeholder = "ops@exemple.fr, qualite@exemple.fr"
 
 [portal.sources.types.sharepoint]
 description = "Récupérez des documents depuis des bibliothèques de documents SharePoint."
@@ -13162,6 +13251,7 @@ documentSecurity = "Sécurité du document"
 extraction = "Extraction"
 general = "Général"
 pageFormatting = "Mise en page"
+prepress = "Prépresse"
 removal = "Suppression"
 signing = "Signature"
 verification = "Vérification"
@@ -13572,6 +13662,7 @@ enableSepiaFilter = "Activer le filtre sépia"
 engineLoadError = "Échec de l’initialisation du moteur de visualisation PDF"
 engineSlowWarning = "L’initialisation du moteur PDF prend plus de temps que prévu. Veuillez vérifier les paramètres WebAssembly et Worker de votre navigateur, ou recharger la page."
 firstPage = "Première page"
+hidePageBoxes = "Masquer les boîtes de page"
 lastPage = "Dernière page"
 loadingEngine = "Chargement du moteur PDF..."
 moreOptions = "Plus"
@@ -13582,6 +13673,7 @@ pageNavigation = "Navigation dans les pages"
 previousPage = "Page précédente"
 saveChangesErrorBody = "Le document n’a pas pu être enregistré. Réessayez."
 saveChangesErrorTitle = "Impossible d’enregistrer les modifications"
+showPageBoxes = "Afficher les boîtes de page"
 singlePageView = "Vue page unique"
 unknownFile = "Fichier inconnu"
 view = "Affichage"
@@ -14012,3 +14104,462 @@ confirm = "Extraire"
 message_one = "Ce ZIP contient {{count}} fichier. Extraire quand même ?"
 message_other = "Ce ZIP contient {{count}} fichiers. Extraire quand même ?"
 title = "Fichier ZIP volumineux"
+
+[automate.icons]
+build = "Construire"
+check = "Valider"
+clean = "Nettoyer"
+cloud = "Cloud"
+compress = "Compresser"
+convert = "Convertir"
+copy = "Copier"
+crop = "Rogner"
+cut = "Couper"
+delete = "Supprimer"
+download = "Télécharger"
+edit = "Modifier"
+folder = "Dossier"
+magic = "Magique"
+pdf = "PDF"
+play = "Lire"
+robot = "Robot"
+rotateLeft = "Pivoter à gauche"
+rotateRight = "Pivoter à droite"
+search = "Rechercher"
+security = "Sécurité"
+settings = "Paramètres"
+star = "Étoile"
+storage = "Stockage"
+text = "Texte"
+upload = "Envoyer"
+view = "Voir"
+work = "Travail"
+
+[cutContour]
+aiModelId = "Identifiant du modèle IA"
+aiModelIdHint = "Modèle du catalogue pour le détourage ; vide = défaut (u2net)"
+aiThreshold = "Seuil de confiance IA"
+alphaThreshold = "Seuil alpha"
+alphaThresholdHint = "Pixels plus transparents que ce seuil comptent comme fond"
+backgroundTolerance = "Tolérance du fond"
+backgroundToleranceHint = "Distance de couleur depuis le bord de page encore comptée comme fond"
+bleedMm = "Fond perdu au-delà du tracé (mm)"
+bleedMmHint = "Répète les pixels de bord après le contour pour éviter tout liseré blanc à la découpe"
+clipArtwork = "Rogner le contenu de la page au tracé de découpe"
+dpi = "Résolution de détection (ppp)"
+extractionMode = "Détection du sujet"
+help = "Détoure la silhouette du graphisme sur chaque page et écrit un tracé de découpe fermé en couleur d'appoint CutContour sur un calque dédié — prêt pour les RIP, traceurs et tables de découpe."
+keepHoles = "Conserver les trous internes comme tracés de découpe (ex. le contre-poinçon d'un « o »)"
+layerName = "Nom du calque (optionnel)"
+mergeGapMm = "Fusionner les écarts jusqu'à (mm)"
+mergeGapMmHint = "Les éléments plus proches que cet écart fusionnent sous un seul contour ; 0 garde chaque pièce séparée"
+minAreaMm2 = "Surface minimale (mm²)"
+minAreaMm2Hint = "Les parties déconnectées plus petites sont ignorées comme bruit"
+offsetMm = "Décalage du tracé (mm)"
+offsetMmHint = "Décale le tracé vers l'extérieur ; une valeur négative le rentre dans la silhouette"
+processingSteps = "Taguer le calque comme étape de découpe ISO 19593-1 (non imprimante)"
+smoothness = "Lissage (0–100)"
+spotName = "Nom de la couleur d'appoint"
+spotNameError = "Le nom de couleur d'appoint est requis"
+spotNameHint = "Sensible à la casse ; les RIP attendent « CutContour »"
+strokeWidthPt = "Épaisseur du trait (pt)"
+submit = "Créer le tracé de découpe"
+trimToContour = "Définir TrimBox sur le rectangle englobant du contour"
+
+[cutContour.cutLine]
+section = "Tracé de découpe"
+
+[cutContour.error]
+failed = "Une erreur est survenue lors de la création du tracé de découpe."
+
+[cutContour.modes]
+AI = "Détourage IA (fonds complexes)"
+ALPHA = "Transparence (graphisme vectoriel/alpha)"
+AUTO = "Automatique (essaie chaque source)"
+BACKGROUND = "Fond de couleur uniforme"
+
+[cutContour.output]
+section = "Sortie"
+
+[cutContour.preview]
+loading = "Tracé du contour…"
+mode = "Détection utilisée :"
+toggle = "Prévisualiser le tracé de découpe sur le document"
+
+[cutContour.results]
+title = "Résultats du tracé de découpe"
+
+[cutContour.roi]
+active = "Périmètre défini — l'anneau intérieur donne la couleur de fond"
+clear = "Effacer"
+draw = "Dessiner le périmètre"
+drawing = "Tracez le périmètre sur le document…"
+
+[cutContour.steps]
+configure = "Réglages du tracé de découpe"
+
+[filesPage.folderIcons]
+archive = "Archive"
+code = "Code"
+contract = "Contrat"
+health = "Santé"
+heart = "Cœur"
+home = "Accueil"
+house = "Maison"
+id = "ID"
+money = "Argent"
+music = "Musique"
+none = "Aucune icône"
+photos = "Photos"
+receipt = "Reçu"
+school = "École"
+star = "Étoile"
+travel = "Voyage"
+warning = "Avertissement"
+work = "Travail"
+
+[home.cutContour]
+desc = "Détoure la silhouette du graphisme et écrit un tracé de découpe de production (couleur d'appoint CutContour) avec rognage et fond perdu en option."
+tags = "prépresse,tracé de découpe,cutcontour,cut contour,découpe,détourage,sticker,demi-découpe,contour,silhouette,plotter,rip"
+title = "Tracé de découpe"
+
+[home.printPreflight]
+desc = "Vérifie un PDF pour la production print : polices non incorporées, couleurs RVB/tons directs, images basse résolution, fond perdu absent ou non peint, filets, transparence."
+tags = "preflight,prépresse,prepress,print,impression,contrôle,rapport,polices,incorporées,RVB,CMJN,fond perdu,traits,coupe,dpi,résolution,surimpression,transparence,pdfx"
+title = "Preflight d'impression"
+
+[home.printPreflightCheck]
+desc = "Vérifie un PDF pour la production print et annote une copie sans modifier le fichier."
+title = "Preflight d'impression (contrôle)"
+
+[home.printPreflightFix]
+desc = "Vérifie un PDF pour la production print et applique les corrections sûres."
+title = "Preflight d'impression (correction)"
+
+[home.setPageBoxes]
+desc = "Définit MediaBox, CropBox, TrimBox, BleedBox et ArtBox sur chaque page pour les flux prépresse"
+tags = "prépresse,boîtes de page,mediabox,cropbox,trimbox,bleedbox,artbox,fond perdu"
+title = "Définir les boîtes de page"
+
+[home.textToOutlines]
+desc = "Convertit tout le texte en contours vectoriels pour une impression sans polices"
+tags = "texte en contours,contours,vectoriser texte,polices en courbes,prépresse"
+title = "Texte en contours"
+
+[networkSource]
+browseError = "Impossible de lister ce dossier"
+emptyDir = "Ce dossier est vide."
+entries = "Fichiers distants"
+exportDone = "Envoyé vers la source réseau"
+exportError = "Échec de l'envoi"
+exportTitle = "Envoyer vers le réseau"
+filename = "Nom du fichier distant"
+import = "Importer"
+importError = "Échec de l'import"
+importTitle = "Ouvrir depuis un serveur réseau"
+pickSource = "Choisissez une source à parcourir."
+root = "Racine"
+sendHere = "Envoyer ici"
+sendToNetwork = "Envoyer vers le réseau"
+source = "Source"
+
+[pageBox]
+diagram = "Diagramme des boîtes de page"
+label = "Boîte de page"
+
+[pageBox.options]
+ART_BOX = "ArtBox"
+BLEED_BOX = "BleedBox"
+CROP_BOX = "CropBox"
+MEDIA_BOX = "MediaBox"
+TRIM_BOX = "TrimBox"
+
+[printPreflight]
+areasTruncated = "Emplacements supplémentaires omis de l'aperçu"
+counts = "{{errors}} erreurs · {{warnings}} avertissements · {{infos}} infos"
+downloadAnnotated = "PDF annoté"
+downloadFixed = "PDF corrigé"
+fixedAdded = "Corrigé — dans l'historique"
+downloadJson = "Télécharger le rapport (JSON)"
+downloadReport = "Rapport PDF"
+locate = "Voir sur le document"
+locatedHint = "Les problèmes localisés sont encadrés sur le document — le bouton cible permet d'en isoler un."
+noResults = "Lancez l'outil pour générer un rapport preflight."
+pages = "Pages"
+processing = "Contrôles preflight en cours..."
+previewFixes = "Aperçu des corrections"
+results = "Résultats"
+submit = "Lancer le preflight"
+
+[printPreflight.advanced]
+toggle = "Seuils avancés"
+
+[printPreflight.audit]
+applied = "{{count}} correction(s) s'appliqueraient :"
+counts = "Signalements : {{errorsBefore}} → {{errorsAfter}} erreurs · {{warningsBefore}} → {{warningsAfter}} avertissements · {{infosBefore}} → {{infosAfter}} infos"
+introduced = "Révélés par les corrections"
+noneApplied = "Aucune correction n'a de travail à faire sur ce document."
+remaining = "Toujours signalés"
+resolved = "Résolus"
+title = "Aperçu des corrections"
+
+[printPreflight.category]
+COLOR = "Couleur"
+CONTENT = "Contenu"
+DOCUMENT = "Document"
+FONTS = "Polices"
+GEOMETRY = "Géométrie"
+IMAGES = "Images"
+
+[printPreflight.checkBleedCoverage]
+desc = "Rend chaque page pour vérifier que la zone de fond perdu est réellement couverte par du contenu, pas seulement déclarée."
+label = "Vérifier que le fond perdu est peint"
+
+[printPreflight.disabledChecks]
+help = "Ignore complètement les contrôles nommés, ex. SAFETY_MARGIN, INK_COVERAGE_HIGH. Laisser vide pour tout exécuter."
+label = "Contrôles désactivés (codes, séparés par des virgules)"
+
+[printPreflight.error]
+noReport = "Aucun rapport renvoyé."
+partial = "Certains fichiers n'ont pas pu être analysés."
+unexpected = "Erreur inattendue pendant le preflight."
+
+[printPreflight.facts]
+boxes = "Boîtes de page"
+colors = "Espaces colorimétriques"
+dpiRange = "{{min}}–{{max}} dpi"
+effects = "Effets"
+embedded = "{{count}} fichier(s) incorporé(s)"
+emptyPages = "page(s) vide(s) {{pages}}"
+extras = "Interactif et divers"
+flags = "Remarques"
+fonts = "Polices"
+formFields = "{{count}} champ(s) de formulaire"
+images = "Images"
+inkCoverage = "Couverture d'encre max"
+invisibleText = "texte invisible page(s) {{pages}}"
+javascript = "JavaScript"
+layersOff = "Calques désactivés à l'impression"
+lowRes = "{{count}} sous le seuil"
+none = "aucun"
+outputIntent = "Intent de sortie"
+oversampled = "{{count}} suréchantillonnée(s)"
+pageCount = "Pages"
+pageSizes = "Dimensions des pages"
+patterns = "motifs"
+registration = "couleur de repérage page(s) {{pages}}"
+rotated = "pivotée de {{deg}}°"
+shadings = "dégradés"
+signatures = "{{count}} signature(s)"
+spotColors = "Tons directs"
+technical = "Séparations techniques"
+title = "Caractéristiques du document"
+transparency = "transparence"
+trapped = "tramage : {{value}}"
+type3 = "Type 3"
+userUnit = "UserUnit page(s) {{pages}}"
+xfa = "XFA"
+
+[printPreflight.fixes]
+help = "Corrections appliquées lors de la production d'un PDF corrigé. Les rapports annoté et JSON restent toujours une simple analyse."
+toggle = "Corrections automatiques"
+
+[printPreflight.fixups]
+help = "Laisser vide pour appliquer toutes les corrections possibles."
+label = "Corrections à appliquer"
+placeholder = "Toutes les corrections applicables"
+
+[printPreflight.fixups.codes]
+CLIP_TO_CROPBOX = "Rogner le contenu au CropBox"
+DISCARD_CROPBOX = "Supprimer les CropBox"
+DOWNSAMPLE_IMAGES = "Rééchantillonner les images surdimensionnées"
+ENABLE_LAYER_PRINTING = "Activer l'impression des calques"
+EXTEND_BLEED = "Générer le fond perdu manquant"
+FLATTEN_FORM = "Aplatir les champs de formulaire"
+FLATTEN_TRANSPARENCY = "Aplatir la transparence"
+KNOCKOUT_WHITE = "Désactiver la surimpression des blancs"
+MERGE_SPOT_ALIASES = "Fusionner les alias de tons directs"
+NONE = "Aucune — désactive toutes les corrections"
+NORMALIZE_USER_UNIT = "Normaliser l'échelle de page (UserUnit)"
+OVERPRINT_BLACK_TEXT = "Surimprimer le texte noir"
+PURE_BLACK_TEXT = "Convertir le texte noir riche en noir pur"
+REDUCE_INK_COVERAGE = "Réduire la couverture d'encre à la limite"
+REGISTRATION_TO_BLACK = "Convertir la teinte de repérage en noir"
+REMOVE_ANNOTATIONS_IN_TRIM = "Supprimer les annotations dans le format"
+REMOVE_ATTACHMENTS = "Supprimer les fichiers embarqués"
+REMOVE_EMPTY_PAGES = "Supprimer les pages vides"
+REMOVE_INVISIBLE_TEXT = "Supprimer le texte invisible"
+REMOVE_JAVASCRIPT = "Supprimer le JavaScript"
+RGB_TO_CMYK = "Convertir le RVB en CMJN (Ghostscript)"
+SET_MISSING_BOXES = "Déclarer le TrimBox manquant"
+SET_OUTPUT_INTENT = "Attacher un output intent (ICC)"
+SPOT_TO_CMYK = "Convertir les tons directs en CMJN"
+TEXT_TO_OUTLINES = "Vectoriser le texte (Ghostscript)"
+
+[printPreflight.hairlineThresholdPt]
+help = "Les traits plus fins que ce seuil sont signalés — ils risquent de disparaître à l'impression."
+label = "Seuil des filets (pt)"
+
+[printPreflight.includeSummaryPage]
+desc = "Ajoute la synthèse du rapport — verdict, caractéristiques, polices, couleurs — en tête du PDF annoté."
+label = "Page de synthèse dans le PDF annoté"
+
+[printPreflight.maxImageDpi]
+help = "Les images rendues au-dessus de cette résolution effective sont signalées comme suréchantillonnées — du poids mort pour la presse."
+label = "Résolution maximale des images (dpi)"
+
+[printPreflight.renderedInkCoverage]
+desc = "Rasterise avec Ghostscript et mesure l'encrage total réel — voit l'empilement, les images et les superpositions. Plus lent que l'estimation sur les remplissages peints."
+label = "Mesurer l'encre sur la page rendue"
+
+[printPreflight.maxInkCoveragePercent]
+help = "Les couleurs dépassant ce taux de couverture total sont signalées — problèmes de séchage et de repérage au-delà de ~320 % en offset."
+label = "Couverture d'encre max (%)"
+
+[printPreflight.maxSpotCount]
+help = "Avertit quand plus de tons directs que ce seuil sont utilisés — chaque plaque coûte un calage. 0 désactive la limite."
+label = "Nombre maximal de tons directs"
+
+[printPreflight.minFontSizePt]
+help = "Le texte plus petit que cette taille est signalé comme trop petit pour une impression fiable."
+label = "Taille minimale des caractères (pt)"
+
+[printPreflight.minImage1BitDpi]
+help = "Le trait / bitmap exige bien plus de résolution que la photo — 1200 dpi est le plancher habituel."
+label = "Résolution minimale des images 1 bit (dpi)"
+
+[printPreflight.minImageDpi]
+help = "Les images placées sous cette résolution effective sont signalées. 300 est idéal pour l'offset ; 150 est un minimum courant."
+label = "Résolution minimale des images (dpi)"
+
+[printPreflight.options]
+stepTitle = "Seuils de contrôle"
+
+[printPreflight.profiles]
+custom = "Réglages personnalisés"
+delete = "Supprimer le profil"
+deleteFailed = "Le profil n'a pas pu être supprimé"
+descLabel = "Description (facultative)"
+help = "Un jeu sauvegardé de seuils et de corrections. En sélectionner un remplace toutes les valeurs ci-dessous."
+label = "Profil de preflight"
+loadFailed = "Les profils n'ont pas pu être chargés"
+nameLabel = "Nom du profil"
+saveAs = "Enregistrer comme profil…"
+saveFailed = "Le profil n'a pas pu être enregistré"
+saveModalTitle = "Enregistrer le profil"
+stepHelp = "Un profil nommé fournit les seuils, les corrections et les contrôles désactivés — effacez-le pour régler cette étape manuellement."
+suppliesStep = "Le profil nommé fournit tous les réglages de preflight de cette étape."
+
+[printPreflight.profiles.builtin]
+digital-press = "Presse numérique"
+inspect-only = "Inspection seule"
+large-format = "Grand format"
+offset-press = "Offset"
+
+[printPreflight.profiles.builtinDesc]
+digital-press = "Presses numériques (toner/jet d'encre) — seuils plus tolérants, conserve les tons directs et le RVB"
+inspect-only = "Analyse avec seuils assouplis et aucune correction automatique"
+large-format = "Affiches, signalétique, bâches — limites de résolution assouplies, marge de sécurité élargie"
+offset-press = "Impression offset commerciale — seuils stricts, conversion complète en CMJK"
+
+[printPreflight.reportFormat]
+annotatedPdf = "PDF annoté"
+fixAuditJson = "Audit des corrections JSON (essai)"
+fixedPdf = "PDF corrigé (fixups sélectionnés)"
+help = "Les sorties PDF gardent un PDF dans la chaîne ; le rapport JSON la termine avec les constats."
+json = "Rapport JSON"
+label = "Format du rapport"
+reportPdf = "Rapport PDF de synthèse"
+
+[printPreflight.requiredBleedMm]
+help = "Largeur de fond perdu attendue de chaque côté au-delà du format fini. 3 mm est la norme en Europe."
+label = "Fond perdu requis (mm)"
+
+[printPreflight.safetyMarginMm]
+help = "Le contenu plus proche que cette distance du bord du format fini est signalé — il risque d'être coupé au massicot."
+label = "Marge de sécurité dans le format fini (mm)"
+
+[printPreflight.severity]
+ERROR = "Erreur"
+INFO = "Info"
+WARNING = "Avertissement"
+
+[printPreflight.status]
+complete = "Preflight terminé"
+
+[printPreflight.verdict]
+clean = "Prêt pour l'impression"
+errors = "{{errors}} problème(s) bloquant(s) détecté(s)"
+fail = "Rejeté"
+pass = "Conforme"
+warn = "Avertissements seuls"
+warnings = "Imprimable avec {{warnings}} avertissement(s)"
+
+[setPageBoxes]
+artBox = "ArtBox"
+bleedBox = "BleedBox"
+bleedMm = "Fond perdu (mm, extension autour de TrimBox)"
+boxFormatError = "Quatre nombres attendus : x,y,largeur,hauteur"
+copyMissingFromMediaBox = "Copier MediaBox dans les boîtes non définies"
+cropBox = "CropBox"
+help = "Définit les boîtes de page en points au format x,y,largeur,hauteur. Laissez un champ vide pour conserver la boîte existante."
+inheritedHint = "* boîte absente de la page — valeur héritée affichée"
+mediaBox = "MediaBox"
+preview = "Boîtes de page résultantes"
+submit = "Définir les boîtes de page"
+trimBox = "TrimBox"
+trimMarginMm = "Marge de rognage (mm, réduit MediaBox dans TrimBox)"
+
+[setPageBoxes.cropMarks]
+enable = "Tracer des traits de coupe aux coins de la TrimBox"
+length = "Longueur (mm)"
+offset = "Décalage (mm)"
+section = "Traits de coupe"
+weight = "Épaisseur (pt)"
+
+[setPageBoxes.deriveFromCropMarks]
+desc = "Détecte les traits de coupe peints pour placer la TrimBox. Utilisé seulement si aucune TrimBox ni marge de rognage n'est fournie ; échoue sur les pages sans marques nettes."
+label = "Dériver la TrimBox des traits de coupe"
+
+[setPageBoxes.error]
+failed = "Une erreur est survenue lors de la définition des boîtes de page."
+
+[setPageBoxes.generateBleed]
+bleedBottomMm = "Bas (mm)"
+bleedLeftMm = "Gauche (mm)"
+bleedRightMm = "Droite (mm)"
+bleedTopMm = "Haut (mm)"
+corners = "Générer aussi le fond perdu dans les coins"
+dpi = "DPI de rendu"
+enable = "Peindre du contenu de fond perdu entre TrimBox et BleedBox"
+hint = "Une BleedBox seule n'est que de la géométrie. Cette option peint du contenu supplémentaire au-delà du format fini (comme Add Bleed de PitStop) pour éviter tout liseré blanc à la coupe."
+inset = "Retrait source (mm, ignore la marge intérieure)"
+method = "Méthode de fond perdu"
+section = "Générer le fond perdu"
+sideFallback = "bleedMm"
+
+[setPageBoxes.generateBleed.methods]
+MIRROR = "Miroir des bords (vectoriel)"
+MIRROR_IMAGE = "Miroir des bords (image)"
+PIXEL_REPEAT = "Répéter le dernier pixel"
+UPSCALE = "Agrandir le contenu de la page"
+
+[setPageBoxes.results]
+title = "Résultats"
+
+[setPageBoxes.steps]
+configure = "Paramètres des boîtes de page"
+
+[textToOutlines]
+help = "Convertit tout le texte du document en contours vectoriels. Irréversible : le texte ne pourra plus être sélectionné, recherché, copié ou modifié dans le résultat."
+submit = "Convertir le texte en contours"
+useCase = "Utile avant l’envoi en impression quand les polices ne peuvent pas être incorporées ou licenciées, au prix d’un fichier plus lourd et d’une perte d’accessibilité."
+
+[textToOutlines.error]
+failed = "Une erreur est survenue lors de la conversion du texte en contours."
+
+[textToOutlines.results]
+title = "Résultats"
+
+[textToOutlines.steps]
+about = "À propos de Texte en contours"

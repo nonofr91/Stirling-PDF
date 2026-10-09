@@ -316,6 +316,14 @@ export async function mockAppApis(
     route.fulfill({ json: [] }),
   );
 
+  // Sources (proprietary): the network-source pickers probe GET
+  // /api/v1/sources on mount for every user — unlike upstream where only the
+  // Processor portal reads it. Unstubbed it 500s through the absent backend
+  // and the console error fails the no-unexpected-output guards.
+  await page.route("**/api/v1/sources", (route: Route) =>
+    route.fulfill({ json: { kpis: [], sources: [] } }),
+  );
+
   await page.route("**/api/v1/processing-folders", (route: Route) =>
     route.fulfill({ json: [] }),
   );

@@ -1,4 +1,5 @@
 import { apiClient } from "@portal/api/http";
+import type { Condition } from "@app/conditions/types";
 import type { WireRoutingRule } from "@app/policies/types";
 import {
   type SupportingFileBindings,
@@ -25,6 +26,8 @@ export interface PipelineStep {
   operation: string;
   parameters: Record<string, unknown>;
   fileParameters?: SupportingFileBindings;
+  /** Per-document gate (`document.*` + `report.*` facts); absent means unconditional. */
+  when?: Condition;
 }
 
 /** When a policy input fires automatically. `type` keys a trigger bean (e.g. "schedule"). */
@@ -286,6 +289,13 @@ export async function runPipelineTest(
 export async function fetchRunOutput(fileId: string): Promise<Blob> {
   return apiClient.local.blob(
     `/api/v1/general/files/${encodeURIComponent(fileId)}`,
+  );
+}
+
+/** GET /api/v1/general/prepress-archive/{chainId}: the version chain an output belongs to. */
+export async function fetchPrepressArchive(chainId: string): Promise<unknown> {
+  return apiClient.local.json<unknown>(
+    `/api/v1/general/prepress-archive/${encodeURIComponent(chainId)}`,
   );
 }
 

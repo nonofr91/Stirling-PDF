@@ -14,6 +14,7 @@ import org.apache.pdfbox.pdmodel.PDPageContentStream.AppendMode;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
 import org.apache.pdfbox.rendering.PDFRenderer;
+import org.apache.pdfbox.util.Matrix;
 import org.springframework.core.io.Resource;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -27,6 +28,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import stirling.software.SPDF.config.EndpointConfiguration;
 import stirling.software.SPDF.model.api.general.CropPdfForm;
+import stirling.software.SPDF.service.prepress.PrepressArchiveService;
 import stirling.software.common.annotations.AutoJobPostMapping;
 import stirling.software.common.annotations.api.GeneralApi;
 import stirling.software.common.enumeration.ResourceWeight;
@@ -35,6 +37,7 @@ import stirling.software.common.model.tool.ToolIO;
 import stirling.software.common.service.CustomPDFDocumentFactory;
 import stirling.software.common.util.ExceptionUtils;
 import stirling.software.common.util.GeneralUtils;
+import stirling.software.common.util.PageBoxUtils;
 import stirling.software.common.util.ProcessExecutor;
 import stirling.software.common.util.TempFile;
 import stirling.software.common.util.TempFileManager;
@@ -53,6 +56,22 @@ public class CropController {
 
     private final CustomPDFDocumentFactory pdfDocumentFactory;
     private final TempFileManager tempFileManager;
+    private final PrepressArchiveService prepressArchive;
+
+    private ResponseEntity<Resource> respond(
+            PDDocument document, MultipartFile input, String filename) throws IOException {
+        TempFile out = tempFileManager.createManagedTempFile(".pdf");
+        try {
+            document.save(out.getFile());
+        } catch (IOException | RuntimeException e) {
+            out.close();
+            throw e;
+        }
+        var handle = prepressArchive.recordVersion("crop", input, out.getPath(), filename, null);
+        ResponseEntity<Resource> response = WebResponseUtils.pdfFileToWebResponse(out, filename);
+        PrepressArchiveService.setChainHeaders(response, handle);
+        return response;
+    }
 
     private static int[] detectContentBounds(BufferedImage image) {
         int width = image.getWidth();
@@ -159,12 +178,13 @@ public class CropController {
             return cropWithAutomaticDetection(request);
         }
 
-        if (request.getX() == null
-                || request.getY() == null
-                || request.getWidth() == null
-                || request.getHeight() == null) {
+        if (!request.isCropToBox()
+                && (request.getX() == null
+                        || request.getY() == null
+                        || request.getWidth() == null
+                        || request.getHeight() == null)) {
             throw new IllegalArgumentException(
-                    "Crop coordinates (x, y, width, height) are required when auto-crop is not enabled");
+                    "Crop coordinates (x, y, width, height) are required when neither auto-crop nor crop-to-box is enabled");
         }
 
         if (request.isRemoveDataOutsideCrop() && isGhostscriptEnabled()) {
@@ -226,11 +246,11 @@ public class CropController {
                                     cropBounds.height));
                 }
 
-                return WebResponseUtils.pdfDocToWebResponse(
+                return respond(
                         newDocument,
+                        request.getFileInput(),
                         GeneralUtils.generateFilename(
-                                request.getFileInput().getOriginalFilename(), "_cropped.pdf"),
-                        tempFileManager);
+                                request.getFileInput().getOriginalFilename(), "_cropped.pdf"));
             }
         }
     }
@@ -253,6 +273,7 @@ public class CropController {
                     }
 
                     PDPage sourcePage = sourceDocument.getPage(i);
+                    PDRectangle cropArea = resolveCropArea(request, sourcePage);
 
                     // Create a new page with the size of the source page
                     PDPage newPage = new PDPage(sourcePage.getMediaBox());
@@ -260,19 +281,35 @@ public class CropController {
                     try (PDPageContentStream contentStream =
                             new PDPageContentStream(
                                     newDocument, newPage, AppendMode.OVERWRITE, true, true)) {
-                        // Import the source page as a form XObject
+                        // Import the source page as a form XObject, bounded to cover the
+                        // target crop area: a named box larger than the CropBox would
+                        // otherwise lose the artwork outside it.
                         PDFormXObject formXObject =
-                                layerUtility.importPageAsForm(sourceDocument, i);
+                                PageBoxUtils.importPageAsFormCovering(
+                                        layerUtility, sourceDocument, sourcePage, cropArea);
 
                         contentStream.saveGraphicsState();
 
                         // Define the crop area
                         contentStream.addRect(
-                                request.getX(),
-                                request.getY(),
-                                request.getWidth(),
-                                request.getHeight());
+                                cropArea.getLowerLeftX(),
+                                cropArea.getLowerLeftY(),
+                                cropArea.getWidth(),
+                                cropArea.getHeight());
                         contentStream.clip();
+
+                        // The form's /Matrix normalizes the viewBox origin; undo
+                        // its translation so artwork lands at its page
+                        // coordinates and the clip keeps exactly the selected
+                        // crop area. Rotated pages carry rotation in the matrix —
+                        // leave their convention untouched.
+                        if (sourcePage.getRotation() % 360 == 0) {
+                            Matrix formMatrix = formXObject.getMatrix();
+                            contentStream.transform(
+                                    Matrix.getTranslateInstance(
+                                            -formMatrix.getTranslateX(),
+                                            -formMatrix.getTranslateY()));
+                        }
 
                         // Draw the entire formXObject
                         contentStream.drawForm(formXObject);
@@ -281,19 +318,14 @@ public class CropController {
                     }
 
                     // Now, set the new page's media box to the cropped size
-                    newPage.setMediaBox(
-                            new PDRectangle(
-                                    request.getX(),
-                                    request.getY(),
-                                    request.getWidth(),
-                                    request.getHeight()));
+                    newPage.setMediaBox(cropArea);
                 }
 
-                return WebResponseUtils.pdfDocToWebResponse(
+                return respond(
                         newDocument,
+                        request.getFileInput(),
                         GeneralUtils.generateFilename(
-                                request.getFileInput().getOriginalFilename(), "_cropped.pdf"),
-                        tempFileManager);
+                                request.getFileInput().getOriginalFilename(), "_cropped.pdf"));
             }
         }
     }
@@ -308,13 +340,7 @@ public class CropController {
                     continue;
                 }
                 PDPage page = sourceDocument.getPage(i);
-                PDRectangle cropBox =
-                        new PDRectangle(
-                                request.getX(),
-                                request.getY(),
-                                request.getWidth(),
-                                request.getHeight());
-                page.setCropBox(cropBox);
+                page.setCropBox(resolveCropArea(request, page));
             }
 
             MultipartFile fileInput = request.getFileInput();
@@ -364,8 +390,7 @@ public class CropController {
                             imported.setResources(sourceDocument.getPage(i).getResources());
                         }
                     }
-                    return WebResponseUtils.pdfDocToWebResponse(
-                            mergedDocument, outputFilename, tempFileManager);
+                    return respond(mergedDocument, fileInput, outputFilename);
                 } finally {
                     if (croppedDocument != null) {
                         croppedDocument.close();
@@ -415,6 +440,14 @@ public class CropController {
                 tempOutputFile.close();
             }
         }
+    }
+
+    private static PDRectangle resolveCropArea(CropPdfForm request, PDPage page) {
+        if (request.isCropToBox()) {
+            return PageBoxUtils.resolvePageBox(page, request.getPageBox());
+        }
+        return new PDRectangle(
+                request.getX(), request.getY(), request.getWidth(), request.getHeight());
     }
 
     private record CropBounds(float x, float y, float width, float height) {

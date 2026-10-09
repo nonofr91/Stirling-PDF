@@ -51,6 +51,12 @@ import { autoRotateOperationConfig } from "@app/hooks/tools/autoRotate/useAutoRo
 import { changeMetadataOperationConfig } from "@app/hooks/tools/changeMetadata/useChangeMetadataOperation";
 import { signOperationConfig } from "@app/hooks/tools/sign/useSignOperation";
 import { cropOperationConfig } from "@app/hooks/tools/crop/useCropOperation";
+import { setPageBoxesOperationConfig } from "@app/hooks/tools/setPageBoxes/useSetPageBoxesOperation";
+import { cutContourOperationConfig } from "@app/hooks/tools/cutContour/useCutContourOperation";
+import { printPreflightOperationConfig } from "@app/hooks/tools/printPreflight/usePrintPreflightOperation";
+import { printPreflightFixOperationConfig } from "@app/hooks/tools/printPreflightFix/usePrintPreflightFixOperation";
+import { printPreflightCheckOperationConfig } from "@app/hooks/tools/printPreflightCheck/usePrintPreflightCheckOperation";
+import { textToOutlinesOperationConfig } from "@app/hooks/tools/textToOutlines/useTextToOutlinesOperation";
 import { removeAnnotationsOperationConfig } from "@app/hooks/tools/removeAnnotations/useRemoveAnnotationsOperation";
 import { removeImageOperationConfig } from "@app/hooks/tools/removeImage/useRemoveImageOperation";
 import { pageLayoutOperationConfig } from "@app/hooks/tools/pageLayout/usePageLayoutOperation";
@@ -532,13 +538,131 @@ export function useTranslatedToolCatalog(): TranslatedToolCatalog {
           "Crop a PDF to reduce its size (maintains text!)",
         ),
         categoryId: ToolCategoryId.STANDARD_TOOLS,
-        subcategoryId: SubcategoryId.PAGE_FORMATTING,
+        subcategoryId: SubcategoryId.PREPRESS,
         maxFiles: -1,
         endpoints: ["crop"],
         operationConfig: asRegistryConfig(cropOperationConfig),
         automationSettings: lazySettings(
           () => import("@app/components/tools/crop/CropAutomationSettings"),
         ),
+      },
+      setPageBoxes: {
+        icon: <Icon name="square-dashed" size="1.5rem" />,
+        name: t("home.setPageBoxes.title", "Set Page Boxes"),
+        component: lazy(() => import("@app/tools/SetPageBoxes")),
+        description: t(
+          "home.setPageBoxes.desc",
+          "Define MediaBox, CropBox, TrimBox, BleedBox and ArtBox on every page for prepress workflows.",
+        ),
+        categoryId: ToolCategoryId.STANDARD_TOOLS,
+        subcategoryId: SubcategoryId.PREPRESS,
+        maxFiles: -1,
+        endpoints: ["set-page-boxes"],
+        operationConfig: asRegistryConfig(setPageBoxesOperationConfig),
+        automationSettings: lazySettings(
+          () =>
+            import("@app/components/tools/setPageBoxes/SetPageBoxesAutomationSettings"),
+        ),
+        synonyms: getSynonyms(t, "setPageBoxes"),
+      },
+      cutContour: {
+        icon: <Icon name="scissors" size="1.5rem" />,
+        name: t("home.cutContour.title", "Cut Contour"),
+        component: lazy(() => import("@app/tools/CutContour")),
+        description: t(
+          "home.cutContour.desc",
+          "Trace the artwork's silhouette and write a production cut line (CutContour spot colour) with optional clipping and bleed.",
+        ),
+        categoryId: ToolCategoryId.STANDARD_TOOLS,
+        subcategoryId: SubcategoryId.PREPRESS,
+        maxFiles: -1,
+        endpoints: ["cut-contour", "cut-contour-preview"],
+        operationConfig: asRegistryConfig(cutContourOperationConfig),
+        automationSettings: lazySettings(
+          () =>
+            import("@app/components/tools/cutContour/CutContourAutomationSettings"),
+        ),
+        synonyms: getSynonyms(t, "cutContour"),
+      },
+      textToOutlines: {
+        icon: <Icon name="spline" size="1.5rem" />,
+        name: t("home.textToOutlines.title", "Text to Outlines"),
+        component: lazy(() => import("@app/tools/TextToOutlines")),
+        description: t(
+          "home.textToOutlines.desc",
+          "Convert all text to vector outlines so no fonts are needed for printing.",
+        ),
+        categoryId: ToolCategoryId.STANDARD_TOOLS,
+        subcategoryId: SubcategoryId.PREPRESS,
+        maxFiles: -1,
+        endpoints: ["text-to-outlines"],
+        operationConfig: asRegistryConfig(textToOutlinesOperationConfig),
+        automationSettings: lazySettings(
+          () =>
+            import("@app/components/tools/textToOutlines/TextToOutlinesSettings"),
+        ),
+        synonyms: getSynonyms(t, "textToOutlines"),
+      },
+      printPreflight: {
+        icon: <Icon name="list-checks" size="1.5rem" />,
+        name: t("home.printPreflight.title", "Print Preflight"),
+        component: lazy(() => import("@app/tools/PrintPreflight")),
+        description: t(
+          "home.printPreflight.desc",
+          "Check a PDF for print production issues: unembedded fonts, RGB/spot colors, low-resolution images, missing or unpainted bleed, hairlines, transparency.",
+        ),
+        categoryId: ToolCategoryId.STANDARD_TOOLS,
+        subcategoryId: SubcategoryId.PREPRESS,
+        endpoints: ["print-preflight", "print-preflight-annotated"],
+        operationConfig: asRegistryConfig(printPreflightOperationConfig),
+        automationSettings: lazySettings(
+          () =>
+            import("@app/components/tools/printPreflight/PrintPreflightAutomationSettings"),
+        ),
+        maxFiles: 1,
+        // The interactive workbench is a customProcessor with no step mappers, so it can
+        // only ever land as an uneditable pipeline step — the printPreflightFix /
+        // printPreflightCheck entries cover the pipeline use case.
+        hiddenFromPipelineSteps: true,
+        synonyms: getSynonyms(t, "printPreflight"),
+      },
+      printPreflightFix: {
+        icon: <Icon name="shield-check" size="1.5rem" />,
+        name: t("home.printPreflightFix.title", "Print Preflight Fix"),
+        component: null,
+        description: t(
+          "home.printPreflightFix.desc",
+          "Check a PDF for print production issues and apply the safe corrections.",
+        ),
+        categoryId: ToolCategoryId.STANDARD_TOOLS,
+        subcategoryId: SubcategoryId.PREPRESS,
+        maxFiles: 1,
+        endpoints: ["print-preflight-fix"],
+        operationConfig: asRegistryConfig(printPreflightFixOperationConfig),
+        automationSettings: lazySettings(
+          () =>
+            import("@app/components/tools/printPreflightFix/PrintPreflightFixAutomationSettings"),
+        ),
+        hiddenFromToolList: true,
+      },
+      printPreflightCheck: {
+        icon: <Icon name="clipboard-check" size="1.5rem" />,
+        name: t("home.printPreflightCheck.title", "Print Preflight Check"),
+        component: null,
+        description: t(
+          "home.printPreflightCheck.desc",
+          "Check a PDF for print production issues and annotate a copy without changing the file.",
+        ),
+        categoryId: ToolCategoryId.STANDARD_TOOLS,
+        subcategoryId: SubcategoryId.PREPRESS,
+        maxFiles: 1,
+        endpoints: ["print-preflight-annotated"],
+        operationConfig: asRegistryConfig(printPreflightCheckOperationConfig),
+        automationSettings: lazySettings(
+          () =>
+            import("@app/components/tools/printPreflightCheck/PrintPreflightCheckAutomationSettings"),
+        ),
+        hiddenFromToolList: true,
       },
       rotate: {
         icon: <Icon name="rotate-cw" size="1.5rem" />,
@@ -615,7 +739,7 @@ export function useTranslatedToolCatalog(): TranslatedToolCatalog {
           "Change the size/scale of a page and/or its contents.",
         ),
         categoryId: ToolCategoryId.STANDARD_TOOLS,
-        subcategoryId: SubcategoryId.PAGE_FORMATTING,
+        subcategoryId: SubcategoryId.PREPRESS,
         maxFiles: -1,
         endpoints: ["scale-pages"],
         operationConfig: asRegistryConfig(adjustPageScaleOperationConfig),

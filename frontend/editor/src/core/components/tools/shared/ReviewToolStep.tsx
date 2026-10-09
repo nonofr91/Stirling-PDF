@@ -11,6 +11,7 @@ import { Tooltip } from "@app/components/shared/Tooltip";
 import { useFileActionTerminology } from "@app/hooks/useFileActionTerminology";
 import { useFileActionIcons } from "@app/hooks/useFileActionIcons";
 import { saveOperationResults } from "@app/services/operationResultsSaveService";
+import { useNetworkSourceExport } from "@app/hooks/useNetworkSourceExport";
 import { useFileActions, useFileSelectors } from "@app/contexts/FileContext";
 import i18n from "@app/i18n";
 
@@ -58,6 +59,7 @@ function ReviewStepContent<TParams = unknown>({
   const stepRef = useRef<HTMLDivElement>(null);
   const { actions: fileActions } = useFileActions();
   const selectors = useFileSelectors();
+  const networkExport = useNetworkSourceExport();
 
   const handleUndo = async () => {
     try {
@@ -177,6 +179,21 @@ function ReviewStepContent<TParams = unknown>({
           {terminology.download}
         </Button>
       )}
+      {networkExport.enabled && operation.files.length > 0 && (
+        <Button
+          variant="secondary"
+          accent="neutral"
+          data-testid="send-to-network-button"
+          leftSection={<Icon name="server" />}
+          fullWidth
+          style={{ marginBottom: "1rem" }}
+          onClick={() => networkExport.open(operation.files)}
+        >
+          {t("networkSource.sendToNetwork", "Send to network")}
+        </Button>
+      )}
+
+      {networkExport.modal}
 
       <SuggestedToolsSection />
     </Stack>

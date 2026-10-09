@@ -3,8 +3,13 @@ import {
   parseTrigger,
   buildTriggerFor,
 } from "@portal/components/pipelines/inputTriggerConfig";
-import { requiresClassification } from "@app/data/classificationConditions";
+import {
+  requiresClassification,
+  requiresPreflight,
+} from "@app/data/classificationConditions";
 import { isConditionComplete } from "@app/conditions/validation";
+import type { MatchesAnyCondition } from "@app/conditions/types";
+import { PREFLIGHT_STEP_ENDPOINTS } from "@app/policies/operations";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -50,6 +55,7 @@ import {
   fetchPipeline,
   fetchRun,
   fetchRunOutput,
+  fetchPrepressArchive,
   fetchTriggers,
   runPipelineTest,
   savePipeline,
@@ -155,6 +161,9 @@ const CLASSIFY_OPERATION = "/api/v1/ai/tools/classify-and-label";
 
 function isClassifyStep(step: WorkingToolStep): boolean {
   return step.operation === CLASSIFY_OPERATION;
+}
+function isPreflightStep(step: WorkingToolStep): boolean {
+  return PREFLIGHT_STEP_ENDPOINTS.has(step.operation);
 }
 function isClassifyTool(tool: ExecutableTool): boolean {
   return (
@@ -552,6 +561,16 @@ export function PipelineBuilder() {
     );
   }
 
+  /** Set or clear a step's per-document gate. */
+  function updateStepWhen(
+    index: number,
+    when: MatchesAnyCondition | undefined,
+  ) {
+    setSteps((current) =>
+      current.map((step, i) => (i === index ? { ...step, when } : step)),
+    );
+  }
+
   /** Drop a step's stored supporting-file binding for one field (the chip's remove action). */
   function clearStepBinding(index: number, field: string) {
     setSteps((current) =>
@@ -754,6 +773,30 @@ export function PipelineBuilder() {
     );
   const outputValid = returnsToEditor || (destinationReady && vectorReady);
   const classifies = steps.some(isClassifyStep);
+  const preflights = steps.some(isPreflightStep);
+  // A gate reads the document as it stands at that point in the chain: report.preflight.* only
+  // exists if a preflight step ran BEFORE this one (unlike routing, which sees the final state),
+  // and classification.labels needs a classify step upstream. An incomplete condition would be
+  // rejected by the backend validator, so it blocks here where the fix is.
+  const gateIncomplete = steps
+    .filter((step) => step.when && !isConditionComplete(step.when))
+    .map(stepLabel);
+  const gateNeedsPreflight = steps
+    .filter(
+      (step, i) =>
+        step.when &&
+        requiresPreflight(step.when) &&
+        !steps.slice(0, i).some(isPreflightStep),
+    )
+    .map(stepLabel);
+  const gateNeedsClassify = steps
+    .filter(
+      (step, i) =>
+        step.when &&
+        requiresClassification(step.when) &&
+        !steps.slice(0, i).some(isClassifyStep),
+    )
+    .map(stepLabel);
   // Mirrors PolicyValidator.validateRoutingRules: a rule with nothing to match on, or nowhere to
   // send, would be rejected on save - so it is named here rather than surfaced as a server error.
   const routingValid = routingRules.every(
@@ -763,6 +806,11 @@ export function PipelineBuilder() {
   // Every document would fall through to the fallback, so this is named rather than left to run.
   const routingHasVerdict = routingRules.every(
     (rule) => !requiresClassification(rule.condition) || classifies,
+  );
+  // Same orphan check for report-based rules: a preflight rule without a preflight step can
+  // never match, silently sending everything to the fallback.
+  const routingHasPreflight = routingRules.every(
+    (rule) => !requiresPreflight(rule.condition) || preflights,
   );
 
   // The single source of truth for "can this be committed": every reason it can't be, in the order
@@ -790,6 +838,37 @@ export function PipelineBuilder() {
       t(
         "portal.pipelines.builder.blocker.routingNeedsClassify",
         "Add a Classify step, or turn off routing by document type",
+      ),
+    );
+  if (!routingHasPreflight)
+    blockers.push(
+      t(
+        "portal.pipelines.builder.blocker.routingNeedsPreflight",
+        "Add a Print Preflight step, or turn off routing by preflight verdict",
+      ),
+    );
+  if (gateIncomplete.length > 0)
+    blockers.push(
+      t(
+        "portal.pipelines.builder.blocker.gateIncomplete",
+        "Complete or remove the condition on: {{tools}}",
+        { tools: gateIncomplete.join(", ") },
+      ),
+    );
+  if (gateNeedsPreflight.length > 0)
+    blockers.push(
+      t(
+        "portal.pipelines.builder.blocker.gateNeedsPreflight",
+        "A condition on the preflight verdict needs a Print Preflight step before: {{tools}}",
+        { tools: gateNeedsPreflight.join(", ") },
+      ),
+    );
+  if (gateNeedsClassify.length > 0)
+    blockers.push(
+      t(
+        "portal.pipelines.builder.blocker.gateNeedsClassify",
+        "A condition on document type needs a Classify step before: {{tools}}",
+        { tools: gateNeedsClassify.join(", ") },
       ),
     );
   if (classifies && !aiAvailabilityLoading && !aiClassificationEnabled)
@@ -846,15 +925,19 @@ export function PipelineBuilder() {
     }));
   }
 
-  /** A wire step, attaching fileParameters only when it has any. */
+  /** A wire step, attaching fileParameters and the gate only when present. */
   function toWireStep(
     operation: string,
     parameters: Record<string, unknown>,
     bindings: SupportingFileBindings,
+    when?: MatchesAnyCondition,
   ): PipelineStep {
-    return Object.keys(bindings).length > 0
-      ? { operation, parameters, fileParameters: bindings }
-      : { operation, parameters };
+    return {
+      operation,
+      parameters,
+      ...(Object.keys(bindings).length > 0 ? { fileParameters: bindings } : {}),
+      ...(when ? { when } : {}),
+    };
   }
 
   /**
@@ -866,7 +949,10 @@ export function PipelineBuilder() {
   async function serializeStepsForSave(): Promise<PipelineStep[]> {
     return Promise.all(
       steps.map(async (step) => {
-        const { operation, parameters } = serializeToolStep(step, allTools);
+        const { operation, parameters, when } = serializeToolStep(
+          step,
+          allTools,
+        );
         const entries = await Promise.all(
           stepFileFields(step).map(async ({ field, fresh, stored }) => {
             if (fresh?.length) {
@@ -883,7 +969,7 @@ export function PipelineBuilder() {
         const bindings: SupportingFileBindings = Object.fromEntries(
           entries.filter((e): e is readonly [string, string] => e !== null),
         );
-        return toWireStep(operation, parameters, bindings);
+        return toWireStep(operation, parameters, bindings, when);
       }),
     );
   }
@@ -981,7 +1067,7 @@ export function PipelineBuilder() {
   function buildTestSteps(): { steps: PipelineStep[]; assets: TestRunAsset[] } {
     const assets: TestRunAsset[] = [];
     const outSteps = steps.map((step, i) => {
-      const { operation, parameters } = serializeToolStep(step, allTools);
+      const { operation, parameters, when } = serializeToolStep(step, allTools);
       const bindings: SupportingFileBindings = {};
       for (const { field, fresh, stored } of stepFileFields(step)) {
         if (fresh?.length) {
@@ -994,7 +1080,7 @@ export function PipelineBuilder() {
           bindings[field] = stored;
         }
       }
-      return toWireStep(operation, parameters, bindings);
+      return toWireStep(operation, parameters, bindings, when);
     });
     return { steps: outSteps, assets };
   }
@@ -1047,6 +1133,23 @@ export function PipelineBuilder() {
       // Revoke on the next tick: some browsers have not yet begun reading the
       // blob when click() returns, and revoking now would cancel the download.
       setTimeout(() => URL.revokeObjectURL(url), 0);
+    } catch (e) {
+      if (mounted.current)
+        setRunResult({ tone: "danger", text: errorMessage(e) });
+    }
+  }
+
+  /** Open an output's archive chain in a tab. Fetched through apiClient.local so the request
+   * carries the backend base + credentials — a bare same-origin link 401s on SaaS/bearer
+   * sessions. The chain is JSON, pretty-printed so it reads as a page, not a download. */
+  async function openArchive(chainId: string) {
+    try {
+      const chain = await fetchPrepressArchive(chainId);
+      const url = URL.createObjectURL(
+        new Blob([JSON.stringify(chain, null, 2)], { type: "text/plain" }),
+      );
+      window.open(url, "_blank", "noopener,noreferrer");
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } catch (e) {
       if (mounted.current)
         setRunResult({ tone: "danger", text: errorMessage(e) });
@@ -1211,14 +1314,29 @@ export function PipelineBuilder() {
 
   /** A step's one-line summary: what it will do beyond its name. */
   function stepDetail(step: WorkingToolStep): string | undefined {
+    // A gate changes what the step does to which files, so it earns the detail line.
+    const gate = step.when
+      ? t(
+          "portal.pipelines.builder.when.detail",
+          "if {{field}} matches {{values}}",
+          {
+            field: step.when.input.field,
+            values:
+              step.when.values
+                .filter((value) => value.trim() !== "")
+                .join(", ") || "…",
+          },
+        )
+      : undefined;
+    let base: string | undefined;
     if (step.support === "unsupported")
-      return t("portal.pipelines.builder.usesDefaults");
+      base = t("portal.pipelines.builder.usesDefaults");
     // Integration and DocParse steps are toolId-less by design and carry their own settings UI,
     // so "unknown" here means "not a registry tool", not "we cannot drive this".
-    if (isIntegrationStep(step) || isIngestStep(step)) return undefined;
-    if (step.support === "unknown")
-      return t("portal.pipelines.builder.unknownStep");
-    return undefined;
+    else if (isIntegrationStep(step) || isIngestStep(step)) base = undefined;
+    else if (step.support === "unknown")
+      base = t("portal.pipelines.builder.unknownStep");
+    return [gate, base].filter(Boolean).join(" · ") || undefined;
   }
 
   // A run reports one step cursor, so progress reads off it: everything before the cursor is done,
@@ -1358,6 +1476,7 @@ export function PipelineBuilder() {
                 destinations={writableSources}
                 onCreateDestination={() => createSourceFor("output")}
                 canClassify={classifies}
+                canPreflight={preflights}
                 aiClassificationEnabled={aiClassificationEnabled}
               />
               <DestinationPicker
@@ -1395,14 +1514,23 @@ export function PipelineBuilder() {
     }
 
     if (selectedStep) {
+      const stepIndex = chosenSteps[0];
+      // Gate facts come from steps before this one, not anywhere in the chain.
+      const before = steps.slice(0, stepIndex);
       return (
         <PipelineStepSettings
           editorInput={returnsToEditor}
           step={selectedStep}
           registry={allTools}
-          onChange={(params) => updateStepParams(chosenSteps[0], params)}
+          onChange={(params) => updateStepParams(stepIndex, params)}
           assetNames={assetNames}
-          onClearBinding={(field) => clearStepBinding(chosenSteps[0], field)}
+          onClearBinding={(field) => clearStepBinding(stepIndex, field)}
+          when={selectedStep.when}
+          onWhenChange={(when) => updateStepWhen(stepIndex, when)}
+          classificationAvailable={
+            aiClassificationEnabled && before.some(isClassifyStep)
+          }
+          preflightAvailable={before.some(isPreflightStep)}
         />
       );
     }
@@ -1487,6 +1615,7 @@ export function PipelineBuilder() {
             testing={testing}
             runResult={testSummary}
             onDownloadOutput={downloadOutput}
+            onOpenArchive={openArchive}
             onViewDefinition={() => setDefinitionOpen(true)}
           />
           <PipelineGraph

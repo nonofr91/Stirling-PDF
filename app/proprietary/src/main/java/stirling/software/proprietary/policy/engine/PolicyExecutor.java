@@ -1,13 +1,20 @@
 package stirling.software.proprietary.policy.engine;
 
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
+import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -27,6 +34,10 @@ import stirling.software.common.service.ToolMetadataService;
 import stirling.software.common.util.ExceptionUtils;
 import stirling.software.common.util.TempFileManager;
 import stirling.software.common.util.ZipExtractionUtils;
+import stirling.software.proprietary.document.DocumentFacts;
+import stirling.software.proprietary.document.conditions.Condition;
+import stirling.software.proprietary.document.conditions.ConditionEvaluator;
+import stirling.software.proprietary.document.conditions.ConditionInput;
 import stirling.software.proprietary.policy.model.PipelineDefinition;
 import stirling.software.proprietary.policy.model.PipelineStep;
 import stirling.software.proprietary.policy.model.PolicyInputs;
@@ -36,6 +47,7 @@ import stirling.software.proprietary.service.AiToolResponseHeaders;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * Runs an ordered chain of tool steps, feeding each step's output files into the next.
@@ -52,6 +64,16 @@ public class PolicyExecutor {
 
     private static final String FILTER_OPERATION_PREFIX = "/api/v1/filter/filter-";
 
+    // Gate fields readable without opening the document; report.* is carried state, not content.
+    private static final Set<String> FREE_GATE_FIELDS =
+            Set.of("document.filename", "document.extension", "document.sizeBytes");
+
+    // Must stay identical to PrepressArchiveService.HEADER_* in app/core — this module compiles
+    // against common only and cannot import them.
+    private static final String PREPRESS_CHAIN_ID_HEADER = "X-Prepress-Chain-Id";
+
+    private static final String PREPRESS_VERSION_HEADER = "X-Prepress-Version";
+
     private final InternalApiClient internalApiClient;
     private final ToolMetadataService toolMetadataService;
     private final TempFileManager tempFileManager;
@@ -62,7 +84,10 @@ public class PolicyExecutor {
     private record ToolResult(List<Resource> files, JsonNode report) {}
 
     // A merge can lose its single-source attribution while continuing an input's billing group.
-    private record PipelineFile(Resource resource, Integer origin, Integer billingOrigin) {}
+    // report is the most recent step report attached to this file — routing reads it off the
+    // document facts at delivery time.
+    private record PipelineFile(
+            Resource resource, Integer origin, Integer billingOrigin, JsonNode report) {}
 
     private record StepOutput(List<PipelineFile> files, JsonNode report) {}
 
@@ -83,7 +108,7 @@ public class PolicyExecutor {
         List<PipelineFile> currentFiles = new ArrayList<>();
         Map<String, List<Resource>> supportingFiles = inputs.supportingFiles();
         for (int k = 0; k < inputs.primary().size(); k++) {
-            currentFiles.add(new PipelineFile(inputs.primary().get(k), k, k));
+            currentFiles.add(new PipelineFile(inputs.primary().get(k), k, k, null));
         }
         // Last non-null report wins: the terminal step defines the output.
         JsonNode lastReport = null;
@@ -97,7 +122,8 @@ public class PolicyExecutor {
                         "Pipeline step " + (i + 1) + " has no operation");
             }
             listener.onStepStart(i + 1, steps.size(), operation);
-            StepOutput stepResult = executeStep(step, currentFiles, supportingFiles);
+            StepOutput stepResult =
+                    executeStep(step, currentFiles, supportingFiles, listener, i + 1);
             currentFiles = stepResult.files();
             if (stepResult.report() != null) {
                 lastReport = stepResult.report();
@@ -109,52 +135,101 @@ public class PolicyExecutor {
         return new PolicyExecutionResult(
                 currentFiles.stream().map(PipelineFile::resource).toList(),
                 currentFiles.stream().map(PipelineFile::origin).toList(),
+                currentFiles.stream().map(PipelineFile::report).toList(),
                 lastReport,
                 lastReportTool);
     }
 
     /**
-     * Multi-input endpoints get all files in one call; others are called once per file. ZIP
-     * responses are unpacked so each inner file is its own result (e.g. split). For per-file
+     * Multi-input endpoints get all matching files in one call; others are called once per file.
+     * ZIP responses are unpacked so each inner file is its own result (e.g. split). For per-file
      * dispatch the first non-null report wins.
+     *
+     * <p>A {@code when} gate partitions the incoming files first: only matching files are
+     * dispatched (and type-checked), while the rest bypass the step untouched - keeping their
+     * resource, origin and report - and rejoin the stream at the step's output. A gate whose facts
+     * never match (including a generator step's empty input, where there is no document to read
+     * facts from) skips the tool call entirely.
      */
     private StepOutput executeStep(
             PipelineStep step,
             List<PipelineFile> inputFiles,
-            Map<String, List<Resource>> supportingFiles)
+            Map<String, List<Resource>> supportingFiles,
+            PolicyProgressListener listener,
+            int stepIndex)
             throws IOException {
-        List<Resource> resources = inputFiles.stream().map(PipelineFile::resource).toList();
+        Condition when = step.when();
+        List<PipelineFile> matching = inputFiles;
+        List<PipelineFile> bypassed = List.of();
+        Set<PipelineFile> matched = null;
+        if (when != null) {
+            matching = new ArrayList<>();
+            List<PipelineFile> skipped = new ArrayList<>();
+            matched = Collections.newSetFromMap(new IdentityHashMap<>());
+            for (PipelineFile file : inputFiles) {
+                // The same fact shape delivery routing matches on: document.* plus the report the
+                // producing step attached, so report.preflight.* paths read identically here.
+                if (ConditionEvaluator.matches(when, gateFacts(when, file))) {
+                    matching.add(file);
+                    matched.add(file);
+                } else {
+                    skipped.add(file);
+                }
+            }
+            bypassed = skipped;
+            listener.onStepGate(stepIndex, matching.size(), inputFiles.size());
+            if (matching.isEmpty()) {
+                return new StepOutput(bypassed, null);
+            }
+        }
+        List<Resource> resources = matching.stream().map(PipelineFile::resource).toList();
         requireAcceptedTypes(step.operation(), resources);
         List<PipelineFile> files = new ArrayList<>();
         JsonNode report = null;
         if (toolMetadataService.isMultiInput(step.operation())) {
-            Integer origin = sharedOrigin(inputFiles);
+            Integer origin = sharedOrigin(matching);
             // Synchronous, ordered dispatch makes the last surviving input's group the newest,
             // matching SaaS's choice when a merge joins several previously processed documents.
-            Integer billingOrigin =
-                    inputFiles.isEmpty() ? null : inputFiles.getLast().billingOrigin();
+            Integer billingOrigin = matching.isEmpty() ? null : matching.getLast().billingOrigin();
             ToolResult r;
             try (AutomationRunContext.Scope doc = documentScope(billingOrigin)) {
                 r = callEndpoint(step, resources, supportingFiles);
             }
+            // Fan-in attribution: a merged file only carries the report every input agreed on —
+            // a silent merge of divergent verdicts cannot claim either one.
+            JsonNode shared = sharedReport(matching);
             for (Resource file : r.files()) {
-                files.add(new PipelineFile(file, origin, billingOrigin));
+                files.add(
+                        new PipelineFile(
+                                file, origin, billingOrigin, mergeReports(shared, r.report())));
             }
             report = r.report();
-        } else if (inputFiles.isEmpty()) {
+            // A merge collapses positions, so bypassed files rejoin after the step's products.
+            files.addAll(bypassed);
+        } else if (matching.isEmpty()) {
+            // Unconditional generator step: no inputs to dispatch, the tool produces its own.
             ToolResult r = callEndpoint(step, List.of(), supportingFiles);
             for (Resource file : r.files()) {
-                files.add(new PipelineFile(file, null, null));
+                files.add(new PipelineFile(file, null, null, r.report()));
             }
             report = r.report();
         } else {
             for (PipelineFile input : inputFiles) {
+                if (when != null && !matched.contains(input)) {
+                    files.add(input);
+                    continue;
+                }
                 ToolResult r;
                 try (AutomationRunContext.Scope doc = documentScope(input.billingOrigin())) {
                     r = callEndpoint(step, List.of(input.resource()), supportingFiles);
                 }
                 for (Resource file : r.files()) {
-                    files.add(new PipelineFile(file, input.origin(), input.billingOrigin()));
+                    files.add(
+                            new PipelineFile(
+                                    file,
+                                    input.origin(),
+                                    input.billingOrigin(),
+                                    mergeReports(input.report(), r.report())));
                 }
                 if (report == null) {
                     report = r.report();
@@ -162,6 +237,105 @@ public class PolicyExecutor {
             }
         }
         return new StepOutput(files, report);
+    }
+
+    /**
+     * Facts for one gated file, built at the cost the condition's field demands. A gate on the
+     * name/size trio or on a carried {@code report.*} path never opens the document - on remote
+     * inputs that is the difference between reading a listing entry and buffering a whole object. A
+     * gate needing PDF facts reads them off a file handle, spooling stream-backed resources to a
+     * managed temp file first so the parse never holds the document in heap.
+     */
+    private ObjectNode gateFacts(Condition when, PipelineFile file) throws IOException {
+        ObjectNode facts =
+                needsDocumentFacts(when)
+                        ? DocumentFacts.of(fileBacked(file.resource()), objectMapper)
+                        : DocumentFacts.ofShallow(file.resource(), objectMapper);
+        if (file.report() != null) {
+            facts.set("report", file.report());
+        }
+        return facts;
+    }
+
+    private static boolean needsDocumentFacts(Condition when) {
+        return switch (when.input()) {
+            case ConditionInput.DocumentField(var field) ->
+                    (field.startsWith("document.") && !FREE_GATE_FIELDS.contains(field))
+                            || field.startsWith("classification.")
+                            || field.startsWith("sensitivityLabel.");
+        };
+    }
+
+    /**
+     * A file-backed view of the resource for {@link DocumentFacts}: the resource itself when it
+     * already is one, else a managed temp spool that keeps the source's name so {@code
+     * document.filename} still reads true.
+     */
+    private Resource fileBacked(Resource resource) throws IOException {
+        if (resource.isFile()) {
+            return resource;
+        }
+        File spool = tempFileManager.createTempFile(extensionOf(resource.getFilename()));
+        try (InputStream in = resource.getInputStream();
+                OutputStream out = new FileOutputStream(spool)) {
+            in.transferTo(out);
+        }
+        return new FileSystemResource(spool) {
+            @Override
+            public String getFilename() {
+                return resource.getFilename();
+            }
+
+            @Override
+            public String getDescription() {
+                return resource.getDescription();
+            }
+        };
+    }
+
+    private static String extensionOf(String filename) {
+        if (filename == null) {
+            return ".tmp";
+        }
+        int dot = filename.lastIndexOf('.');
+        return dot < 0 ? ".tmp" : filename.substring(dot);
+    }
+
+    /**
+     * Layers the producing step's report over the file's carried one, namespace by namespace: a
+     * step that only adds archive metadata ({@code prepress.*}) must not erase an earlier {@code
+     * preflight} verdict, while a fresh verdict replaces the previous one. A non-object report
+     * replaces wholesale — nothing reliable to merge into.
+     */
+    private static JsonNode mergeReports(JsonNode prior, JsonNode next) {
+        if (next == null) {
+            return prior;
+        }
+        if (prior instanceof ObjectNode priorObj && next instanceof ObjectNode nextObj) {
+            ObjectNode merged = priorObj.deepCopy();
+            merged.setAll(nextObj);
+            return merged;
+        }
+        return next;
+    }
+
+    /**
+     * The report every input carries when they all agree, else null: a multi-input step's output
+     * cannot honestly inherit a verdict its sources disagree on (or that some never had).
+     */
+    private static JsonNode sharedReport(List<PipelineFile> files) {
+        JsonNode shared = null;
+        for (PipelineFile file : files) {
+            if (file.report() == null) {
+                return null;
+            }
+            if (shared == null) {
+                shared = file.report();
+            } else if (!shared.equals(file.report())) {
+                return null;
+            }
+        }
+        return shared;
     }
 
     private static Integer sharedOrigin(List<PipelineFile> files) {
@@ -256,11 +430,34 @@ public class PolicyExecutor {
             }
         }
 
-        JsonNode report = parseReportHeader(headers, endpointPath);
+        JsonNode report = mergeArchiveHeaders(headers, parseReportHeader(headers, endpointPath));
         if (toolMetadataService.shouldUnpackZipResponse(endpointPath)) {
             return new ToolResult(ZipExtractionUtils.extractZip(resource, tempFileManager), report);
         }
         return new ToolResult(List.of(resource), report);
+    }
+
+    /**
+     * Prepress endpoints stamp {@code X-Prepress-Chain-Id}/{@code X-Prepress-Version} on every
+     * versioned response; folded into the report as {@code prepress:{chainId,version}} so the run
+     * can link back to the immutable archive chain — and routing can match on it too.
+     */
+    private JsonNode mergeArchiveHeaders(HttpHeaders headers, JsonNode report) {
+        String chainId = headers.getFirst(PREPRESS_CHAIN_ID_HEADER);
+        if (chainId == null || chainId.isBlank()) {
+            return report;
+        }
+        ObjectNode node =
+                report instanceof ObjectNode objectNode
+                        ? objectNode
+                        : objectMapper.createObjectNode();
+        ObjectNode prepress = node.putObject("prepress");
+        prepress.put("chainId", chainId);
+        String version = headers.getFirst(PREPRESS_VERSION_HEADER);
+        if (version != null && !version.isBlank()) {
+            prepress.put("version", version);
+        }
+        return node;
     }
 
     /** Parse the optional {@link AiToolResponseHeaders#TOOL_REPORT} header, or null. */

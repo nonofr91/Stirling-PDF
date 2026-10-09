@@ -25,6 +25,7 @@ describe("AdjustPageScaleSettings", () => {
     scaleFactor: 1.0,
     pageSize: PageSize.KEEP,
     orientation: "PORTRAIT",
+    pageBox: "MEDIA_BOX",
   };
 
   const mockOnParameterChange = vi.fn();
@@ -53,6 +54,7 @@ describe("AdjustPageScaleSettings", () => {
       scaleFactor: 2.5,
       pageSize: PageSize.A4,
       orientation: "LANDSCAPE",
+      pageBox: "MEDIA_BOX",
     };
 
     render(

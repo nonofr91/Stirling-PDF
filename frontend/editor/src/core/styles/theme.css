@@ -121,6 +121,7 @@
     --p-amber-600
   ); /* Orange for verification tools */
   --category-color-automation: var(--p-red-400); /* Pink for automation tools */
+  --category-color-prepress: var(--p-pink-500); /* Pink for prepress tools */
   --category-color-developer: var(--p-gray-500); /* Gray for developer tools */
   --category-color-default: var(--p-gray-500); /* Default gray */
 
@@ -403,6 +404,7 @@
     --p-amber-600
   ); /* Orange for verification tools */
   --category-color-automation: var(--p-red-400); /* Pink for automation tools */
+  --category-color-prepress: var(--p-pink-500); /* Pink for prepress tools */
   --category-color-developer: var(--p-gray-500); /* Gray for developer tools */
   --category-color-default: var(--p-gray-500); /* Default gray */
 

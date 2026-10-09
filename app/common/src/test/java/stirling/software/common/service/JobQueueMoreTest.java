@@ -190,6 +190,22 @@ class JobQueueMoreTest {
         }
 
         @Test
+        @DisplayName("an overdue job drains even while the system stays under critical load")
+        void overdueJobExecutesUnderCriticalLoad() {
+            statusRef.set(ResourceStatus.CRITICAL);
+            ReflectionTestUtils.setField(jobQueue, "maxWaitTimeMs", 1L);
+            CompletableFuture<ResponseEntity<?>> future =
+                    jobQueue.queueJob("crit-overdue", 50, () -> "done", 5000);
+            backdateQueuedAt("crit-overdue");
+
+            invokeProcessQueue();
+
+            awaitDone(future);
+            assertThat(jobQueue.isJobQueued("crit-overdue")).isFalse();
+            assertThat(future).isCompleted();
+        }
+
+        @Test
         @DisplayName("executes a queued job and completes its future when resources are OK")
         void executesWhenOk() {
             statusRef.set(ResourceStatus.OK);

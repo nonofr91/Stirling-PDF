@@ -9,7 +9,11 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
+import org.apache.pdfbox.contentstream.operator.Operator;
+import org.apache.pdfbox.cos.COSNumber;
+import org.apache.pdfbox.pdfparser.PDFStreamParser;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
@@ -49,6 +53,7 @@ class ScalePagesControllerTest {
     @TempDir Path tempDir;
     @Mock private CustomPDFDocumentFactory pdfDocumentFactory;
     @Mock private TempFileManager tempFileManager;
+    @Mock private stirling.software.SPDF.service.prepress.PrepressArchiveService prepressArchive;
     @InjectMocks private ScalePagesController controller;
 
     @BeforeEach
@@ -288,5 +293,56 @@ class ScalePagesControllerTest {
 
         assertNotNull(response);
         assertEquals(200, response.getStatusCode().value());
+    }
+
+    @Test
+    void testScalePages_KeepUsesNamedPageBox() throws Exception {
+        PDRectangle trimBox = new PDRectangle(20, 30, 400, 600);
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = new PDPage(PDRectangle.A4);
+            page.setTrimBox(trimBox);
+            doc.addPage(page);
+            Path pdfPath = tempDir.resolve("trimmed.pdf");
+            doc.save(pdfPath.toFile());
+            byte[] pdfBytes = Files.readAllBytes(pdfPath);
+
+            MockMultipartFile file =
+                    new MockMultipartFile(
+                            "fileInput", "test.pdf", MediaType.APPLICATION_PDF_VALUE, pdfBytes);
+
+            ScalePagesRequest request = new ScalePagesRequest();
+            request.setFileInput(file);
+            request.setPageSize("KEEP");
+            request.setPageBox("TRIM_BOX");
+            request.setScaleFactor(1.0f);
+
+            setupFactory();
+
+            ResponseEntity<Resource> response = controller.scalePages(request);
+
+            assertNotNull(response);
+            assertEquals(200, response.getStatusCode().value());
+            try (PDDocument result = org.apache.pdfbox.Loader.loadPDF(drainBody(response))) {
+                PDRectangle out = result.getPage(0).getMediaBox();
+                assertEquals(20, out.getLowerLeftX(), 0.01);
+                assertEquals(30, out.getLowerLeftY(), 0.01);
+                assertEquals(400, out.getWidth(), 0.01);
+                assertEquals(600, out.getHeight(), 0.01);
+
+                // The page MediaBox keeps the TrimBox origin (20, 30), so the content's
+                // placement translate must be (0, 0) for the trim content to land inside it.
+                // A translate of (-20, -30) would clip the left and bottom edges.
+                List<Object> tokens = new PDFStreamParser(result.getPage(0)).parse();
+                for (int i = 0; i < tokens.size(); i++) {
+                    if (tokens.get(i) instanceof Operator op && "cm".equals(op.getName())) {
+                        float tx = ((COSNumber) tokens.get(i - 2)).floatValue();
+                        float ty = ((COSNumber) tokens.get(i - 1)).floatValue();
+                        assertEquals(0, tx, 0.01);
+                        assertEquals(0, ty, 0.01);
+                        break;
+                    }
+                }
+            }
+        }
     }
 }

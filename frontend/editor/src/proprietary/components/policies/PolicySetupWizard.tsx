@@ -3,6 +3,7 @@ import {
   classificationCondition,
   documentFieldCondition,
   requiresClassification,
+  requiresPreflight,
 } from "@app/data/classificationConditions";
 import {
   Fragment,
@@ -25,7 +26,9 @@ import {
   type PolicySetupResult,
 } from "@app/policies/catalog";
 import {
+  PREFLIGHT_STEP_ENDPOINTS,
   policyEndpoint,
+  policyStep,
   policyStepFromWire,
   policyStepToWire,
   type PolicyParams,
@@ -261,6 +264,54 @@ const CAPABILITY_META: Record<
     descKey: "portal.policies.wizard.capability.externalApiCall.desc",
     descEn:
       "Hands the document to a system you have connected, and records what it answered.",
+  },
+  printPreflight: {
+    labelKey: "portal.policies.wizard.capability.printPreflight.label",
+    labelEn: "Check for print, without changing the file",
+    descKey: "portal.policies.wizard.capability.printPreflight.desc",
+    descEn:
+      "Runs the print preflight checks and hands back a copy with every issue framed — routes can send a failing document to quarantine with the annotated proof attached.",
+  },
+  printPreflightFix: {
+    labelKey: "portal.policies.wizard.capability.printPreflightFix.label",
+    labelEn: "Check and fix for print",
+    descKey: "portal.policies.wizard.capability.printPreflightFix.desc",
+    descEn:
+      "Runs the print preflight checks, applies the corrections it safely can (page boxes, bleed, colour), and reports a verdict routes can send to quarantine.",
+  },
+  setPageBoxes: {
+    labelKey: "portal.policies.wizard.capability.setPageBoxes.label",
+    labelEn: "Set page boxes",
+    descKey: "portal.policies.wizard.capability.setPageBoxes.desc",
+    descEn:
+      "Declares the page's boxes — trim, bleed, crop — so downstream print steps read the right geometry.",
+  },
+  scalePages: {
+    labelKey: "portal.policies.wizard.capability.scalePages.label",
+    labelEn: "Scale pages",
+    descKey: "portal.policies.wizard.capability.scalePages.desc",
+    descEn:
+      "Resizes page content to a target size, e.g. growing artwork to cover its bleed.",
+  },
+  cutContour: {
+    labelKey: "portal.policies.wizard.capability.cutContour.label",
+    labelEn: "Extract the cut contour",
+    descKey: "portal.policies.wizard.capability.cutContour.desc",
+    descEn:
+      "Reads the finishing contour from the artwork so a cutter can follow it.",
+  },
+  textToOutlines: {
+    labelKey: "portal.policies.wizard.capability.textToOutlines.label",
+    labelEn: "Convert text to outlines",
+    descKey: "portal.policies.wizard.capability.textToOutlines.desc",
+    descEn:
+      "Turns live text into vector paths, so no missing font or substitution can change it at press.",
+  },
+  crop: {
+    labelKey: "portal.policies.wizard.capability.crop.label",
+    labelEn: "Crop pages",
+    descKey: "portal.policies.wizard.capability.crop.desc",
+    descEn: "Trims pages to a chosen box or the detected content edge.",
   },
 };
 
@@ -518,12 +569,29 @@ function PolicySetupWizardBody({
     const routingNeedsClassification = routing.routingRules.some((rule) =>
       requiresClassification(rule.condition),
     );
+    const routingNeedsPreflight = routing.routingRules.some((rule) =>
+      requiresPreflight(rule.condition),
+    );
     const selectedTools = isRouting
       ? routingNeedsClassification
         ? tools.filter((tool) => tool.toolId === "classify")
         : []
       : enabledTools;
-    const steps: PipelineStep[] = selectedTools.map((tool) => {
+    // Routing mode manages only the verdict/classify steps its rules need; steps the wizard has
+    // no UI for (saved via the builder or another preset) ride through untouched — dropping them
+    // on save would silently cut the folder's processing chain.
+    const managedOperations = new Set<string>([
+      policyEndpoint("classify"),
+      ...PREFLIGHT_STEP_ENDPOINTS,
+    ]);
+    const preservedSteps = isRouting
+      ? (policy?.steps ?? []).filter(
+          (step) => step.operation == null || !managedOperations.has(step.operation),
+        )
+      : [];
+    const steps: PipelineStep[] = [
+      ...preservedSteps,
+      ...selectedTools.map((tool) => {
       const step = policyStepToWire(tool);
       const saved = policy?.steps.find(
         (original) => original.operation === step.operation,
@@ -533,7 +601,27 @@ function PolicySetupWizardBody({
         ...step,
         parameters: { ...saved?.parameters, ...step.parameters },
       };
-    });
+      }),
+    ];
+    // A verdict route needs a reporting step the routing category does not seed: inject the fix
+    // variant, reusing a saved preflight step's parameters when the policy already carries one.
+    // It runs before classify: a Ghostscript-level fixup rebuilds the file and would drop a
+    // classification written earlier, while classify's metadata write cannot change the verdict
+    // (and emits no report, so the verdict carries through it).
+    if (isRouting && routingNeedsPreflight) {
+      const preflightStep =
+        policy?.steps.find((step) =>
+          PREFLIGHT_STEP_ENDPOINTS.has(step.operation),
+        ) ?? policyStepToWire(policyStep("printPreflightFix"));
+      const classifyAt = steps.findIndex(
+        (step) => step.operation === policyEndpoint("classify"),
+      );
+      steps.splice(
+        classifyAt < 0 ? steps.length : classifyAt,
+        0,
+        preflightStep,
+      );
+    }
     return {
       required:
         (settings.runsOnEditor ?? true) &&
