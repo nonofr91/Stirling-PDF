@@ -8,6 +8,7 @@ import java.util.Set;
 
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotation;
 import org.springframework.core.io.Resource;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -30,6 +31,7 @@ import stirling.software.SPDF.model.api.security.PrintPreflightFixAudit;
 import stirling.software.SPDF.model.api.security.PrintPreflightProfile;
 import stirling.software.SPDF.model.api.security.PrintPreflightReport;
 import stirling.software.SPDF.model.api.security.PrintPreflightRequest;
+import stirling.software.SPDF.service.preflight.PreflightA4Scaler;
 import stirling.software.SPDF.service.preflight.PreflightAnnotator;
 import stirling.software.SPDF.service.preflight.PreflightFixer;
 import stirling.software.SPDF.service.preflight.PreflightGhostscriptFixer;
@@ -165,8 +167,12 @@ public class PrintPreflightController {
             PrintPreflightReport report =
                     printPreflightService.analyze(
                             document, file.getOriginalFilename(), file.getSize(), request);
-            PreflightAnnotator.annotate(
-                    document, report.getFindings(), PreflightReportText.bundleFor(request));
+            List<PDAnnotation> marks =
+                    PreflightAnnotator.annotate(
+                            document, report.getFindings(), PreflightReportText.bundleFor(request));
+            // After annotating: the marks ride along inside each page's scaled content,
+            // and report pages are inserted later already at A4.
+            PreflightA4Scaler.fitToA4(document, marks);
             if (request.isIncludeSummaryPage()) {
                 // Only after annotating: report pages would shift every finding's page index.
                 List<PDPage> summaryPages =
