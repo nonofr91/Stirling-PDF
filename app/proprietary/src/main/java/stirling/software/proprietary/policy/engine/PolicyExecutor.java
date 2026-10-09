@@ -1,7 +1,10 @@
 package stirling.software.proprietary.policy.engine;
 
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.IdentityHashMap;
@@ -11,6 +14,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
+import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -33,6 +37,7 @@ import stirling.software.common.util.ZipExtractionUtils;
 import stirling.software.proprietary.document.DocumentFacts;
 import stirling.software.proprietary.document.conditions.Condition;
 import stirling.software.proprietary.document.conditions.ConditionEvaluator;
+import stirling.software.proprietary.document.conditions.ConditionInput;
 import stirling.software.proprietary.policy.model.PipelineDefinition;
 import stirling.software.proprietary.policy.model.PipelineStep;
 import stirling.software.proprietary.policy.model.PolicyInputs;
@@ -58,6 +63,10 @@ import tools.jackson.databind.node.ObjectNode;
 public class PolicyExecutor {
 
     private static final String FILTER_OPERATION_PREFIX = "/api/v1/filter/filter-";
+
+    // Gate fields readable without opening the document; report.* is carried state, not content.
+    private static final Set<String> FREE_GATE_FIELDS =
+            Set.of("document.filename", "document.extension", "document.sizeBytes");
 
     // Must stay identical to PrepressArchiveService.HEADER_* in app/core — this module compiles
     // against common only and cannot import them.
@@ -160,11 +169,7 @@ public class PolicyExecutor {
             for (PipelineFile file : inputFiles) {
                 // The same fact shape delivery routing matches on: document.* plus the report the
                 // producing step attached, so report.preflight.* paths read identically here.
-                ObjectNode facts = DocumentFacts.of(file.resource(), objectMapper);
-                if (file.report() != null) {
-                    facts.set("report", file.report());
-                }
-                if (ConditionEvaluator.matches(when, facts)) {
+                if (ConditionEvaluator.matches(when, gateFacts(when, file))) {
                     matching.add(file);
                     matched.add(file);
                 } else {
@@ -232,6 +237,68 @@ public class PolicyExecutor {
             }
         }
         return new StepOutput(files, report);
+    }
+
+    /**
+     * Facts for one gated file, built at the cost the condition's field demands. A gate on the
+     * name/size trio or on a carried {@code report.*} path never opens the document - on remote
+     * inputs that is the difference between reading a listing entry and buffering a whole object. A
+     * gate needing PDF facts reads them off a file handle, spooling stream-backed resources to a
+     * managed temp file first so the parse never holds the document in heap.
+     */
+    private ObjectNode gateFacts(Condition when, PipelineFile file) throws IOException {
+        ObjectNode facts =
+                needsDocumentFacts(when)
+                        ? DocumentFacts.of(fileBacked(file.resource()), objectMapper)
+                        : DocumentFacts.ofShallow(file.resource(), objectMapper);
+        if (file.report() != null) {
+            facts.set("report", file.report());
+        }
+        return facts;
+    }
+
+    private static boolean needsDocumentFacts(Condition when) {
+        return switch (when.input()) {
+            case ConditionInput.DocumentField(var field) ->
+                    (field.startsWith("document.") && !FREE_GATE_FIELDS.contains(field))
+                            || field.startsWith("classification.")
+                            || field.startsWith("sensitivityLabel.");
+        };
+    }
+
+    /**
+     * A file-backed view of the resource for {@link DocumentFacts}: the resource itself when it
+     * already is one, else a managed temp spool that keeps the source's name so {@code
+     * document.filename} still reads true.
+     */
+    private Resource fileBacked(Resource resource) throws IOException {
+        if (resource.isFile()) {
+            return resource;
+        }
+        File spool = tempFileManager.createTempFile(extensionOf(resource.getFilename()));
+        try (InputStream in = resource.getInputStream();
+                OutputStream out = new FileOutputStream(spool)) {
+            in.transferTo(out);
+        }
+        return new FileSystemResource(spool) {
+            @Override
+            public String getFilename() {
+                return resource.getFilename();
+            }
+
+            @Override
+            public String getDescription() {
+                return resource.getDescription();
+            }
+        };
+    }
+
+    private static String extensionOf(String filename) {
+        if (filename == null) {
+            return ".tmp";
+        }
+        int dot = filename.lastIndexOf('.');
+        return dot < 0 ? ".tmp" : filename.substring(dot);
     }
 
     /**

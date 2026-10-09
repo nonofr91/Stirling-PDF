@@ -24,9 +24,12 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -34,6 +37,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.core.io.AbstractResource;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.ResponseEntity;
@@ -741,6 +745,107 @@ class PolicyExecutorTest {
         assertEquals(2, result.files().size());
         assertEquals("merged.pdf", result.files().get(0).getFilename());
         assertEquals("b.docx", result.files().get(1).getFilename());
+    }
+
+    @Test
+    void aGateOnTheFilenameNeverOpensTheDocument() throws IOException {
+        // Remote inputs are stream-backed: a gate that only needs listing facts must not pull the
+        // object - a stream that fails on open proves the facts came for free.
+        Resource remote =
+                new AbstractResource() {
+                    @Override
+                    public String getFilename() {
+                        return "remote.pdf";
+                    }
+
+                    @Override
+                    public String getDescription() {
+                        return "remote object";
+                    }
+
+                    @Override
+                    public long contentLength() {
+                        return 42;
+                    }
+
+                    @Override
+                    public InputStream getInputStream() {
+                        throw new IllegalStateException("a name-only gate must not read");
+                    }
+                };
+        when(toolMetadataService.isMultiInput(ROTATE)).thenReturn(false);
+        stubEndpoint(ROTATE, pdf("rotated", "rotated.pdf"));
+
+        PolicyExecutionResult result =
+                executor.execute(
+                        definition(
+                                new PipelineStep(
+                                        ROTATE,
+                                        Map.of(),
+                                        Map.of(),
+                                        gateOn("document.extension", "pdf"))),
+                        PolicyInputs.of(List.of(remote)),
+                        PolicyProgressListener.NOOP);
+
+        verify(internalApiClient, times(1)).post(eq(ROTATE), any());
+        assertEquals("rotated.pdf", result.files().get(0).getFilename());
+    }
+
+    @Test
+    void aGateNeedingPdfFactsReadsTheStreamOnce() throws IOException {
+        // Facts that only the document carries - page count here - cost one read, spooled to a
+        // temp file so the parse never buffers the input in heap.
+        byte[] realPdf = onePagePdf();
+        AtomicInteger opens = new AtomicInteger();
+        Resource streamBacked =
+                new AbstractResource() {
+                    @Override
+                    public String getFilename() {
+                        return "streamed.pdf";
+                    }
+
+                    @Override
+                    public String getDescription() {
+                        return "streamed object";
+                    }
+
+                    @Override
+                    public long contentLength() {
+                        return realPdf.length;
+                    }
+
+                    @Override
+                    public InputStream getInputStream() {
+                        opens.incrementAndGet();
+                        return new ByteArrayInputStream(realPdf);
+                    }
+                };
+        when(toolMetadataService.isMultiInput(ROTATE)).thenReturn(false);
+        stubEndpoint(ROTATE, pdf("rotated", "rotated.pdf"));
+
+        PolicyExecutionResult result =
+                executor.execute(
+                        definition(
+                                new PipelineStep(
+                                        ROTATE,
+                                        Map.of(),
+                                        Map.of(),
+                                        gateOn("document.pageCount", "1"))),
+                        PolicyInputs.of(List.of(streamBacked)),
+                        PolicyProgressListener.NOOP);
+
+        verify(internalApiClient, times(1)).post(eq(ROTATE), any());
+        assertEquals("rotated.pdf", result.files().get(0).getFilename());
+        assertEquals(1, opens.get());
+    }
+
+    private static byte[] onePagePdf() throws IOException {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try (PDDocument doc = new PDDocument()) {
+            doc.addPage(new PDPage());
+            doc.save(baos);
+        }
+        return baos.toByteArray();
     }
 
     private static Condition gateOn(String field, String... values) {

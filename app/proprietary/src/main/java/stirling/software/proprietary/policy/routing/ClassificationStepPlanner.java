@@ -76,7 +76,9 @@ public final class ClassificationStepPlanner {
             }
             Map<String, Object> parameters = new LinkedHashMap<>(step.parameters());
             parameters.putAll(RECLASSIFY);
-            steps.add(new PipelineStep(step.operation(), parameters, step.fileParameters()));
+            steps.add(
+                    new PipelineStep(
+                            step.operation(), parameters, step.fileParameters(), step.when()));
             rewritten = true;
         }
         return rewritten ? policy.withSteps(steps) : policy;

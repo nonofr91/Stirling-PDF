@@ -63,6 +63,24 @@ class ClassificationStepPlannerTest {
     }
 
     @Test
+    void forceReclassificationKeepsTheStepsGate() {
+        // Rebuilding the step to force reclassify must not drop its when gate.
+        Condition gate =
+                new Condition.MatchesAny(
+                        new ConditionInput.DocumentField("document.extension"), List.of("pdf"));
+        PipelineStep gatedClassify =
+                new PipelineStep(
+                        ClassificationStepPlanner.CLASSIFY_ENDPOINT, Map.of(), Map.of(), gate);
+
+        Policy planned =
+                ClassificationStepPlanner.ensureClassificationFirst(
+                        policyWith(List.of(gatedClassify), classificationRule()));
+
+        assertThat(planned.steps().get(0).when()).isEqualTo(gate);
+        assertThat(planned.steps().get(0).parameters()).containsEntry("reclassify", true);
+    }
+
+    @Test
     void leavesAPolicyThatDoesNotRouteOnClassificationAlone() {
         RoutingRule bySize =
                 new RoutingRule(
