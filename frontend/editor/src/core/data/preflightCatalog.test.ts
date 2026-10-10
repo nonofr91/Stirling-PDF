@@ -4,7 +4,6 @@ import {
   PREFLIGHT_FIXUPS,
   PREFLIGHT_CHECK_IDS,
   PREFLIGHT_FIXUP_IDS,
-  fixupByCode,
   detectionByCode,
   validateFixupParams,
 } from "@app/data/preflightCatalog";

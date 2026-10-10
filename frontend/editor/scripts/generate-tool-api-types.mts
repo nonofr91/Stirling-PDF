@@ -102,6 +102,40 @@ function deepSortKeys(value: unknown): unknown {
   return value;
 }
 
+const STRUCTURAL_SCHEMA_KEYS = new Set([
+  "properties",
+  "additionalProperties",
+  "patternProperties",
+  "items",
+  "required",
+  "enum",
+  "oneOf",
+  "anyOf",
+  "allOf",
+  "not",
+  "$ref",
+]);
+
+/**
+ * A `type: object` schema with no structure is a Java Object (e.g. a map's value
+ * type) — json-schema-to-typescript renders it as `{}`, which the lint rejects,
+ * when the truthful type for an unconstrained JSON value is `unknown`.
+ */
+function pinUnknownObjects(node: unknown): void {
+  if (Array.isArray(node)) {
+    node.forEach(pinUnknownObjects);
+    return;
+  }
+  if (!isObject(node)) return;
+  if (
+    node.type === "object" &&
+    !Object.keys(node).some((key) => STRUCTURAL_SCHEMA_KEYS.has(key))
+  ) {
+    node.tsType = "unknown";
+  }
+  for (const value of Object.values(node)) pinUnknownObjects(value);
+}
+
 function pascalCase(segment: string): string {
   return segment
     .split(/[-_/]/)
@@ -506,6 +540,8 @@ async function compileAndWrite(
     ),
     definitions: definitions,
   };
+
+  pinUnknownObjects(rootSchema);
 
   // Canonicalize key order so a reordering in SwaggerDoc.json can never change
   // the generated file (which would flake the committed-types CI check).

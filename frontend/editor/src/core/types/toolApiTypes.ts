@@ -1194,7 +1194,7 @@ export interface PrintPreflightProfile {
           /**
            * Per-fixup parameters keyed by fixup code, e.g. {"EXTEND_BLEED":{"method":"MIRROR_IMAGE"}} — same contract as the request's fixupParams field
            */
-          [k: string]: {} | undefined;
+          [k: string]: unknown | undefined;
         }
       | undefined;
   };
