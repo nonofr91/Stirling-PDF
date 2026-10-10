@@ -11,6 +11,7 @@ import {
 import {
   PREFLIGHT_REPORT,
   fixOnlyReportPaths,
+  reportAvailabilityFromEndpoints,
   reportFieldByPath,
 } from "@app/data/reportCatalog";
 
@@ -87,15 +88,15 @@ describe("validateFixupParams", () => {
   it("rejects what the backend would reject", () => {
     expect(validateFixupParams({ NOT_A_FIXUP: {} })).toBe(false);
     expect(validateFixupParams({ EXTEND_BLEED: { bogus: 1 } })).toBe(false);
-    expect(
-      validateFixupParams({ EXTEND_BLEED: { method: "SIDEWAYS" } }),
-    ).toBe(false);
+    expect(validateFixupParams({ EXTEND_BLEED: { method: "SIDEWAYS" } })).toBe(
+      false,
+    );
     expect(
       validateFixupParams({ DOWNSAMPLE_IMAGES: { jpegQuality: 1.5 } }),
     ).toBe(false);
-    expect(
-      validateFixupParams({ DOWNSAMPLE_IMAGES: { jpegQuality: 0 } }),
-    ).toBe(false);
+    expect(validateFixupParams({ DOWNSAMPLE_IMAGES: { jpegQuality: 0 } })).toBe(
+      false,
+    );
     expect(validateFixupParams({ PURE_BLACK_TEXT: { maxPt: -1 } })).toBe(false);
     expect(
       validateFixupParams({ DOWNSAMPLE_IMAGES: { jpegQuality: "high" } }),
@@ -124,5 +125,31 @@ describe("report catalog", () => {
         expect(field.values?.length, field.path).toBeGreaterThan(0);
       }
     }
+  });
+});
+
+describe("reportAvailabilityFromEndpoints", () => {
+  const FIX = "/api/v1/security/print-preflight-fix";
+  const ANALYSIS = "/api/v1/security/print-preflight-annotated";
+
+  it("marks fix fields once a fix endpoint ran", () => {
+    expect(reportAvailabilityFromEndpoints([ANALYSIS])).toEqual({
+      preflight: "analysis",
+    });
+    expect(reportAvailabilityFromEndpoints([FIX])).toEqual({
+      preflight: "fix",
+    });
+    expect(reportAvailabilityFromEndpoints([])).toEqual({});
+  });
+
+  it("lets the last producer win — a later analysis replaces the fix report", () => {
+    // mergeReports replaces the whole namespace per step, so fix fields the
+    // earlier fix emitted are gone once an analysis step rewrites them.
+    expect(reportAvailabilityFromEndpoints([FIX, ANALYSIS])).toEqual({
+      preflight: "analysis",
+    });
+    expect(reportAvailabilityFromEndpoints([ANALYSIS, FIX])).toEqual({
+      preflight: "fix",
+    });
   });
 });

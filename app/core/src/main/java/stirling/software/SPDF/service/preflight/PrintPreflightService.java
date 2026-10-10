@@ -765,10 +765,12 @@ public class PrintPreflightService {
         }
         // When the rendered pass is on and Ghostscript answers, its composite measurement is
         // authoritative: paint hidden under later knockouts or stacked overprints reads true.
+        // Each ink code is independently disableable: suppressing the rendered check skips its
+        // cost but leaves the painted estimate; suppressing the painted check still lets the
+        // rendered pass run.
         RenderedInkCoverage.Result renderedTac = null;
         if (request.isRenderedInkCoverage()
                 && renderedInkCoverage != null
-                && !disabled.contains(PreflightCheck.INK_COVERAGE_HIGH)
                 && !disabled.contains(PreflightCheck.INK_COVERAGE_HIGH_RENDERED)) {
             renderedTac = renderedInkCoverage.measure(document, request.getMaxInkCoveragePercent());
         }
@@ -796,7 +798,7 @@ public class PrintPreflightService {
         }
         List<Map.Entry<Integer, List<PaintedArea>>> inkHits = new ArrayList<>();
         float maxTacHit = 0;
-        if (renderedTac == null) {
+        if (renderedTac == null && !disabled.contains(PreflightCheck.INK_COVERAGE_HIGH)) {
             for (Map.Entry<Integer, List<PaintedArea>> e : inkAreasByPage.entrySet()) {
                 List<PaintedArea> over = new ArrayList<>();
                 for (PaintedArea a : e.getValue()) {

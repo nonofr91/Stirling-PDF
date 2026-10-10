@@ -226,18 +226,22 @@ export function reportFieldServed(
   return field.producedBy === "fix" ? level === "fix" : level !== undefined;
 }
 
-/** Availability derived from the endpoints that already ran — e.g. the steps before a gate. */
+/**
+ * Availability derived from the endpoints that already ran — e.g. the steps
+ * before a gate. Order matters: each step's report replaces its namespace
+ * (see `mergeReports` in the executor), so a fix step followed by an
+ * analysis leaves only the analysis fields — the last producer wins.
+ */
 export function reportAvailabilityFromEndpoints(
   endpoints: readonly string[],
 ): ReportAvailability {
-  const seen = new Set(endpoints);
   const availability: ReportAvailability = {};
-  for (const producer of REPORT_PRODUCERS) {
-    if (producer.fixEndpoints.some((e) => seen.has(e))) {
-      availability[producer.namespace] = "fix";
-    } else if (producer.endpoints.some((e) => seen.has(e))) {
-      availability[producer.namespace] = "analysis";
-    }
+  for (const endpoint of endpoints) {
+    const producer = PRODUCER_BY_ENDPOINT.get(endpoint);
+    if (producer === undefined) continue;
+    availability[producer.namespace] = producer.fixEndpoints.includes(endpoint)
+      ? "fix"
+      : "analysis";
   }
   return availability;
 }

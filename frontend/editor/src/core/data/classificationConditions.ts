@@ -54,6 +54,14 @@ export function readsReportField(condition: Condition): boolean {
   );
 }
 
+/** The condition reads a corrector-step field (`pre*`, `fixupsApplied`…) — fix variant only. */
+export function readsFixReportField(condition: Condition): boolean {
+  return (
+    condition.input.source === "document" &&
+    reportFieldByPath(condition.input.field)?.producedBy === "fix"
+  );
+}
+
 /**
  * Whether the producers that already ran emit every report fact the condition
  * reads — fix-produced fields need the corrector variant of their namespace.

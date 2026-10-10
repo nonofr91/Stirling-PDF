@@ -1479,6 +1479,69 @@ class PreflightFixerTest {
         assertFalse(codes.contains("INK_COVERAGE_HIGH_RENDERED"), "the rendered pass is opt-in");
     }
 
+    @Test
+    void testDisablingRenderedInkCheckKeepsPaintedEstimate() throws Exception {
+        // Suppressing the rendered code must not silence the painted estimate: each ink
+        // detection is independently disableable (contract R1). Without Ghostscript the
+        // rendered measure reports nothing, so the painted estimate is what fires here.
+        PrintPreflightRequest req = request(richBlackPdf());
+        req.setRenderedInkCoverage(true);
+        req.setDisabledChecks(List.of("INK_COVERAGE_HIGH_RENDERED"));
+        stirling.software.SPDF.model.api.security.PrintPreflightReport report =
+                renderedController().printPreflight(req).getBody();
+        assertNotNull(report);
+        List<String> codes =
+                report.getFindings().stream()
+                        .map(
+                                stirling.software
+                                                .SPDF
+                                                .model
+                                                .api
+                                                .security
+                                                .PrintPreflightReport
+                                                .Finding
+                                        ::getCode)
+                        .toList();
+        assertTrue(
+                codes.contains("INK_COVERAGE_HIGH"),
+                "disabling the rendered check leaves the painted estimate reporting");
+        assertFalse(
+                codes.contains("INK_COVERAGE_HIGH_RENDERED"),
+                "the disabled rendered code emits nothing");
+    }
+
+    @Test
+    void testDisablingPaintedInkCheckKeepsRenderedPass() throws Exception {
+        org.junit.jupiter.api.Assumptions.assumeTrue(ghostscriptOnPath(), "gs binary not on PATH");
+        org.mockito.Mockito.when(endpointConfiguration.isGroupEnabled("Ghostscript"))
+                .thenReturn(true);
+        // Suppressing the painted code must not skip the rendered pass — the measurement is
+        // what the rendered finding needs, so it must run on its own flag alone.
+        PrintPreflightRequest req = request(richBlackPdf());
+        req.setRenderedInkCoverage(true);
+        req.setDisabledChecks(List.of("INK_COVERAGE_HIGH"));
+        stirling.software.SPDF.model.api.security.PrintPreflightReport report =
+                renderedController().printPreflight(req).getBody();
+        assertNotNull(report);
+        List<String> codes =
+                report.getFindings().stream()
+                        .map(
+                                stirling.software
+                                                .SPDF
+                                                .model
+                                                .api
+                                                .security
+                                                .PrintPreflightReport
+                                                .Finding
+                                        ::getCode)
+                        .toList();
+        assertTrue(
+                codes.contains("INK_COVERAGE_HIGH_RENDERED"),
+                "the rendered pass runs even with the painted check disabled");
+        assertFalse(
+                codes.contains("INK_COVERAGE_HIGH"), "the disabled painted check emits nothing");
+    }
+
     /** A 4×4 DeviceCMYK image whose every pixel is a 400% rich black. */
     private static byte[] cmykImagePdf(byte fillC, byte fillM, byte fillY, byte fillK)
             throws IOException {
@@ -1597,6 +1660,18 @@ class PreflightFixerTest {
                 IllegalArgumentException.class,
                 () -> controller.printPreflightFix(req),
                 "out-of-range values must be rejected");
+
+        req.setFixupParams("{\"PURE_BLACK_TEXT\":{\"maxPt\":1e100}}");
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> controller.printPreflightFix(req),
+                "a value that narrows past Float.MAX_VALUE must be rejected");
+
+        req.setFixupParams("{\"DOWNSAMPLE_IMAGES\":{\"jpegQuality\":1e-50}}");
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> controller.printPreflightFix(req),
+                "a value that narrows to zero must be rejected");
 
         req.setFixupParams("{\"DOWNSAMPLE_IMAGES\":{\"jpegQuality\":\"high\"}}");
         assertThrows(

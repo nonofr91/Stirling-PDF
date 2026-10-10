@@ -442,6 +442,71 @@ describe("PolicySetupWizard", () => {
     expect(result.steps[0].parameters).toEqual({ contourName: "cut" });
   });
 
+  it("upgrades an analysis-only preflight step when a route reads a fix-only field", async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    const entry: CatalogueEntry = {
+      category: routing,
+      config: routingConfig,
+      policy: {
+        ...editEntry([
+          {
+            operation: "/api/v1/security/print-preflight-annotated",
+            parameters: { maxTotalInkCoverage: 300 },
+          },
+        ]).policy!,
+        category: routing,
+        config: routingConfig,
+      },
+    };
+    render(
+      <SharedPolicySetupWizard
+        entry={entry}
+        onClose={vi.fn()}
+        onSubmit={onSubmit}
+        routingConfig={({ onChange }) => (
+          <button
+            onClick={() =>
+              onChange({
+                sourceId: "inbox",
+                trigger: { type: "folder-watch", options: {} },
+                outputIds: ["approved"],
+                routingRules: [
+                  {
+                    condition: {
+                      input: {
+                        source: "document",
+                        field: "report.preflight.fixupsApplied",
+                      },
+                      operator: "matches-any",
+                      values: ["EXTEND_BLEED"],
+                    },
+                    outputId: "corrected",
+                  },
+                ],
+              })
+            }
+          >
+            Configure fixup routing
+          </button>
+        )}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Configure fixup routing" }),
+    );
+    await submitWizard(SAVE_CHANGES);
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    const result = onSubmit.mock.calls[0][1] as PolicySetupResult;
+    // An analysis step never emits fixupsApplied — the route could never match — so the
+    // reused step upgrades to the corrector variant, keeping the tuned threshold.
+    expect(result.steps.map((step) => step.operation)).toEqual([
+      "/api/v1/security/print-preflight-fix",
+    ]);
+    expect(result.steps[0].parameters).toEqual({ maxTotalInkCoverage: 300 });
+  });
+
   it("allows deterministic routing without AI or a classify step", async () => {
     aiClassificationEnabled.value = false;
     const onSubmit = vi.fn().mockResolvedValue(undefined);

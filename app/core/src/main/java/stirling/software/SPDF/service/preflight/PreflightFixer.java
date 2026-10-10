@@ -776,14 +776,23 @@ public final class PreflightFixer {
                 }
             }
             case DOWNSAMPLE_IMAGES -> {
+                // Narrow to float at the boundary: a subnormal double collapses to 0f and would
+                // encode JPEGs at quality zero instead of being rejected.
                 if ("jpegQuality".equals(key)
-                        && (!value.isNumber() || value.asDouble() <= 0 || value.asDouble() > 1)) {
+                        && (!value.isNumber()
+                                || !((float) value.asDouble() > 0f)
+                                || value.asDouble() > 1)) {
                     throw invalidParam(code, key, "expects a number in (0, 1]");
                 }
             }
             case PURE_BLACK_TEXT -> {
-                if ("maxPt".equals(key) && (!value.isNumber() || value.asDouble() <= 0)) {
-                    throw invalidParam(code, key, "expects a positive number");
+                // A finite double above Float.MAX_VALUE narrows to +Inf — an infinite cutoff
+                // rewrites text at every size instead of honoring the bound.
+                if ("maxPt".equals(key)
+                        && (!value.isNumber()
+                                || !Float.isFinite((float) value.asDouble())
+                                || (float) value.asDouble() <= 0f)) {
+                    throw invalidParam(code, key, "expects a positive float-representable number");
                 }
             }
             default -> {}
