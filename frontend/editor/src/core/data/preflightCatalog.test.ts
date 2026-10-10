@@ -115,14 +115,35 @@ describe("report catalog", () => {
     expect(fixOnlyReportPaths()).toContain("report.preflight.fixupsSkipped");
   });
 
-  it("points code-list fields at a vocabulary", () => {
+  it("carries the backend enum vocabularies the frontend catalogs declare", () => {
+    // `x-stirling-report` inlines the Java enum members as `values` — so a
+    // check or fixup code added to preflightCatalog without its backend enum
+    // entry (or vice versa) fails right here.
+    const codeListFields = PREFLIGHT_REPORT.fields.filter(
+      (f) => f.kind === "code-list",
+    );
+    expect(codeListFields.length).toBeGreaterThan(0);
     for (const field of PREFLIGHT_REPORT.fields) {
-      if (field.kind === "code-list") {
-        expect(field.vocabulary, field.path).toBeDefined();
-      }
-      if (field.kind === "enum") {
+      if (field.kind === "code-list" || field.kind === "enum") {
         expect(field.values?.length, field.path).toBeGreaterThan(0);
       }
+    }
+    const checkFields = codeListFields.filter((f) => f.path.endsWith("Checks"));
+    const fixupFields = codeListFields.filter(
+      (f) =>
+        f.path.endsWith("fixupsApplied") || f.path.endsWith("fixupsSkipped"),
+    );
+    expect(checkFields.length).toBeGreaterThan(0);
+    expect(fixupFields.length).toBeGreaterThan(0);
+    for (const field of checkFields) {
+      expect([...field.values!].sort(), field.path).toEqual(
+        [...PREFLIGHT_CHECK_IDS].sort(),
+      );
+    }
+    for (const field of fixupFields) {
+      expect([...field.values!].sort(), field.path).toEqual(
+        [...PREFLIGHT_FIXUP_IDS].sort(),
+      );
     }
   });
 });

@@ -46,6 +46,7 @@ import stirling.software.common.annotations.api.SecurityApi;
 import stirling.software.common.enumeration.ResourceWeight;
 import stirling.software.common.model.tool.ToolFormat;
 import stirling.software.common.model.tool.ToolIO;
+import stirling.software.common.model.tool.ToolReport;
 import stirling.software.common.service.CustomPDFDocumentFactory;
 import stirling.software.common.util.ExceptionUtils;
 import stirling.software.common.util.GeneralUtils;
@@ -146,6 +147,7 @@ public class PrintPreflightController {
     }
 
     @ToolIO(produces = ToolFormat.PDF)
+    @ToolReport(PrintPreflightReport.Preflight.class)
     @Operation(
             summary = "Annotated print preflight",
             description =
@@ -205,6 +207,7 @@ public class PrintPreflightController {
     }
 
     @ToolIO(produces = ToolFormat.PDF)
+    @ToolReport(PrintPreflightReport.Preflight.class)
     @Operation(
             summary = "Print preflight report document",
             description =
@@ -255,6 +258,7 @@ public class PrintPreflightController {
     }
 
     @ToolIO(produces = ToolFormat.PDF)
+    @ToolReport(value = PrintPreflightReport.Preflight.class, fix = true)
     @Operation(
             summary = "Print preflight fix",
             description =

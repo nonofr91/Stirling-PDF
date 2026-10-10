@@ -25,7 +25,7 @@ Ce skill donne les recettes concrètes par type de tâche, avec les fichiers exa
 |---|---|---|
 | Détections | `PreflightCheck` (enum, `app/core/.../service/preflight/`) | `PREFLIGHT_DETECTIONS` (`src/core/data/preflightCatalog.ts`) |
 | Corrections | `PreflightFixer.Code` + `FIXUP_PARAMS` | `PREFLIGHT_FIXUPS` (même fichier) |
-| Champs rapport | record `PrintPreflightReport.Preflight` + header `X-Stirling-Tool-Report` | `PREFLIGHT_REPORT` (`src/core/data/reportCatalog.ts`) |
+| Champs rapport | `@ReportField` sur le record `PrintPreflightReport.Preflight` + `@ToolReport` par endpoint producteur | `toolReports.ts` **généré** (`x-stirling-report`), exposé via `reportCatalog.ts` |
 | Params correctifs | `FIXUP_PARAMS` map code→clés acceptées | `FixupDescriptor.params` |
 
 Codes **append-only**, jamais renommés ni supprimés (des pipelines stockés les
@@ -81,10 +81,13 @@ détection `BLEED_INSUFFICIENT` et la correction `EXTEND_BLEED` — il reste pla
 
 ## Recette 4 — Ajouter un champ au rapport d'étape
 
-1. Record `Preflight` dans `PrintPreflightReport.java` (+ `of`/`afterFix`).
-2. `reportCatalog.ts` : entrée `fields` — `path` `report.preflight.<nom>`,
-   `kind` (`enum`|`count`|`code-list`), `vocabulary`/`values`,
-   `producedBy` (`analysis`|`fix`), `labelKey`+`labelDefault`.
+1. Record `Preflight` dans `PrintPreflightReport.java` : nouveau composant
+   annoté `@ReportField` (`kind` ENUM/COUNT/CODE_LIST, `vocabulary` = l'enum
+   Java ou `values` littéraux, `producedBy` ANALYSIS/FIX, `labelKey` +
+   `labelDefault`) + le peupler dans `of`/`afterFix`.
+2. Regen : `./gradlew :stirling-pdf:copySwaggerDoc` puis le générateur
+   (voir Recette 5.6) — le champ apparaît dans `toolReports.ts`.
+   Aucune édition de `reportCatalog.ts` : les descripteurs sont dérivés.
    → `RoutingConditionEditor` l'offre automatiquement, activé selon le
    producteur en amont (`reportAvailability` par namespace) ;
    `reportFactsSatisfied(condition, availability)` couvre les
@@ -93,20 +96,26 @@ détection `BLEED_INSUFFICIENT` et la correction `EXTEND_BLEED` — il reste pla
 4. Reste compact : header HTTP → verdicts, compteurs, listes de codes ; jamais
    les findings complets.
 
+Un champ `producedBy: FIX` n'apparaît dans `x-stirling-report` d'un endpoint
+que si celui-ci déclare `@ToolReport(fix = true)` — un endpoint analysis ne
+peut pas offrir des champs qu'il n'émet jamais.
+
 ## Recette 5 — Enregistrer une nouvelle famille d'outils (checklist R6)
 
 1. Enums backend détections+corrections, émissions via `enum.code()`.
-2. Endpoint → header `X-Stirling-Tool-Report` `{<ns>: {...}}` + `@ToolIO` (contrat fichier).
-3. `reportCatalog.ts` : un `ReportProducerDescriptor` (endpoints, fixEndpoints, fields)
-   ajouté à `REPORT_PRODUCERS` → gates, routage et blockers dérivent sans toucher
-   `RoutingConditionEditor`/`PipelineBuilder`.
+2. Record rapport `@ReportNamespace("<ns>")` + `@ReportField` par champ ;
+   chaque endpoint producteur → `@ToolReport(TheReport.class, fix = …)` +
+   `@ToolIO` (contrat fichier) + header `X-Stirling-Tool-Report` `{<ns>: {...}}`.
+   Les variantes JSON-only ne déclarent pas `@ToolReport`.
+3. Regen : `./gradlew :stirling-pdf:copySwaggerDoc` puis (depuis `frontend/`)
+   `npx tsx editor/scripts/generate-tool-api-types.mts --spec ../SwaggerDoc.json
+   --output editor/src/core/types/toolApiTypes.ts --io-output editor/src/core/types/toolIO.ts
+   --report-output editor/src/core/types/toolReports.ts` puis `oxfmt` sur les
+   trois fichiers. La namespace arrive dans `TOOL_REPORTS` → gates, routage et
+   blockers dérivent sans toucher `RoutingConditionEditor`/`PipelineBuilder`.
 4. Catalogue détections/fixups (nouveau fichier `<family>Catalog.ts` sur le modèle
    de `preflightCatalog.ts`).
 5. i18n ×3, tests intégrité catalogue + validation params + présence des champs.
-6. Regen : `./gradlew :stirling-pdf:copySwaggerDoc` puis
-   `npx tsx editor/scripts/generate-tool-api-types.mts --spec ../SwaggerDoc.json
-   --output editor/src/core/types/toolApiTypes.ts --io-output editor/src/core/types/toolIO.ts`
-   (depuis `frontend/`) puis `oxfmt` sur les deux fichiers.
 
 ## Pièges mesurés
 
@@ -119,8 +128,13 @@ détection `BLEED_INSUFFICIENT` et la correction `EXTEND_BLEED` — il reste pla
   de fichier → jamais producteurs de `report.preflight.*` pour le routage.
 - Les champs `producedBy:"fix"` n'existent qu'après un step fix : un gate sur
   `pre*`/`fixupsApplied`/`fixupsSkipped` sans fix en amont est bloqué au save.
-- Le catalogue est un miroir déclaratif : codes et params s'ajoutent **des deux
-  côtés dans la même PR** — `preflightCatalog.test.ts` attrape les dérives internes.
+- Le catalogue détections/fixups est un miroir déclaratif : codes et params
+  s'ajoutent **des deux côtés dans la même PR** — `preflightCatalog.test.ts`
+  attrape les dérives internes (les `values` générés y sont comparés aux ids
+  du catalogue).
+- Les **champs de rapport** ne sont PAS un miroir : ils sont générés depuis
+  `@ReportField` → `x-stirling-report` → `toolReports.ts`. Ne jamais écrire
+  un descripteur de rapport à la main — annoter le record et régénérer.
 
 ## Vérifications
 

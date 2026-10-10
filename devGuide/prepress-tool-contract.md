@@ -20,12 +20,15 @@ A detector/corrector tool family has four declared vocabularies:
 |---|---|---|
 | Detection codes | enum (`PreflightCheck`) | `PREFLIGHT_DETECTIONS` (catalog) |
 | Correction codes | enum (`PreflightFixer.Code`) | `PREFLIGHT_FIXUPS` (catalog) |
-| Step-report fields | compact record in the `X-Stirling-Tool-Report` header | `ReportProducerDescriptor` in `src/core/data/reportCatalog.ts` |
+| Step-report fields | `@ReportField` components on the report record + `@ToolReport` on each producing endpoint | generated `types/toolReports.ts`, surfaced through `src/core/data/reportCatalog.ts` |
 | Correction params | per-fixup accepted keys (`FIXUP_PARAMS`) | `FixupDescriptor.params` |
 
 Backend enums decide what is *valid*; the frontend catalog decides what is
 *shown* (labels, grouping, which checks a fixup addresses, which params it
 takes). Codes and parameters are added together in the same PR on both sides.
+Report fields are the exception to that split: their descriptor is generated
+from the annotated backend record, so the frontend cannot drift from what the
+header actually carries.
 
 ## R1 — Detections
 
@@ -99,10 +102,20 @@ fixup-specific tuning is namespaced.
   `report.<namespace>.*` fact tree the executor merges onto the produced file —
   keep it compact (HTTP header size limits): verdict, counts, code lists, never
   full findings.
-- Every field is declared in the frontend `reportCatalog.ts` producer descriptor:
-  `path`, `kind` (`enum` | `count` | `code-list`), `vocabulary`
-  (literal values, or the `checks`/`fixups` catalogs), and `producedBy`
-  (`analysis` | `fix`).
+- Every field is declared on the report record itself: `@ReportField` on each
+  record component carries `kind` (`enum` | `count` | `code-list`), the closed
+  `values` or the enum `vocabulary`, `producedBy` (`analysis` | `fix`), and the
+  label metadata — the descriptor cannot diverge from the record's shape.
+- Each producing endpoint declares `@ToolReport(TheReport.Record.class,
+  fix = …)`; `ToolReportOperationCustomizer` publishes it as the
+  `x-stirling-report` OpenAPI extension, and the type generator emits
+  `types/toolReports.ts`. `reportCatalog.ts` only derives lookups and
+  availability helpers over the generated table. Analysis endpoints must not
+  declare `fix = true`: the extension then carries only `analysis` fields,
+  matching what the header actually emits.
+- Only output-producing endpoints declare `@ToolReport`. A JSON-only variant
+  never stamps the header on a routed file, so declaring it would offer facts
+  no pipeline can ever read.
 - A corrector step re-analyses the delivered document and emits post-fix
   fields; the pre-fix state travels in `pre*` fields so a gate can compare
   before and after.
@@ -136,10 +149,13 @@ fixup-specific tuning is namespaced.
    `enum.code()`; `finding.<CODE>` message keys.
 2. Correction codes in the fixup enum; implementation in the right engine;
    accepted params in `FIXUP_PARAMS`.
-3. Endpoint stamps `X-Stirling-Tool-Report` under its namespace and declares
-   `@ToolIO` for the file contract.
-4. Frontend catalog entry: detections, fixups (with `addressesChecks`,
-   `params`, `engine`), report descriptor, endpoint→produces registration.
+3. Endpoint stamps `X-Stirling-Tool-Report` under its namespace, declares
+   `@ToolIO` for the file contract, and `@ToolReport` on every
+   output-producing variant (`fix = true` only on the corrector endpoint).
+4. Frontend catalog entry: detections and fixups (with `addressesChecks`,
+   `params`, `engine`). The report descriptor is generated — regenerating the
+   tool models after step 3 produces the namespace entry; the editor and
+   blockers pick it up with no further code.
 5. i18n labels (check labels, fixup labels, param label/help) in all locales.
 6. Tests: catalog integrity, parameter validation, report field presence.
 
@@ -147,7 +163,8 @@ fixup-specific tuning is namespaced.
 
 - No full DAG execution model: steps stay ordered; branching happens through
   per-step `when` gates and output routing.
-- No backend capabilities endpoint: the catalog is a frontend-declared mirror
-  of the backend enums. A future `x-stirling-report` OpenAPI extension could
-  serve descriptors from Java the same way `@ToolIO` serves file contracts —
-  deliberately deferred until a second tool family proves the shape.
+- Detection and fixup descriptors (labels, `addressesChecks`, `params`) stay a
+  frontend-declared mirror of the backend enums: they carry UI intent the
+  backend has no notion of, so no OpenAPI extension serves them. Report fields
+  are different — they describe what the wire actually carries — and are
+  generated from `@ToolReport`/`@ReportField` via `x-stirling-report`.

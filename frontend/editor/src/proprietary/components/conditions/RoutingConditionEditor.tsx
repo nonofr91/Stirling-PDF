@@ -2,10 +2,6 @@ import { useTranslation } from "react-i18next";
 import { Input, MultiSelect, Select } from "@app/ui";
 import { ClassificationConditionEditor } from "@app/components/conditions/ClassificationConditionEditor";
 import {
-  PREFLIGHT_CHECK_IDS,
-  PREFLIGHT_FIXUP_IDS,
-} from "@app/data/preflightCatalog";
-import {
   REPORT_PRODUCERS,
   reportFieldByPath,
   reportFieldServed,
@@ -97,11 +93,7 @@ export function RoutingConditionEditor({
 
   const descriptor = reportFieldByPath(field);
   const listChoices =
-    descriptor?.vocabulary === "checks"
-      ? PREFLIGHT_CHECK_IDS
-      : descriptor?.vocabulary === "fixups"
-        ? PREFLIGHT_FIXUP_IDS
-        : null;
+    descriptor?.kind === "code-list" ? (descriptor.values ?? null) : null;
 
   function changeField(next: string | null) {
     if (!next) return;

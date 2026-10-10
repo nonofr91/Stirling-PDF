@@ -5,166 +5,30 @@
  * condition editor builds its field options and value pickers from this
  * catalog instead of hardcoding paths (contract R5, see
  * devGuide/prepress-tool-contract.md).
+ *
+ * The descriptors themselves are generated from the backend's `@ToolReport` +
+ * `@ReportField` annotations (see `x-stirling-report` in the spec and
+ * `types/toolReports.ts`) — this file only derives the lookups and availability
+ * helpers over them. A report field therefore exists here exactly when the
+ * report record declares it.
  */
 
-export interface ReportFieldDescriptor {
-  /** Full fact path, e.g. `report.preflight.verdict`. */
-  path: string;
-  /** Field kind — decides the value picker. */
-  kind: "enum" | "count" | "code-list";
-  /** For `code-list` fields: which catalog the values come from. */
-  vocabulary?: "checks" | "fixups";
-  /** For `enum` fields: the literal values offered. */
-  values?: readonly string[];
-  /** For `enum` fields: i18n key prefix — a value `v` labels as `<prefix>.<v>`. */
-  valueLabelPrefix?: string;
-  /**
-   * Which step variant emits the field. `analysis` fields exist after any
-   * reporting step; `fix` fields only once a corrector step ran (the pre-fix
-   * state and the fixup outcome lists).
-   */
-  producedBy: "analysis" | "fix";
-  /** i18n key for the option label in condition editors. */
-  labelKey: string;
-  /** English fallback for the label. */
-  labelDefault: string;
-}
+import {
+  TOOL_REPORTS,
+  type ToolReportField,
+  type ToolReportNamespace,
+} from "@app/types/toolReports";
 
-/**
- * One report namespace: the endpoints whose responses carry the header, and
- * the fields they emit. `fixEndpoints` is the subset that additionally emits
- * `producedBy: "fix"` fields.
- */
-export interface ReportProducerDescriptor {
-  namespace: string;
-  /** Endpoints emitting `report.<namespace>.*` on the produced file. */
-  endpoints: readonly string[];
-  /** Subset emitting corrector-step fields (`pre*`, `fixupsApplied`…). */
-  fixEndpoints: readonly string[];
-  fields: readonly ReportFieldDescriptor[];
-}
+export type ReportFieldDescriptor = ToolReportField;
 
-export const PREFLIGHT_REPORT: ReportProducerDescriptor = {
-  namespace: "preflight",
-  // The JSON-only variants (plain report, fix preview) emit no file, so the
-  // report never rides a routed output — they are deliberately not producers.
-  endpoints: [
-    "/api/v1/security/print-preflight-annotated",
-    "/api/v1/security/print-preflight-report",
-    "/api/v1/security/print-preflight-fix",
-  ],
-  fixEndpoints: ["/api/v1/security/print-preflight-fix"],
-  fields: [
-    {
-      path: "report.preflight.verdict",
-      kind: "enum",
-      values: ["pass", "warn", "fail"],
-      valueLabelPrefix: "printPreflight.verdict",
-      producedBy: "analysis",
-      labelKey: "portal.pipelines.builder.routing.matchPreflightVerdict",
-      labelDefault: "Preflight verdict",
-    },
-    {
-      path: "report.preflight.errors",
-      kind: "count",
-      producedBy: "analysis",
-      labelKey: "portal.pipelines.builder.routing.matchPreflightErrors",
-      labelDefault: "Preflight error count",
-    },
-    {
-      path: "report.preflight.warnings",
-      kind: "count",
-      producedBy: "analysis",
-      labelKey: "portal.pipelines.builder.routing.matchPreflightWarnings",
-      labelDefault: "Preflight warning count",
-    },
-    {
-      path: "report.preflight.failingChecks",
-      kind: "code-list",
-      vocabulary: "checks",
-      producedBy: "analysis",
-      labelKey: "portal.pipelines.builder.routing.matchPreflightFailingChecks",
-      labelDefault: "Preflight error type",
-    },
-    {
-      path: "report.preflight.warningChecks",
-      kind: "code-list",
-      vocabulary: "checks",
-      producedBy: "analysis",
-      labelKey: "portal.pipelines.builder.routing.matchPreflightWarningChecks",
-      labelDefault: "Preflight warning type",
-    },
-    {
-      path: "report.preflight.infoChecks",
-      kind: "code-list",
-      vocabulary: "checks",
-      producedBy: "analysis",
-      labelKey: "portal.pipelines.builder.routing.matchPreflightInfoChecks",
-      labelDefault: "Preflight info type",
-    },
-    {
-      path: "report.preflight.preErrors",
-      kind: "count",
-      producedBy: "fix",
-      labelKey: "portal.pipelines.builder.routing.matchPreflightPreErrors",
-      labelDefault: "Preflight error count before fixups",
-    },
-    {
-      path: "report.preflight.preWarnings",
-      kind: "count",
-      producedBy: "fix",
-      labelKey: "portal.pipelines.builder.routing.matchPreflightPreWarnings",
-      labelDefault: "Preflight warning count before fixups",
-    },
-    {
-      path: "report.preflight.preFailingChecks",
-      kind: "code-list",
-      vocabulary: "checks",
-      producedBy: "fix",
-      labelKey:
-        "portal.pipelines.builder.routing.matchPreflightPreFailingChecks",
-      labelDefault: "Preflight error type before fixups",
-    },
-    {
-      path: "report.preflight.preWarningChecks",
-      kind: "code-list",
-      vocabulary: "checks",
-      producedBy: "fix",
-      labelKey:
-        "portal.pipelines.builder.routing.matchPreflightPreWarningChecks",
-      labelDefault: "Preflight warning type before fixups",
-    },
-    {
-      path: "report.preflight.preInfoChecks",
-      kind: "code-list",
-      vocabulary: "checks",
-      producedBy: "fix",
-      labelKey: "portal.pipelines.builder.routing.matchPreflightPreInfoChecks",
-      labelDefault: "Preflight info type before fixups",
-    },
-    {
-      path: "report.preflight.fixupsApplied",
-      kind: "code-list",
-      vocabulary: "fixups",
-      producedBy: "fix",
-      labelKey: "portal.pipelines.builder.routing.matchPreflightFixupsApplied",
-      labelDefault: "Applied fixup",
-    },
-    {
-      path: "report.preflight.fixupsSkipped",
-      kind: "code-list",
-      vocabulary: "fixups",
-      producedBy: "fix",
-      labelKey: "portal.pipelines.builder.routing.matchPreflightFixupsSkipped",
-      labelDefault: "Skipped fixup",
-    },
-  ],
-};
+export type ReportProducerDescriptor = ToolReportNamespace;
 
 /** Every report namespace a pipeline can gate or route on. */
-export const REPORT_PRODUCERS: readonly ReportProducerDescriptor[] = [
-  PREFLIGHT_REPORT,
-];
+export const REPORT_PRODUCERS: readonly ReportProducerDescriptor[] =
+  Object.values(TOOL_REPORTS);
+
+export const PREFLIGHT_REPORT: ReportProducerDescriptor =
+  TOOL_REPORTS["preflight"];
 
 const PRODUCER_BY_ENDPOINT = new Map<string, ReportProducerDescriptor>();
 const PRODUCER_BY_FIELD = new Map<string, ReportProducerDescriptor>();
@@ -239,7 +103,8 @@ export function reportAvailabilityFromEndpoints(
   for (const endpoint of endpoints) {
     const producer = PRODUCER_BY_ENDPOINT.get(endpoint);
     if (producer === undefined) continue;
-    availability[producer.namespace] = producer.fixEndpoints.includes(endpoint)
+    const fixEndpoints: readonly string[] = producer.fixEndpoints;
+    availability[producer.namespace] = fixEndpoints.includes(endpoint)
       ? "fix"
       : "analysis";
   }
