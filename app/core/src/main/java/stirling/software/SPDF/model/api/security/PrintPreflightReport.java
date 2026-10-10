@@ -80,6 +80,7 @@ public class PrintPreflightReport {
             List<String> warningChecks,
             List<String> infoChecks,
             List<String> fixupsApplied,
+            List<String> fixupsSkipped,
             Integer preErrors,
             Integer preWarnings,
             List<String> preFailingChecks,
@@ -95,6 +96,7 @@ public class PrintPreflightReport {
                     codesOf(findings, Severity.WARNING),
                     codesOf(findings, Severity.INFO),
                     List.of(),
+                    List.of(),
                     null,
                     null,
                     null,
@@ -106,6 +108,7 @@ public class PrintPreflightReport {
                 Counts post,
                 List<Finding> postFindings,
                 List<String> fixupsApplied,
+                List<String> fixupsSkipped,
                 Counts pre,
                 List<Finding> preFindings) {
             return new Preflight(
@@ -116,6 +119,7 @@ public class PrintPreflightReport {
                     codesOf(postFindings, Severity.WARNING),
                     codesOf(postFindings, Severity.INFO),
                     List.copyOf(fixupsApplied),
+                    List.copyOf(fixupsSkipped),
                     pre.getErrors(),
                     pre.getWarnings(),
                     codesOf(preFindings, Severity.ERROR),

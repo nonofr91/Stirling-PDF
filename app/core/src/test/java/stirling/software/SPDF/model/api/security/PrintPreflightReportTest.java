@@ -52,12 +52,14 @@ class PrintPreflightReportTest {
                         post.getCounts(),
                         post.getFindings(),
                         List.of("KNOCKOUT_WHITE"),
+                        List.of("EXTEND_BLEED"),
                         pre.getCounts(),
                         pre.getFindings());
 
         assertEquals(List.of("BLEED_MISSING"), summary.failingChecks());
         assertEquals(List.of("PATTERN_USED"), summary.infoChecks());
         assertEquals(List.of("KNOCKOUT_WHITE"), summary.fixupsApplied());
+        assertEquals(List.of("EXTEND_BLEED"), summary.fixupsSkipped());
         assertEquals(List.of("BLEED_MISSING", "OVERPRINT_WHITE"), summary.preFailingChecks());
         assertEquals(List.of("HAIRLINE"), summary.preWarningChecks());
         assertEquals(List.of(), summary.preInfoChecks());

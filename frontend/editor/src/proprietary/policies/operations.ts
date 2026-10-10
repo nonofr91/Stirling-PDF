@@ -293,23 +293,13 @@ export const POLICY_OPERATIONS = {
 /**
  * Endpoints whose response is a PDF carrying the X-Stirling-Tool-Report header — the only steps
  * whose {@code report.preflight.*} a route can actually read, since the report attaches to the
- * produced file. The JSON variants (plain report, fix preview) emit no file, so their verdict
- * never reaches a routed output — they don't open the gate and are never injected.
+ * produced file. Declared in the report catalog (contract R5); re-exported here so policy code
+ * keeps one import surface.
  */
-export const PREFLIGHT_STEP_ENDPOINTS: ReadonlySet<string> = new Set([
-  "/api/v1/security/print-preflight-annotated",
-  "/api/v1/security/print-preflight-report",
-  "/api/v1/security/print-preflight-fix",
-]);
-
-/**
- * The endpoint whose report carries the pre-fixup state ({@code report.preflight.pre*} and
- * {@code fixupsApplied}); a plain analysis never emits those fields, so gates and routes on them
- * only make sense once a fix step ran.
- */
-export const PREFLIGHT_FIX_STEP_ENDPOINTS: ReadonlySet<string> = new Set([
-  "/api/v1/security/print-preflight-fix",
-]);
+export {
+  PREFLIGHT_STEP_ENDPOINTS,
+  PREFLIGHT_FIX_STEP_ENDPOINTS,
+} from "@app/data/reportCatalog";
 
 export type PolicyToolId = keyof typeof POLICY_OPERATIONS;
 

@@ -13,6 +13,7 @@ import java.util.Optional;
 
 import org.springframework.stereotype.Service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import lombok.extern.slf4j.Slf4j;
@@ -107,6 +108,14 @@ public class PreflightProfileService {
         if (profile.getDisabledChecks() != null)
             request.setDisabledChecks(profile.getDisabledChecks());
         if (profile.getFixups() != null) request.setFixups(profile.getFixups());
+        if (profile.getFixupParams() != null) {
+            try {
+                request.setFixupParams(mapper.writeValueAsString(profile.getFixupParams()));
+            } catch (JsonProcessingException e) {
+                throw ExceptionUtils.createIllegalArgumentException(
+                        "error.invalidArgument", "Profile fixupParams could not be serialized");
+            }
+        }
     }
 
     /** Creates or replaces a custom profile. Built-in names are reserved. */
@@ -236,6 +245,19 @@ public class PreflightProfileService {
                     throw ExceptionUtils.createIllegalArgumentException(
                             "error.invalidArgument", "Unknown fixup code in profile: {0}", code);
                 }
+            }
+        }
+        if (p.getFixupParams() != null) {
+            // Serialize then run the same strict parse as a live request — a profile cannot store
+            // codes or keys a fixup would reject at run time.
+            try {
+                String json = mapper.writeValueAsString(p.getFixupParams());
+                PrintPreflightRequest probe = new PrintPreflightRequest();
+                probe.setFixupParams(json);
+                PreflightFixer.parseFixupParams(probe);
+            } catch (JsonProcessingException e) {
+                throw ExceptionUtils.createIllegalArgumentException(
+                        "error.invalidArgument", "Invalid fixupParams in profile");
             }
         }
     }

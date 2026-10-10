@@ -8,6 +8,7 @@ import type { WireTriggerConfig } from "@app/policies/types";
 import { availableOutputModes } from "@portal/components/pipelines/outputModes";
 import { isReadableSource } from "@portal/components/sources/sourceTypes";
 import { PolicyRoutingDestinations } from "@app/components/policies/PolicyRoutingDestinations";
+import { REPORT_AVAILABILITY_ALL } from "@app/data/reportCatalog";
 import { VIEW_PATHS, toPortalPath } from "@portal/contexts/ViewContext";
 import { useSources } from "@portal/queries/sources";
 import { useAiEngineEnabled } from "@portal/hooks/useAiEngineEnabled";
@@ -117,9 +118,8 @@ export function PolicyRoutingConfig({
         destinations={destinations}
         onCreateDestination={connectSource}
         classificationAvailable={aiLoading || classificationEnabled}
-        // A preflight rule injects the fix step on save, so the field is always offerable.
-        preflightAvailable
-        preflightFixAvailable
+        // A preflight rule injects the fix step on save, so every report field is offerable.
+        reportAvailability={REPORT_AVAILABILITY_ALL}
         classificationUnavailableReason={
           aiLoading
             ? undefined

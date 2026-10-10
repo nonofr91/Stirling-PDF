@@ -49,6 +49,10 @@ export function parametersToProfile(
     includeSummaryPage: parameters.includeSummaryPage,
     disabledChecks: parameters.disabledChecks ?? null,
     fixups: parameters.fixups ?? null,
+    fixupParams:
+      parameters.fixupParams && Object.keys(parameters.fixupParams).length > 0
+        ? parameters.fixupParams
+        : null,
   };
 }
 
@@ -78,6 +82,7 @@ export function profileToParameters(
     includeSummaryPage: profile.includeSummaryPage ?? true,
     disabledChecks: profile.disabledChecks ?? undefined,
     fixups: profile.fixups ?? undefined,
+    fixupParams: profile.fixupParams ?? undefined,
   };
 }
 

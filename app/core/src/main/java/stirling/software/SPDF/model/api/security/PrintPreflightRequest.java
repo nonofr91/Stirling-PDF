@@ -126,6 +126,16 @@ public class PrintPreflightRequest extends PDFFile {
 
     @Schema(
             description =
+                    "Per-fixup parameters as a JSON object keyed by fixup code, e.g."
+                            + " {\"EXTEND_BLEED\":{\"method\":\"MIRROR_IMAGE\"}}. Only parameters"
+                            + " the fixup declares are accepted; unknown codes or keys fail"
+                            + " validation. Thresholds shared with the checks (requiredBleedMm,"
+                            + " maxInkCoveragePercent…) stay top-level fields.",
+            example = "{\"EXTEND_BLEED\":{\"method\":\"PIXEL_REPEAT\"}}")
+    private String fixupParams;
+
+    @Schema(
+            description =
                     "ICC profile attached as output intent by the SET_OUTPUT_INTENT fixup; when"
                             + " absent the bundled sRGB2014 profile is used",
             type = "string",

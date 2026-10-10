@@ -156,4 +156,45 @@ class PreflightProfileServiceTest {
                 PreflightFixer.resolveWanted(request.getFixups()).isEmpty(),
                 "NONE must resolve to an empty fixup set");
     }
+
+    @Test
+    void fixupParamsRoundTripThroughProfile() throws Exception {
+        PrintPreflightProfile p = profile("client-params");
+        p.setFixupParams(
+                java.util.Map.of(
+                        "EXTEND_BLEED", java.util.Map.of("method", "PIXEL_REPEAT"),
+                        "DOWNSAMPLE_IMAGES", java.util.Map.of("jpegQuality", 0.75)));
+        service.save(p);
+
+        PreflightProfileService reloaded =
+                new PreflightProfileService(dir.resolve("preflight-profiles.json"));
+        PrintPreflightRequest request = new PrintPreflightRequest();
+        request.setProfileName("client-params");
+        reloaded.applyProfile(request);
+
+        String json = request.getFixupParams();
+        assertNotNull(json, "profile fixupParams must serialize into the request field");
+        com.fasterxml.jackson.databind.JsonNode parsed =
+                new com.fasterxml.jackson.databind.ObjectMapper().readTree(json);
+        assertEquals("PIXEL_REPEAT", parsed.get("EXTEND_BLEED").get("method").asText());
+        assertEquals(0.75, parsed.get("DOWNSAMPLE_IMAGES").get("jpegQuality").asDouble(), 0.001);
+        // And the request-side contract still accepts what the profile emitted.
+        assertDoesNotThrow(() -> PreflightFixer.parseFixupParams(request));
+    }
+
+    @Test
+    void saveRejectsBadFixupParams() {
+        PrintPreflightProfile unknownFixup = profile("bad-params");
+        unknownFixup.setFixupParams(java.util.Map.of("NOT_A_FIXUP", java.util.Map.of()));
+        assertThrows(IllegalArgumentException.class, () -> service.save(unknownFixup));
+
+        PrintPreflightProfile unknownKey = profile("bad-params2");
+        unknownKey.setFixupParams(java.util.Map.of("EXTEND_BLEED", java.util.Map.of("bogus", 1)));
+        assertThrows(IllegalArgumentException.class, () -> service.save(unknownKey));
+
+        PrintPreflightProfile badValue = profile("bad-params3");
+        badValue.setFixupParams(
+                java.util.Map.of("DOWNSAMPLE_IMAGES", java.util.Map.of("jpegQuality", 9)));
+        assertThrows(IllegalArgumentException.class, () -> service.save(badValue));
+    }
 }

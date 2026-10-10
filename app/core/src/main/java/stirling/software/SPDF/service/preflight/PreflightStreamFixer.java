@@ -4,7 +4,9 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Deque;
+import java.util.EnumSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -41,6 +43,8 @@ import org.apache.pdfbox.pdmodel.graphics.pattern.PDAbstractPattern;
 import org.apache.pdfbox.pdmodel.graphics.pattern.PDTilingPattern;
 import org.apache.pdfbox.pdmodel.graphics.state.PDExtendedGraphicsState;
 import org.apache.pdfbox.util.Matrix;
+
+import com.fasterxml.jackson.databind.JsonNode;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -84,23 +88,40 @@ final class PreflightStreamFixer {
     private final PDDocument document;
     private final Set<PreflightFixer.Code> wanted;
     private final float tacLimit;
-    private boolean changed;
+    private final float richBlackMaxPt;
+
+    /** The fixups that rewrote at least one stream — reported per code, not per pass. */
+    private final Set<PreflightFixer.Code> applied = EnumSet.noneOf(PreflightFixer.Code.class);
 
     private PreflightStreamFixer(
-            PDDocument document, Set<PreflightFixer.Code> wanted, float tacLimit) {
+            PDDocument document,
+            Set<PreflightFixer.Code> wanted,
+            float tacLimit,
+            float richBlackMaxPt) {
         this.document = document;
         this.wanted = wanted;
         this.tacLimit = tacLimit;
+        this.richBlackMaxPt = richBlackMaxPt;
     }
 
     /**
-     * Applies the requested content-stream fixups everywhere streams exist. Returns true when at
-     * least one stream was rewritten.
+     * Applies the requested content-stream fixups everywhere streams exist. Returns the fixups that
+     * actually rewrote a stream — a wanted fixup whose target was absent is absent here too.
      */
-    static boolean apply(
-            PDDocument document, Set<PreflightFixer.Code> wanted, int maxInkCoveragePercent) {
+    static Set<PreflightFixer.Code> apply(
+            PDDocument document,
+            Set<PreflightFixer.Code> wanted,
+            int maxInkCoveragePercent,
+            Map<PreflightFixer.Code, Map<String, JsonNode>> fixupParams) {
+        JsonNode maxPt =
+                fixupParams
+                        .getOrDefault(PreflightFixer.Code.PURE_BLACK_TEXT, Map.of())
+                        .get("maxPt");
+        float richBlackMaxPt =
+                maxPt != null && maxPt.isNumber() ? (float) maxPt.asDouble() : RICH_BLACK_MAX_PT;
         PreflightStreamFixer fixer =
-                new PreflightStreamFixer(document, wanted, maxInkCoveragePercent / 100f);
+                new PreflightStreamFixer(
+                        document, wanted, maxInkCoveragePercent / 100f, richBlackMaxPt);
         Set<COSBase> visited = new LinkedHashSet<>();
         for (PDPage page : document.getPages()) {
             try {
@@ -109,7 +130,7 @@ final class PreflightStreamFixer {
                 log.debug("Stream fixups skipped a page: {}", e.getMessage());
             }
         }
-        return fixer.changed;
+        return fixer.applied;
     }
 
     private void rewritePage(PDPage page, Set<COSBase> visited) throws IOException {
@@ -218,6 +239,7 @@ final class PreflightStreamFixer {
             if (wanted.contains(PreflightFixer.Code.REGISTRATION_TO_BLACK)) {
                 List<Object> out = rewriteRegistrationColorspace(s, operands, nonStroking);
                 if (out != null) {
+                    applied.add(PreflightFixer.Code.REGISTRATION_TO_BLACK);
                     clearSpot(s, nonStroking);
                     return out;
                 }
@@ -225,6 +247,7 @@ final class PreflightStreamFixer {
             if (wanted.contains(PreflightFixer.Code.SPOT_TO_CMYK)) {
                 List<Object> out = rewriteSpotColorspace(s, operands, nonStroking);
                 if (out != null) {
+                    applied.add(PreflightFixer.Code.SPOT_TO_CMYK);
                     clearRegistration(s, nonStroking);
                     return out;
                 }
@@ -247,30 +270,38 @@ final class PreflightStreamFixer {
             if (wanted.contains(PreflightFixer.Code.REGISTRATION_TO_BLACK)) {
                 List<Object> out = rewriteRegistrationPaint(s, operands, stroke);
                 if (out != null) {
+                    applied.add(PreflightFixer.Code.REGISTRATION_TO_BLACK);
                     return out;
                 }
             }
             if (wanted.contains(PreflightFixer.Code.SPOT_TO_CMYK)) {
                 List<Object> out = rewriteSpotPaint(s, operands, stroke);
                 if (out != null) {
+                    applied.add(PreflightFixer.Code.SPOT_TO_CMYK);
                     return out;
                 }
             }
             if (wanted.contains(PreflightFixer.Code.REDUCE_INK_COVERAGE)
                     && isCmykSpace(stroke ? s.stroke.cs() : s.fill.cs())) {
-                return reducePaint(operands, name);
+                List<Object> out = reducePaint(operands, name);
+                if (out != null) {
+                    applied.add(PreflightFixer.Code.REDUCE_INK_COVERAGE);
+                }
+                return out;
             }
         }
         if (("k".equals(name) || "K".equals(name))
                 && wanted.contains(PreflightFixer.Code.REDUCE_INK_COVERAGE)) {
             List<Object> out = reducePaint(operands, name);
             if (out != null) {
+                applied.add(PreflightFixer.Code.REDUCE_INK_COVERAGE);
                 return out;
             }
         }
         if (wanted.contains(PreflightFixer.Code.REMOVE_INVISIBLE_TEXT)
                 && TEXT_SHOW_OPS.contains(name)
                 && s.tr == 3) {
+            applied.add(PreflightFixer.Code.REMOVE_INVISIBLE_TEXT);
             // ' and " also advance to the next line — keep the move, drop the glyphs.
             return "'".equals(name) || "\"".equals(name)
                     ? List.of(Operator.getOperator("T*"))
@@ -280,11 +311,13 @@ final class PreflightStreamFixer {
             if (wanted.contains(PreflightFixer.Code.PURE_BLACK_TEXT)) {
                 List<Object> out = rewriteRichBlackText(s, operands, op);
                 if (out != null) {
+                    applied.add(PreflightFixer.Code.PURE_BLACK_TEXT);
                     return out;
                 }
             }
             if (wanted.contains(PreflightFixer.Code.OVERPRINT_BLACK_TEXT)
                     && needsBlackOverprint(s)) {
+                applied.add(PreflightFixer.Code.OVERPRINT_BLACK_TEXT);
                 return wrap(s, operands, op, true);
             }
         }
@@ -298,6 +331,7 @@ final class PreflightStreamFixer {
                     (FILL_OPS.contains(name) && s.fill.isWhite() && s.opFill)
                             || (STROKE_OPS.contains(name) && s.stroke.isWhite() && s.opStroke);
             if (textWhite || pathWhite) {
+                applied.add(PreflightFixer.Code.KNOCKOUT_WHITE);
                 return wrap(s, operands, op, false);
             }
         }
@@ -480,7 +514,12 @@ final class PreflightStreamFixer {
         }
         float[] v = {clamp(cmyk[0]), clamp(cmyk[1]), clamp(cmyk[2]), clamp(cmyk[3])};
         if (wanted.contains(PreflightFixer.Code.REDUCE_INK_COVERAGE)) {
-            v = applyTac(v);
+            // A TAC reduction folded into the spot rewrite is the reduce fixup's work too.
+            float[] reduced = applyTac(v);
+            if (!Arrays.equals(reduced, v)) {
+                applied.add(PreflightFixer.Code.REDUCE_INK_COVERAGE);
+            }
+            v = reduced;
         }
         List<Object> out = new ArrayList<>(5);
         for (float f : v) {
@@ -524,7 +563,9 @@ final class PreflightStreamFixer {
             return null;
         }
         float[] scaled = applyTac(v);
-        if (scaled == null) {
+        // reduceTac hands the input back when nothing needs reducing — re-emitting the same
+        // values would be a rewrite without an effect, not an application.
+        if (Arrays.equals(scaled, v)) {
             return null;
         }
         List<Object> out = new ArrayList<>(5);
@@ -601,12 +642,13 @@ final class PreflightStreamFixer {
     }
 
     /**
-     * Rich-black text below {@value RICH_BLACK_MAX_PT}pt renders on every plate — swapping the fill
-     * for K-only keeps the darkness without the registration blur. The original colour tokens are
-     * re-emitted after the show operator so following text keeps its colour.
+     * Rich-black text below {@code richBlackMaxPt} (24pt unless fixupParams overrides it) renders
+     * on every plate — swapping the fill for K-only keeps the darkness without the registration
+     * blur. The original colour tokens are re-emitted after the show operator so following text
+     * keeps its colour.
      */
     private List<Object> rewriteRichBlackText(RewriteState s, List<Object> operands, Operator op) {
-        if (effectiveFontSize(s) >= RICH_BLACK_MAX_PT) {
+        if (effectiveFontSize(s) >= richBlackMaxPt) {
             return null;
         }
         if (trFills(s.tr) && s.fill.isRichBlack() && s.fill.tokens() != null) {

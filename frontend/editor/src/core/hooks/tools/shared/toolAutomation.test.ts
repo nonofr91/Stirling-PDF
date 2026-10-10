@@ -781,6 +781,47 @@ describe("printPreflight pipeline steps", () => {
     });
   });
 
+  test("a fix step's fixupParams round-trips as a JSON string", () => {
+    // The wire field is one JSON string keyed by fixup code (contract R3); the
+    // step editor holds it as a nested object for the param editors.
+    const step = deserializeToolStep(
+      {
+        operation: "/api/v1/security/print-preflight-fix",
+        parameters: {
+          fixups: ["EXTEND_BLEED"],
+          fixupParams: '{"EXTEND_BLEED":{"method":"PIXEL_REPEAT"}}',
+        },
+      },
+      preflightRegistry,
+    );
+    expect(step.toolId).toBe("printPreflightFix");
+    expect(step.params).toMatchObject({
+      fixupParams: { EXTEND_BLEED: { method: "PIXEL_REPEAT" } },
+    });
+
+    const api = serializeToolStep(step, preflightRegistry);
+    expect(api.parameters).toMatchObject({
+      fixups: ["EXTEND_BLEED"],
+      fixupParams: '{"EXTEND_BLEED":{"method":"PIXEL_REPEAT"}}',
+    });
+  });
+
+  test("a fix step drops an unparseable fixupParams string", () => {
+    const step = deserializeToolStep(
+      {
+        operation: "/api/v1/security/print-preflight-fix",
+        parameters: { fixupParams: "not json" },
+      },
+      preflightRegistry,
+    );
+    expect(
+      (step.params as { fixupParams?: unknown }).fixupParams,
+    ).toBeUndefined();
+
+    const api = serializeToolStep(step, preflightRegistry);
+    expect(api.parameters).not.toHaveProperty("fixupParams");
+  });
+
   test("a stored print-preflight-annotated step reloads as the check variant", () => {
     const step = deserializeToolStep(
       {

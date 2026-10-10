@@ -115,6 +115,8 @@ export interface PrintPreflightReport {
 export interface PreflightFixAudit {
   fileName: string | null;
   appliedFixups: string[];
+  /** Explicitly requested fixups that changed nothing — absent target or missing backend. */
+  skippedFixups?: string[];
   countsBefore: PreflightCounts;
   countsAfter: PreflightCounts;
   resolvedFindings: PreflightFinding[];
@@ -147,4 +149,9 @@ export interface PrintPreflightProfile {
   includeSummaryPage?: boolean | null;
   disabledChecks?: string[] | null;
   fixups?: string[] | null;
+  /**
+   * Per-fixup parameters keyed by fixup code — the profile stores them as a
+   * nested object (unlike the request field, which is a JSON string).
+   */
+  fixupParams?: Record<string, Record<string, string | number>> | null;
 }

@@ -15,6 +15,7 @@ import {
 
 import { RoutingConditionEditor } from "@app/components/conditions/RoutingConditionEditor";
 import { documentFieldCondition } from "@app/data/classificationConditions";
+import type { ReportAvailability } from "@app/data/reportCatalog";
 import type { MatchesAnyCondition } from "@app/conditions/types";
 import { PolicyExternalApiConfig } from "@portal/components/policies/PolicyExternalApiConfig";
 import { isIntegrationStep } from "@portal/components/pipelines/integrationStep";
@@ -47,10 +48,8 @@ interface PipelineStepSettingsProps {
   onWhenChange: (when: MatchesAnyCondition | undefined) => void;
   /** `classification.*` facts exist only if a classify step ran before this one. */
   classificationAvailable?: boolean;
-  /** `report.preflight.*` facts exist only if a preflight step ran before this one. */
-  preflightAvailable?: boolean;
-  /** `report.preflight` pre-fixup and fixupsApplied facts exist only if a fix step ran before. */
-  preflightFixAvailable?: boolean;
+  /** `report.*` facts exist only for the namespaces earlier steps emit, per the report catalog. */
+  reportAvailability?: ReportAvailability;
 }
 
 /** One reopened supporting file shown as a chip: the field it binds and the stored file name(s). */
@@ -106,8 +105,7 @@ export function PipelineStepSettings({
   when,
   onWhenChange,
   classificationAvailable = false,
-  preflightAvailable = false,
-  preflightFixAvailable = false,
+  reportAvailability = {},
 }: PipelineStepSettingsProps) {
   // Hooks first: selecting a different step re-renders this same instance, so an early return
   // above useTranslation would change the hook count between renders and crash.
@@ -138,8 +136,7 @@ export function PipelineStepSettings({
           condition={when}
           onChange={onWhenChange}
           classificationAvailable={classificationAvailable}
-          preflightAvailable={preflightAvailable}
-          preflightFixAvailable={preflightFixAvailable}
+          reportAvailability={reportAvailability}
         />
       )}
     </div>

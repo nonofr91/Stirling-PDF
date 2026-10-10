@@ -4,7 +4,13 @@ import { ClassificationConditionEditor } from "@app/components/conditions/Classi
 import {
   PREFLIGHT_CHECK_IDS,
   PREFLIGHT_FIXUP_IDS,
-} from "@app/data/preflightChecks";
+} from "@app/data/preflightCatalog";
+import {
+  REPORT_PRODUCERS,
+  reportFieldByPath,
+  reportFieldServed,
+  type ReportAvailability,
+} from "@app/data/reportCatalog";
 import {
   classificationCondition,
   documentFieldCondition,
@@ -16,51 +22,35 @@ interface RoutingConditionEditorProps {
   condition: MatchesAnyCondition;
   onChange: (condition: MatchesAnyCondition) => void;
   classificationAvailable: boolean;
-  /** Report fields only make sense when a preflight step feeds the route. */
-  preflightAvailable?: boolean;
-  /** The pre-fixup and fixupsApplied fields are only emitted by a fix step, not an analysis. */
-  preflightFixAvailable?: boolean;
+  /**
+   * Which report namespaces upstream steps emit — fields of absent producers
+   * (or of an analysis-only producer when a fix variant is required) stay
+   * disabled. Keyed by producer namespace, per the report catalog.
+   */
+  reportAvailability?: ReportAvailability;
 }
 
+const CLASSIFICATION_FIELD = "classification.labels";
 const DOCUMENT_FIELDS = [
-  "classification.labels",
   "document.extension",
   "document.filename",
   "document.title",
   "document.author",
-  "report.preflight.verdict",
-  "report.preflight.errors",
-  "report.preflight.warnings",
-  "report.preflight.failingChecks",
-  "report.preflight.warningChecks",
-  "report.preflight.infoChecks",
-  "report.preflight.preFailingChecks",
-  "report.preflight.fixupsApplied",
 ] as const;
-
-const PREFLIGHT_VERDICTS = ["pass", "warn", "fail"] as const;
-
-const CHECK_LIST_FIELDS = new Set<string>([
-  "report.preflight.failingChecks",
-  "report.preflight.warningChecks",
-  "report.preflight.infoChecks",
-  "report.preflight.preFailingChecks",
-]);
 
 /** Edits either an AI classification match or a deterministic document-fact match. */
 export function RoutingConditionEditor({
   condition,
   onChange,
   classificationAvailable,
-  preflightAvailable = false,
-  preflightFixAvailable = false,
+  reportAvailability = {},
 }: RoutingConditionEditorProps) {
   const { t } = useTranslation();
   const field = condition.input.field;
   const classification = requiresClassification(condition);
   const options = [
     {
-      value: DOCUMENT_FIELDS[0],
+      value: CLASSIFICATION_FIELD,
       label: classificationAvailable
         ? t(
             "portal.pipelines.builder.routing.matchDocumentType",
@@ -73,103 +63,50 @@ export function RoutingConditionEditor({
       disabled: !classificationAvailable,
     },
     {
-      value: DOCUMENT_FIELDS[1],
+      value: DOCUMENT_FIELDS[0],
       label: t(
         "portal.pipelines.builder.routing.matchExtension",
         "File extension",
       ),
     },
     {
-      value: DOCUMENT_FIELDS[2],
+      value: DOCUMENT_FIELDS[1],
       label: t(
         "portal.pipelines.builder.routing.matchFilename",
         "Exact filename",
       ),
     },
     {
-      value: DOCUMENT_FIELDS[3],
+      value: DOCUMENT_FIELDS[2],
       label: t("portal.pipelines.builder.routing.matchTitle", "PDF title"),
     },
     {
-      value: DOCUMENT_FIELDS[4],
+      value: DOCUMENT_FIELDS[3],
       label: t("portal.pipelines.builder.routing.matchAuthor", "PDF author"),
     },
-    {
-      value: DOCUMENT_FIELDS[5],
-      label: t(
-        "portal.pipelines.builder.routing.matchPreflightVerdict",
-        "Preflight verdict",
-      ),
-      disabled: !preflightAvailable,
-    },
-    {
-      value: DOCUMENT_FIELDS[6],
-      label: t(
-        "portal.pipelines.builder.routing.matchPreflightErrors",
-        "Preflight error count",
-      ),
-      disabled: !preflightAvailable,
-    },
-    {
-      value: DOCUMENT_FIELDS[7],
-      label: t(
-        "portal.pipelines.builder.routing.matchPreflightWarnings",
-        "Preflight warning count",
-      ),
-      disabled: !preflightAvailable,
-    },
-    {
-      value: DOCUMENT_FIELDS[8],
-      label: t(
-        "portal.pipelines.builder.routing.matchPreflightFailingChecks",
-        "Preflight error type",
-      ),
-      disabled: !preflightAvailable,
-    },
-    {
-      value: DOCUMENT_FIELDS[9],
-      label: t(
-        "portal.pipelines.builder.routing.matchPreflightWarningChecks",
-        "Preflight warning type",
-      ),
-      disabled: !preflightAvailable,
-    },
-    {
-      value: DOCUMENT_FIELDS[10],
-      label: t(
-        "portal.pipelines.builder.routing.matchPreflightInfoChecks",
-        "Preflight info type",
-      ),
-      disabled: !preflightAvailable,
-    },
-    {
-      value: DOCUMENT_FIELDS[11],
-      label: t(
-        "portal.pipelines.builder.routing.matchPreflightPreFailingChecks",
-        "Preflight error type before fixups",
-      ),
-      disabled: !preflightFixAvailable,
-    },
-    {
-      value: DOCUMENT_FIELDS[12],
-      label: t(
-        "portal.pipelines.builder.routing.matchPreflightFixupsApplied",
-        "Applied fixup",
-      ),
-      disabled: !preflightFixAvailable,
-    },
+    // Report fields come from the catalog: each producer's declared fields,
+    // enabled only when the matching step variant can emit them upstream.
+    ...REPORT_PRODUCERS.flatMap((producer) =>
+      producer.fields.map((reportField) => ({
+        value: reportField.path,
+        label: t(reportField.labelKey, reportField.labelDefault),
+        disabled: !reportFieldServed(reportField, reportAvailability),
+      })),
+    ),
   ];
 
-  const listChoices = CHECK_LIST_FIELDS.has(field)
-    ? PREFLIGHT_CHECK_IDS
-    : field === "report.preflight.fixupsApplied"
-      ? PREFLIGHT_FIXUP_IDS
-      : null;
+  const descriptor = reportFieldByPath(field);
+  const listChoices =
+    descriptor?.vocabulary === "checks"
+      ? PREFLIGHT_CHECK_IDS
+      : descriptor?.vocabulary === "fixups"
+        ? PREFLIGHT_FIXUP_IDS
+        : null;
 
   function changeField(next: string | null) {
     if (!next) return;
     onChange(
-      next === "classification.labels"
+      next === CLASSIFICATION_FIELD
         ? classificationCondition()
         : documentFieldCondition(next),
     );
@@ -191,7 +128,7 @@ export function RoutingConditionEditor({
           onChange={onChange}
           disabled={!classificationAvailable}
         />
-      ) : field === "report.preflight.verdict" ? (
+      ) : descriptor?.kind === "enum" ? (
         <Select
           inputSize="sm"
           aria-label={t(
@@ -202,9 +139,12 @@ export function RoutingConditionEditor({
           onChange={(value) =>
             onChange({ ...condition, values: value ? [value] : [] })
           }
-          options={PREFLIGHT_VERDICTS.map((verdict) => ({
-            value: verdict,
-            label: t(`printPreflight.verdict.${verdict}`, verdict),
+          options={(descriptor.values ?? []).map((value) => ({
+            value,
+            label: t(
+              `${descriptor.valueLabelPrefix ?? descriptor.path}.${value}`,
+              value,
+            ),
           }))}
           comboboxProps={{ withinPortal: true }}
         />

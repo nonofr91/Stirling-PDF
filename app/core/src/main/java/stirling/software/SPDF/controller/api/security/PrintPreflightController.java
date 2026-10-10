@@ -294,6 +294,7 @@ public class PrintPreflightController {
                     applied.add(code.name());
                 }
             }
+            List<String> skipped = PreflightFixer.skippedFixups(request, applied);
             log.info(
                     "Preflight fixups on '{}': {}",
                     file.getOriginalFilename(),
@@ -350,6 +351,7 @@ public class PrintPreflightController {
                                                     postReport.getCounts(),
                                                     postReport.getFindings(),
                                                     applied,
+                                                    skipped,
                                                     report.getCounts(),
                                                     report.getFindings())))
                             .body(response.getBody());
@@ -416,7 +418,12 @@ public class PrintPreflightController {
                             "errorsAfter", after.getCounts().getErrors(),
                             "warningsBefore", before.getCounts().getWarnings(),
                             "warningsAfter", after.getCounts().getWarnings()));
-            return ResponseEntity.ok(PrintPreflightFixAudit.of(before, after, applied));
+            return ResponseEntity.ok(
+                    PrintPreflightFixAudit.of(
+                            before,
+                            after,
+                            applied,
+                            PreflightFixer.skippedFixups(request, applied)));
         }
     }
 
@@ -488,5 +495,8 @@ public class PrintPreflightController {
             throw ExceptionUtils.createIllegalArgumentException(
                     "error.invalidArgument", "maxSpotCount must be non-negative");
         }
+        // Parses the JSON and rejects unknown fixup/param keys — invalid JSON and unknown keys
+        // surface as 400 here rather than deep inside the fix pass.
+        PreflightFixer.parseFixupParams(request);
     }
 }

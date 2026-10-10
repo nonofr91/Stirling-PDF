@@ -25,6 +25,10 @@ public class PrintPreflightFixAudit {
 
     private String fileName;
     private List<String> appliedFixups = new ArrayList<>();
+
+    /** Explicitly requested fixups that changed nothing — absent target or missing backend. */
+    private List<String> skippedFixups = new ArrayList<>();
+
     private Counts countsBefore = new Counts();
     private Counts countsAfter = new Counts();
 
@@ -48,7 +52,12 @@ public class PrintPreflightFixAudit {
         List<Finding> pre = new ArrayList<>(resolvedFindings);
         pre.addAll(remainingFindings);
         return PrintPreflightReport.Preflight.afterFix(
-                countsAfter, post, appliedFixups, countsBefore, pre);
+                countsAfter, post, appliedFixups, skippedFixups, countsBefore, pre);
+    }
+
+    public static PrintPreflightFixAudit of(
+            PrintPreflightReport before, PrintPreflightReport after, List<String> appliedFixups) {
+        return of(before, after, appliedFixups, List.of());
     }
 
     /**
@@ -57,10 +66,14 @@ public class PrintPreflightFixAudit {
      * resolved — the counts carry the quantitative change.
      */
     public static PrintPreflightFixAudit of(
-            PrintPreflightReport before, PrintPreflightReport after, List<String> appliedFixups) {
+            PrintPreflightReport before,
+            PrintPreflightReport after,
+            List<String> appliedFixups,
+            List<String> skippedFixups) {
         PrintPreflightFixAudit audit = new PrintPreflightFixAudit();
         audit.setFileName(before.getFileName());
         audit.setAppliedFixups(appliedFixups);
+        audit.setSkippedFixups(skippedFixups);
         audit.setCountsBefore(before.getCounts());
         audit.setCountsAfter(after.getCounts());
 

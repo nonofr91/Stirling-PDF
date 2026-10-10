@@ -249,7 +249,7 @@ describe("RoutingRules", () => {
         ]}
         onChange={onChange}
         destinations={DESTINATIONS}
-        preflightAvailable={false}
+        reportAvailability={{}}
       />,
       { wrapper: PortalTestProviders },
     );
@@ -284,7 +284,7 @@ describe("RoutingRules", () => {
         ]}
         onChange={onChange}
         destinations={DESTINATIONS}
-        preflightAvailable
+        reportAvailability={{ preflight: "analysis" }}
       />,
       { wrapper: PortalTestProviders },
     );
@@ -320,7 +320,7 @@ describe("RoutingRules", () => {
         ]}
         onChange={onChange}
         destinations={DESTINATIONS}
-        preflightAvailable
+        reportAvailability={{ preflight: "analysis" }}
       />,
       { wrapper: PortalTestProviders },
     );

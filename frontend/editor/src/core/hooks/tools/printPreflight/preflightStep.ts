@@ -62,8 +62,29 @@ export const preflightStepToApiParams = (
       includeSummaryPage: parameters.includeSummaryPage,
       disabledChecks: parameters.disabledChecks,
       fixups: parameters.fixups,
+      fixupParams:
+        parameters.fixupParams && Object.keys(parameters.fixupParams).length > 0
+          ? JSON.stringify(parameters.fixupParams)
+          : undefined,
     }).filter(([, value]) => value !== undefined),
   );
+};
+
+/** The wire form is a JSON string; an unparseable one is dropped rather than crash the step. */
+const parseFixupParams = (
+  raw: string | undefined,
+): PrintPreflightStepParameters["fixupParams"] => {
+  if (!raw) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return parsed !== null &&
+      typeof parsed === "object" &&
+      !Array.isArray(parsed)
+      ? (parsed as PrintPreflightStepParameters["fixupParams"])
+      : undefined;
+  } catch {
+    return undefined;
+  }
 };
 
 export const preflightStepFromApiParams = (
@@ -89,6 +110,7 @@ export const preflightStepFromApiParams = (
     apiParams.includeSummaryPage ?? defaultParameters.includeSummaryPage,
   disabledChecks: apiParams.disabledChecks,
   fixups: apiParams.fixups,
+  fixupParams: parseFixupParams(apiParams.fixupParams),
   reportFormat,
 });
 

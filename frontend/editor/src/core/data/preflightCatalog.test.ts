@@ -1,0 +1,128 @@
+import { describe, expect, it } from "vitest";
+import {
+  PREFLIGHT_DETECTIONS,
+  PREFLIGHT_FIXUPS,
+  PREFLIGHT_CHECK_IDS,
+  PREFLIGHT_FIXUP_IDS,
+  fixupByCode,
+  detectionByCode,
+  validateFixupParams,
+} from "@app/data/preflightCatalog";
+import {
+  PREFLIGHT_REPORT,
+  fixOnlyReportPaths,
+  reportFieldByPath,
+} from "@app/data/reportCatalog";
+
+/**
+ * Catalog integrity: the declarative mirror of the backend enums must be
+ * internally consistent — every referenced code exists, every parameter spec
+ * is well-formed. Catches a catalog edit that drifts from the contract
+ * (devGuide/prepress-tool-contract.md) without a matching backend change.
+ */
+describe("preflight catalog", () => {
+  it("declares unique detection and fixup codes", () => {
+    const detections = PREFLIGHT_DETECTIONS.map((d) => d.code);
+    expect(new Set(detections).size).toBe(detections.length);
+    const fixups = PREFLIGHT_FIXUPS.map((f) => f.code);
+    expect(new Set(fixups).size).toBe(fixups.length);
+  });
+
+  it("uses UPPER_SNAKE codes throughout", () => {
+    const upperSnake = /^[A-Z][A-Z0-9_]*$/;
+    for (const code of [...PREFLIGHT_CHECK_IDS, ...PREFLIGHT_FIXUP_IDS]) {
+      expect(code, code).toMatch(upperSnake);
+    }
+  });
+
+  it("points every addressesChecks entry at a declared detection", () => {
+    for (const fixup of PREFLIGHT_FIXUPS) {
+      for (const check of fixup.addressesChecks) {
+        expect(
+          detectionByCode(check),
+          `${fixup.code} addresses undeclared check ${check}`,
+        ).toBeDefined();
+      }
+    }
+  });
+
+  it("declares well-formed parameter specs", () => {
+    for (const fixup of PREFLIGHT_FIXUPS) {
+      for (const spec of fixup.params) {
+        if (spec.kind === "enum") {
+          expect(
+            spec.options?.length,
+            `${fixup.code}.${spec.key} needs options`,
+          ).toBeGreaterThan(0);
+          expect(
+            spec.default === undefined ||
+              spec.options?.includes(String(spec.default)),
+            `${fixup.code}.${spec.key} default must be one of the options`,
+          ).toBe(true);
+        } else {
+          expect(
+            spec.min === undefined ||
+              spec.max === undefined ||
+              spec.min < spec.max,
+            `${fixup.code}.${spec.key} bounds are inverted`,
+          ).toBe(true);
+        }
+      }
+    }
+  });
+});
+
+describe("validateFixupParams", () => {
+  it("accepts declared params on declared fixups", () => {
+    expect(
+      validateFixupParams({
+        EXTEND_BLEED: { method: "PIXEL_REPEAT" },
+        DOWNSAMPLE_IMAGES: { jpegQuality: 0.8 },
+        PURE_BLACK_TEXT: { maxPt: 12 },
+      }),
+    ).toBe(true);
+    expect(validateFixupParams({})).toBe(true);
+  });
+
+  it("rejects what the backend would reject", () => {
+    expect(validateFixupParams({ NOT_A_FIXUP: {} })).toBe(false);
+    expect(validateFixupParams({ EXTEND_BLEED: { bogus: 1 } })).toBe(false);
+    expect(
+      validateFixupParams({ EXTEND_BLEED: { method: "SIDEWAYS" } }),
+    ).toBe(false);
+    expect(
+      validateFixupParams({ DOWNSAMPLE_IMAGES: { jpegQuality: 1.5 } }),
+    ).toBe(false);
+    expect(
+      validateFixupParams({ DOWNSAMPLE_IMAGES: { jpegQuality: 0 } }),
+    ).toBe(false);
+    expect(validateFixupParams({ PURE_BLACK_TEXT: { maxPt: -1 } })).toBe(false);
+    expect(
+      validateFixupParams({ DOWNSAMPLE_IMAGES: { jpegQuality: "high" } }),
+    ).toBe(false);
+  });
+});
+
+describe("report catalog", () => {
+  it("declares every fix-only field under a fix endpoint", () => {
+    expect(PREFLIGHT_REPORT.fixEndpoints.length).toBeGreaterThan(0);
+    for (const path of fixOnlyReportPaths()) {
+      const field = reportFieldByPath(path);
+      expect(field?.producedBy).toBe("fix");
+    }
+    // The corrector outcome lists must stay distinguishable for gates.
+    expect(fixOnlyReportPaths()).toContain("report.preflight.fixupsApplied");
+    expect(fixOnlyReportPaths()).toContain("report.preflight.fixupsSkipped");
+  });
+
+  it("points code-list fields at a vocabulary", () => {
+    for (const field of PREFLIGHT_REPORT.fields) {
+      if (field.kind === "code-list") {
+        expect(field.vocabulary, field.path).toBeDefined();
+      }
+      if (field.kind === "enum") {
+        expect(field.values?.length, field.path).toBeGreaterThan(0);
+      }
+    }
+  });
+});
