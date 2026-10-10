@@ -1,0 +1,138 @@
+/**
+ * Declarative description of the step reports tools stamp on their output via
+ * the `X-Stirling-Tool-Report` header — which endpoints emit which
+ * `report.<namespace>.*` facts, and what each field carries. The pipeline
+ * condition editor builds its field options and value pickers from this
+ * catalog instead of hardcoding paths (contract R5, see
+ * devGuide/prepress-tool-contract.md).
+ *
+ * The descriptors themselves are generated from the backend's `@ToolReport` +
+ * `@ReportField` annotations (see `x-stirling-report` in the spec and
+ * `types/toolReports.ts`) — this file only derives the lookups and availability
+ * helpers over them. A report field therefore exists here exactly when the
+ * report record declares it.
+ */
+
+import {
+  TOOL_REPORTS,
+  type ToolReportField,
+  type ToolReportNamespace,
+} from "@app/types/toolReports";
+
+export type ReportFieldDescriptor = ToolReportField;
+
+export type ReportProducerDescriptor = ToolReportNamespace;
+
+/** Every report namespace a pipeline can gate or route on. */
+export const REPORT_PRODUCERS: readonly ReportProducerDescriptor[] =
+  Object.values(TOOL_REPORTS);
+
+export const PREFLIGHT_REPORT: ReportProducerDescriptor =
+  TOOL_REPORTS["preflight"];
+
+const PRODUCER_BY_ENDPOINT = new Map<string, ReportProducerDescriptor>();
+const PRODUCER_BY_FIELD = new Map<string, ReportProducerDescriptor>();
+for (const producer of REPORT_PRODUCERS) {
+  for (const endpoint of producer.endpoints) {
+    PRODUCER_BY_ENDPOINT.set(endpoint, producer);
+  }
+  for (const field of producer.fields) {
+    PRODUCER_BY_FIELD.set(field.path, producer);
+  }
+}
+
+/** The producer whose endpoints emit the given report namespace. */
+export function reportProducerForEndpoint(
+  endpoint: string,
+): ReportProducerDescriptor | undefined {
+  return PRODUCER_BY_ENDPOINT.get(endpoint);
+}
+
+/** Field metadata for a `report.<ns>.<field>` path, or undefined if undeclared. */
+export function reportFieldByPath(
+  path: string,
+): ReportFieldDescriptor | undefined {
+  return PRODUCER_BY_FIELD.get(path)?.fields.find((f) => f.path === path);
+}
+
+/** The producer that emits a field path, or undefined if no catalog declares it. */
+export function reportProducerForField(
+  path: string,
+): ReportProducerDescriptor | undefined {
+  return PRODUCER_BY_FIELD.get(path);
+}
+
+/** Field paths only a corrector step emits — they need a fix variant upstream. */
+export function fixOnlyReportPaths(): ReadonlySet<string> {
+  const paths = new Set<string>();
+  for (const producer of REPORT_PRODUCERS) {
+    for (const field of producer.fields) {
+      if (field.producedBy === "fix") paths.add(field.path);
+    }
+  }
+  return paths;
+}
+
+/**
+ * How much of each report namespace upstream steps emit: "analysis" once any
+ * producer step ran, "fix" once a corrector variant did — "fix" also serves
+ * the analysis fields.
+ */
+export type ReportAvailability = Record<string, "analysis" | "fix">;
+
+/** Whether the availability serves this field — fix fields need the corrector level. */
+export function reportFieldServed(
+  field: ReportFieldDescriptor,
+  availability: ReportAvailability,
+): boolean {
+  const level =
+    availability[PRODUCER_BY_FIELD.get(field.path)?.namespace ?? ""];
+  return field.producedBy === "fix" ? level === "fix" : level !== undefined;
+}
+
+/**
+ * Availability derived from the endpoints that already ran — e.g. the steps
+ * before a gate. Order matters: each step's report replaces its namespace
+ * (see `mergeReports` in the executor), so a fix step followed by an
+ * analysis leaves only the analysis fields — the last producer wins.
+ */
+export function reportAvailabilityFromEndpoints(
+  endpoints: readonly string[],
+): ReportAvailability {
+  const availability: ReportAvailability = {};
+  for (const endpoint of endpoints) {
+    const producer = PRODUCER_BY_ENDPOINT.get(endpoint);
+    if (producer === undefined) continue;
+    const fixEndpoints: readonly string[] = producer.fixEndpoints;
+    availability[producer.namespace] = fixEndpoints.includes(endpoint)
+      ? "fix"
+      : "analysis";
+  }
+  return availability;
+}
+
+/** Every declared field offerable — for hosts that inject the producing step on save. */
+export function reportAvailabilityAll(): ReportAvailability {
+  const availability: ReportAvailability = {};
+  for (const producer of REPORT_PRODUCERS) {
+    availability[producer.namespace] = "fix";
+  }
+  return availability;
+}
+
+/** Full availability — shared constant for wizards that inject the producing step on save. */
+export const REPORT_AVAILABILITY_ALL: ReportAvailability =
+  reportAvailabilityAll();
+
+/** Endpoint sets derived from the catalog — the report producers per family. */
+export const PREFLIGHT_STEP_ENDPOINTS: ReadonlySet<string> = new Set(
+  PREFLIGHT_REPORT.endpoints,
+);
+export const PREFLIGHT_FIX_STEP_ENDPOINTS: ReadonlySet<string> = new Set(
+  PREFLIGHT_REPORT.fixEndpoints,
+);
+
+/** A condition reads a report fact when its document field matches a declared path. */
+export function isReportField(path: string): boolean {
+  return PRODUCER_BY_FIELD.has(path);
+}

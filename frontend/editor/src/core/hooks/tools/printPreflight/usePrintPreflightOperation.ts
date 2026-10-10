@@ -118,6 +118,11 @@ const buildFormData = (
   if (params.fixups && params.fixups.length > 0) {
     formData.append("fixups", params.fixups.join(","));
   }
+  if (params.fixupParams && Object.keys(params.fixupParams).length > 0) {
+    // Namespaced correction params travel as one JSON-string form field — the
+    // same shape a stored pipeline step posts (contract R3).
+    formData.append("fixupParams", JSON.stringify(params.fixupParams));
+  }
   return formData;
 };
 

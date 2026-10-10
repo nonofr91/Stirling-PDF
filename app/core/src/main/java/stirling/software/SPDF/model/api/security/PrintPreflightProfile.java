@@ -1,6 +1,7 @@
 package stirling.software.SPDF.model.api.security;
 
 import java.util.List;
+import java.util.Map;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 
@@ -78,4 +79,11 @@ public class PrintPreflightProfile {
 
     @Schema(description = "Fixup codes to apply; \"NONE\" disables all fixups")
     private List<String> fixups;
+
+    @Schema(
+            description =
+                    "Per-fixup parameters keyed by fixup code, e.g."
+                            + " {\"EXTEND_BLEED\":{\"method\":\"MIRROR_IMAGE\"}} — same contract as"
+                            + " the request's fixupParams field")
+    private Map<String, Map<String, Object>> fixupParams;
 }

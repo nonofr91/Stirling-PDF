@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { Select } from "@app/ui";
 import { RoutingRules } from "@app/components/policies/RoutingRules";
+import type { ReportAvailability } from "@app/data/reportCatalog";
 import type { RoutingSetup } from "@app/components/policies/PolicySetupWizard";
 
 export interface RoutingDestination {
@@ -15,10 +16,8 @@ interface PolicyRoutingDestinationsProps {
   onCreateDestination?: () => void;
   classificationAvailable?: boolean;
   classificationUnavailableReason?: string;
-  /** Preflight report fields require a preflight step in the pipeline; the wizard injects one. */
-  preflightAvailable?: boolean;
-  /** The wizard injects the fix variant, so the pre-fixup fields are offerable too. */
-  preflightFixAvailable?: boolean;
+  /** Which report namespaces steps emit; wizards inject the producer so pass full availability. */
+  reportAvailability?: ReportAvailability;
   compact?: boolean;
 }
 
@@ -30,8 +29,7 @@ export function PolicyRoutingDestinations({
   onCreateDestination,
   classificationAvailable,
   classificationUnavailableReason,
-  preflightAvailable = false,
-  preflightFixAvailable = false,
+  reportAvailability = {},
   compact = false,
 }: PolicyRoutingDestinationsProps) {
   const { t } = useTranslation();
@@ -55,8 +53,7 @@ export function PolicyRoutingDestinations({
         onCreateDestination={onCreateDestination}
         classificationAvailable={classificationAvailable}
         classificationUnavailableReason={classificationUnavailableReason}
-        preflightAvailable={preflightAvailable}
-        preflightFixAvailable={preflightFixAvailable}
+        reportAvailability={reportAvailability}
       />
 
       <h3 className="portal-policies__wizard-heading">

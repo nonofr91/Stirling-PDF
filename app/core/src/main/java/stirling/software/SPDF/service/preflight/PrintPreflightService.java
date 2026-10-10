@@ -171,7 +171,7 @@ public class PrintPreflightService {
                             new Finding(
                                     Severity.WARNING,
                                     Category.CONTENT,
-                                    "CONTENT_PARSE_ERROR",
+                                    PreflightCheck.CONTENT_PARSE_ERROR.code(),
                                     PreflightReportText.msg(
                                             bundle, "finding.CONTENT_PARSE_ERROR", e.getMessage()),
                                     List.of(pageNum)));
@@ -460,7 +460,7 @@ public class PrintPreflightService {
                     new Finding(
                             Severity.ERROR,
                             Category.FONTS,
-                            "FONT_NOT_EMBEDDED",
+                            PreflightCheck.FONT_NOT_EMBEDDED.code(),
                             PreflightReportText.msg(
                                     bundle,
                                     "finding.FONT_NOT_EMBEDDED",
@@ -474,7 +474,7 @@ public class PrintPreflightService {
                     new Finding(
                             Severity.WARNING,
                             Category.FONTS,
-                            "FONT_TYPE3",
+                            PreflightCheck.FONT_TYPE3.code(),
                             PreflightReportText.msg(
                                     bundle, "finding.FONT_TYPE3", String.join(", ", type3Names)),
                             type3Pages);
@@ -490,7 +490,7 @@ public class PrintPreflightService {
                     new Finding(
                             Severity.WARNING,
                             Category.COLOR,
-                            "COLOR_RGB_USED",
+                            PreflightCheck.COLOR_RGB_USED.code(),
                             PreflightReportText.msg(bundle, "finding.COLOR_RGB_USED"),
                             new ArrayList<>(rgbAreasByPage.keySet()));
             addPaintAreas(finding, rgbAreasByPage);
@@ -501,7 +501,7 @@ public class PrintPreflightService {
                     new Finding(
                             Severity.INFO,
                             Category.COLOR,
-                            "COLOR_SPOT",
+                            PreflightCheck.COLOR_SPOT.code(),
                             PreflightReportText.msg(
                                     bundle, "finding.COLOR_SPOT", String.join(", ", printSpots)),
                             new ArrayList<>(spotAreasByPage.keySet()));
@@ -514,7 +514,7 @@ public class PrintPreflightService {
                     new Finding(
                             Severity.WARNING,
                             Category.IMAGES,
-                            "IMAGE_LOW_RES",
+                            PreflightCheck.IMAGE_LOW_RES.code(),
                             PreflightReportText.msg(
                                     bundle,
                                     "finding.IMAGE_LOW_RES",
@@ -544,7 +544,7 @@ public class PrintPreflightService {
                     new Finding(
                             Severity.WARNING,
                             Category.GEOMETRY,
-                            "TRIMBOX_MISSING",
+                            PreflightCheck.TRIMBOX_MISSING.code(),
                             PreflightReportText.msg(bundle, "finding.TRIMBOX_MISSING"),
                             new ArrayList<>(missingTrimPages)));
         }
@@ -553,7 +553,7 @@ public class PrintPreflightService {
                     new Finding(
                             Severity.ERROR,
                             Category.GEOMETRY,
-                            "BLEED_MISSING",
+                            PreflightCheck.BLEED_MISSING.code(),
                             PreflightReportText.msg(bundle, "finding.BLEED_MISSING"),
                             new ArrayList<>(missingBleedPages));
             // The trim edge is where bleed would have to extend past.
@@ -578,7 +578,7 @@ public class PrintPreflightService {
                     new Finding(
                             Severity.ERROR,
                             Category.GEOMETRY,
-                            "BLEED_INSUFFICIENT",
+                            PreflightCheck.BLEED_INSUFFICIENT.code(),
                             PreflightReportText.msg(
                                     bundle,
                                     "finding.BLEED_INSUFFICIENT",
@@ -592,7 +592,7 @@ public class PrintPreflightService {
                     new Finding(
                             Severity.WARNING,
                             Category.GEOMETRY,
-                            "BLEED_UNPAINTED",
+                            PreflightCheck.BLEED_UNPAINTED.code(),
                             PreflightReportText.msg(
                                     bundle, "finding.BLEED_UNPAINTED", minInt(unpaintedCoverage)),
                             new ArrayList<>(unpaintedBleedPages));
@@ -605,7 +605,7 @@ public class PrintPreflightService {
                     new Finding(
                             Severity.WARNING,
                             Category.CONTENT,
-                            "ANNOTATION_IN_TRIM",
+                            PreflightCheck.ANNOTATION_IN_TRIM.code(),
                             PreflightReportText.msg(bundle, "finding.ANNOTATION_IN_TRIM"),
                             new ArrayList<>(annotationAreasByPage.keySet()));
             annotationAreasByPage.values().forEach(list -> list.forEach(finding::addArea));
@@ -622,7 +622,7 @@ public class PrintPreflightService {
                     new Finding(
                             Severity.WARNING,
                             Category.CONTENT,
-                            "HAIRLINE",
+                            PreflightCheck.HAIRLINE.code(),
                             PreflightReportText.msg(
                                     bundle,
                                     "finding.HAIRLINE",
@@ -650,7 +650,7 @@ public class PrintPreflightService {
                     new Finding(
                             Severity.INFO,
                             Category.CONTENT,
-                            "TRANSPARENCY",
+                            PreflightCheck.TRANSPARENCY.code(),
                             PreflightReportText.msg(bundle, "finding.TRANSPARENCY"),
                             new ArrayList<>(transparencyPages));
             addPaintAreas(finding, alphaAreasByPage);
@@ -662,7 +662,7 @@ public class PrintPreflightService {
                     new Finding(
                             Severity.INFO,
                             Category.CONTENT,
-                            "OPTIONAL_CONTENT",
+                            PreflightCheck.OPTIONAL_CONTENT.code(),
                             PreflightReportText.msg(bundle, "finding.OPTIONAL_CONTENT"),
                             new ArrayList<>(optionalContentPages)));
         }
@@ -675,7 +675,7 @@ public class PrintPreflightService {
                     new Finding(
                             Severity.INFO,
                             Category.DOCUMENT,
-                            "MIXED_PAGE_SIZES",
+                            PreflightCheck.MIXED_PAGE_SIZES.code(),
                             PreflightReportText.msg(
                                     bundle, "finding.MIXED_PAGE_SIZES", pageSizeCounts.size()),
                             allPages));
@@ -686,7 +686,7 @@ public class PrintPreflightService {
                     new Finding(
                             Severity.ERROR,
                             Category.COLOR,
-                            "OVERPRINT_WHITE",
+                            PreflightCheck.OVERPRINT_WHITE.code(),
                             PreflightReportText.msg(bundle, "finding.OVERPRINT_WHITE"),
                             new ArrayList<>(whiteOverprintByPage.keySet()));
             addPaintAreas(finding, whiteOverprintByPage);
@@ -697,7 +697,7 @@ public class PrintPreflightService {
                     new Finding(
                             Severity.WARNING,
                             Category.COLOR,
-                            "OVERPRINT_BLACK",
+                            PreflightCheck.OVERPRINT_BLACK.code(),
                             PreflightReportText.msg(bundle, "finding.OVERPRINT_BLACK"),
                             new ArrayList<>(knockoutBlackByPage.keySet()));
             addPaintAreas(finding, knockoutBlackByPage);
@@ -709,7 +709,7 @@ public class PrintPreflightService {
                     new Finding(
                             Severity.WARNING,
                             Category.GEOMETRY,
-                            "SAFETY_MARGIN",
+                            PreflightCheck.SAFETY_MARGIN.code(),
                             PreflightReportText.msg(
                                     bundle, "finding.SAFETY_MARGIN", request.getSafetyMarginMm()),
                             new ArrayList<>(safetyMarginAreas.keySet()));
@@ -721,7 +721,7 @@ public class PrintPreflightService {
                     new Finding(
                             Severity.INFO,
                             Category.DOCUMENT,
-                            "EMPTY_PAGE",
+                            PreflightCheck.EMPTY_PAGE.code(),
                             PreflightReportText.msg(
                                     bundle, "finding.EMPTY_PAGE", emptyPages.size()),
                             new ArrayList<>(emptyPages)));
@@ -731,7 +731,7 @@ public class PrintPreflightService {
                     new Finding(
                             Severity.INFO,
                             Category.IMAGES,
-                            "IMAGE_OVERSAMPLED",
+                            PreflightCheck.IMAGE_OVERSAMPLED.code(),
                             PreflightReportText.msg(
                                     bundle,
                                     "finding.IMAGE_OVERSAMPLED",
@@ -753,7 +753,7 @@ public class PrintPreflightService {
                     new Finding(
                             Severity.WARNING,
                             Category.IMAGES,
-                            "IMAGE_1BIT_LOW_RES",
+                            PreflightCheck.IMAGE_1BIT_LOW_RES.code(),
                             PreflightReportText.msg(
                                     bundle,
                                     "finding.IMAGE_1BIT_LOW_RES",
@@ -765,10 +765,13 @@ public class PrintPreflightService {
         }
         // When the rendered pass is on and Ghostscript answers, its composite measurement is
         // authoritative: paint hidden under later knockouts or stacked overprints reads true.
+        // Each ink code is independently disableable: suppressing the rendered check skips its
+        // cost but leaves the painted estimate; suppressing the painted check still lets the
+        // rendered pass run.
         RenderedInkCoverage.Result renderedTac = null;
         if (request.isRenderedInkCoverage()
                 && renderedInkCoverage != null
-                && !disabled.contains(PreflightCheck.INK_COVERAGE_HIGH)) {
+                && !disabled.contains(PreflightCheck.INK_COVERAGE_HIGH_RENDERED)) {
             renderedTac = renderedInkCoverage.measure(document, request.getMaxInkCoveragePercent());
         }
         if (renderedTac != null) {
@@ -778,7 +781,7 @@ public class PrintPreflightService {
                         new Finding(
                                 Severity.WARNING,
                                 Category.COLOR,
-                                "INK_COVERAGE_HIGH_RENDERED",
+                                PreflightCheck.INK_COVERAGE_HIGH_RENDERED.code(),
                                 PreflightReportText.msg(
                                         bundle,
                                         "finding.INK_COVERAGE_HIGH_RENDERED",
@@ -795,7 +798,7 @@ public class PrintPreflightService {
         }
         List<Map.Entry<Integer, List<PaintedArea>>> inkHits = new ArrayList<>();
         float maxTacHit = 0;
-        if (renderedTac == null) {
+        if (renderedTac == null && !disabled.contains(PreflightCheck.INK_COVERAGE_HIGH)) {
             for (Map.Entry<Integer, List<PaintedArea>> e : inkAreasByPage.entrySet()) {
                 List<PaintedArea> over = new ArrayList<>();
                 for (PaintedArea a : e.getValue()) {
@@ -815,7 +818,7 @@ public class PrintPreflightService {
                     new Finding(
                             Severity.WARNING,
                             Category.COLOR,
-                            "INK_COVERAGE_HIGH",
+                            PreflightCheck.INK_COVERAGE_HIGH.code(),
                             PreflightReportText.msg(
                                     bundle,
                                     "finding.INK_COVERAGE_HIGH",
@@ -848,7 +851,7 @@ public class PrintPreflightService {
                     new Finding(
                             Severity.WARNING,
                             Category.COLOR,
-                            "SPOT_ALIAS",
+                            PreflightCheck.SPOT_ALIAS.code(),
                             PreflightReportText.msg(
                                     bundle, "finding.SPOT_ALIAS", String.join("; ", lines)),
                             new ArrayList<>(spotAreasByPage.keySet())));
@@ -860,7 +863,7 @@ public class PrintPreflightService {
                     new Finding(
                             Severity.INFO,
                             Category.COLOR,
-                            "SPOT_COUNT",
+                            PreflightCheck.SPOT_COUNT.code(),
                             PreflightReportText.msg(
                                     bundle,
                                     "finding.SPOT_COUNT",
@@ -874,7 +877,7 @@ public class PrintPreflightService {
                     new Finding(
                             Severity.INFO,
                             Category.COLOR,
-                            "REGISTRATION_PAINT",
+                            PreflightCheck.REGISTRATION_PAINT.code(),
                             PreflightReportText.msg(bundle, "finding.REGISTRATION_PAINT"),
                             new ArrayList<>(registrationByPage.keySet()));
             addPaintAreas(finding, registrationByPage);
@@ -885,7 +888,7 @@ public class PrintPreflightService {
                     new Finding(
                             Severity.INFO,
                             Category.CONTENT,
-                            "INVISIBLE_TEXT",
+                            PreflightCheck.INVISIBLE_TEXT.code(),
                             PreflightReportText.msg(bundle, "finding.INVISIBLE_TEXT"),
                             new ArrayList<>(invisibleTextPages)));
         }
@@ -894,7 +897,7 @@ public class PrintPreflightService {
                     new Finding(
                             Severity.INFO,
                             Category.COLOR,
-                            "PATTERN_USED",
+                            PreflightCheck.PATTERN_USED.code(),
                             PreflightReportText.msg(bundle, "finding.PATTERN_USED"),
                             new ArrayList<>(patternPages)));
         }
@@ -903,7 +906,7 @@ public class PrintPreflightService {
                     new Finding(
                             Severity.INFO,
                             Category.COLOR,
-                            "SHADING_USED",
+                            PreflightCheck.SHADING_USED.code(),
                             PreflightReportText.msg(bundle, "finding.SHADING_USED"),
                             new ArrayList<>(shadingPages)));
         }
@@ -913,7 +916,7 @@ public class PrintPreflightService {
                     new Finding(
                             Severity.INFO,
                             Category.GEOMETRY,
-                            "OBJECT_OUTSIDE_PAGE",
+                            PreflightCheck.OBJECT_OUTSIDE_PAGE.code(),
                             PreflightReportText.msg(bundle, "finding.OBJECT_OUTSIDE_PAGE"),
                             new ArrayList<>(outsidePageByPage.keySet()));
             addPaintAreas(finding, outsidePageByPage);
@@ -925,7 +928,7 @@ public class PrintPreflightService {
                     new Finding(
                             Severity.WARNING,
                             Category.COLOR,
-                            "OUTPUT_INTENT_MISSING",
+                            PreflightCheck.OUTPUT_INTENT_MISSING.code(),
                             PreflightReportText.msg(bundle, "finding.OUTPUT_INTENT_MISSING"),
                             null));
         }
@@ -934,7 +937,7 @@ public class PrintPreflightService {
                     new Finding(
                             Severity.WARNING,
                             Category.DOCUMENT,
-                            "EMBEDDED_FILES",
+                            PreflightCheck.EMBEDDED_FILES.code(),
                             PreflightReportText.msg(
                                     bundle, "finding.EMBEDDED_FILES", facts.getEmbeddedFileCount()),
                             null));
@@ -944,7 +947,7 @@ public class PrintPreflightService {
                     new Finding(
                             Severity.WARNING,
                             Category.DOCUMENT,
-                            "FORM_FIELDS",
+                            PreflightCheck.FORM_FIELDS.code(),
                             PreflightReportText.msg(
                                     bundle, "finding.FORM_FIELDS", facts.getFormFieldCount()),
                             null));
@@ -954,7 +957,7 @@ public class PrintPreflightService {
                     new Finding(
                             Severity.WARNING,
                             Category.DOCUMENT,
-                            "XFA_FORM",
+                            PreflightCheck.XFA_FORM.code(),
                             PreflightReportText.msg(bundle, "finding.XFA_FORM"),
                             null));
         }
@@ -963,7 +966,7 @@ public class PrintPreflightService {
                     new Finding(
                             Severity.INFO,
                             Category.DOCUMENT,
-                            "SIGNATURES",
+                            PreflightCheck.SIGNATURES.code(),
                             PreflightReportText.msg(
                                     bundle, "finding.SIGNATURES", facts.getSignatureCount()),
                             null));
@@ -973,7 +976,7 @@ public class PrintPreflightService {
                     new Finding(
                             Severity.INFO,
                             Category.DOCUMENT,
-                            "JAVASCRIPT",
+                            PreflightCheck.JAVASCRIPT.code(),
                             PreflightReportText.msg(bundle, "finding.JAVASCRIPT"),
                             null));
         }
@@ -982,7 +985,7 @@ public class PrintPreflightService {
                     new Finding(
                             Severity.WARNING,
                             Category.GEOMETRY,
-                            "USER_UNIT",
+                            PreflightCheck.USER_UNIT.code(),
                             PreflightReportText.msg(bundle, "finding.USER_UNIT"),
                             new ArrayList<>(nonStandardUserUnitPages)));
         }
@@ -992,7 +995,7 @@ public class PrintPreflightService {
                     new Finding(
                             Severity.INFO,
                             Category.CONTENT,
-                            "LAYERS_PRINT_OFF",
+                            PreflightCheck.LAYERS_PRINT_OFF.code(),
                             PreflightReportText.msg(
                                     bundle,
                                     "finding.LAYERS_PRINT_OFF",
@@ -1004,7 +1007,7 @@ public class PrintPreflightService {
                     new Finding(
                             Severity.INFO,
                             Category.GEOMETRY,
-                            "CROPBOX_NE_MEDIA",
+                            PreflightCheck.CROPBOX_NE_MEDIA.code(),
                             PreflightReportText.msg(bundle, "finding.CROPBOX_NE_MEDIA"),
                             new ArrayList<>(cropBoxDiffersPages)));
         }
@@ -1063,7 +1066,7 @@ public class PrintPreflightService {
                     new Finding(
                             Severity.WARNING,
                             Category.CONTENT,
-                            "TEXT_SMALL",
+                            PreflightCheck.TEXT_SMALL.code(),
                             PreflightReportText.msg(
                                     bundle,
                                     "finding.TEXT_SMALL",
@@ -1078,7 +1081,7 @@ public class PrintPreflightService {
                     new Finding(
                             Severity.WARNING,
                             Category.COLOR,
-                            "TEXT_RICH_BLACK",
+                            PreflightCheck.TEXT_RICH_BLACK.code(),
                             PreflightReportText.msg(bundle, "finding.TEXT_RICH_BLACK"),
                             new ArrayList<>(richByPage.keySet()));
             addTextAreas(finding, richByPage);

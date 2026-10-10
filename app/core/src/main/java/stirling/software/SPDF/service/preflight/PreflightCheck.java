@@ -38,6 +38,7 @@ public enum PreflightCheck {
     IMAGE_OVERSAMPLED(Category.IMAGES, Severity.INFO),
     IMAGE_1BIT_LOW_RES(Category.IMAGES, Severity.WARNING),
     INK_COVERAGE_HIGH(Category.COLOR, Severity.WARNING),
+    INK_COVERAGE_HIGH_RENDERED(Category.COLOR, Severity.WARNING, true),
     SPOT_ALIAS(Category.COLOR, Severity.WARNING),
     SPOT_COUNT(Category.COLOR, Severity.INFO),
     REGISTRATION_PAINT(Category.COLOR, Severity.INFO),

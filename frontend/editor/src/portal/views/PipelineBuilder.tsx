@@ -4,16 +4,13 @@ import {
   buildTriggerFor,
 } from "@portal/components/pipelines/inputTriggerConfig";
 import {
+  readsReportField,
+  reportFactsSatisfied,
   requiresClassification,
-  requiresPreflight,
-  requiresPreflightFix,
 } from "@app/data/classificationConditions";
 import { isConditionComplete } from "@app/conditions/validation";
 import type { MatchesAnyCondition } from "@app/conditions/types";
-import {
-  PREFLIGHT_FIX_STEP_ENDPOINTS,
-  PREFLIGHT_STEP_ENDPOINTS,
-} from "@app/policies/operations";
+import { reportAvailabilityFromEndpoints } from "@app/data/reportCatalog";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -166,11 +163,8 @@ const CLASSIFY_OPERATION = "/api/v1/ai/tools/classify-and-label";
 function isClassifyStep(step: WorkingToolStep): boolean {
   return step.operation === CLASSIFY_OPERATION;
 }
-function isPreflightStep(step: WorkingToolStep): boolean {
-  return PREFLIGHT_STEP_ENDPOINTS.has(step.operation);
-}
-function isPreflightFixStep(step: WorkingToolStep): boolean {
-  return PREFLIGHT_FIX_STEP_ENDPOINTS.has(step.operation);
+function stepEndpoints(list: WorkingToolStep[]): string[] {
+  return list.map((step) => step.operation);
 }
 function isClassifyTool(tool: ExecutableTool): boolean {
   return (
@@ -780,31 +774,26 @@ export function PipelineBuilder() {
     );
   const outputValid = returnsToEditor || (destinationReady && vectorReady);
   const classifies = steps.some(isClassifyStep);
-  const preflights = steps.some(isPreflightStep);
-  const preflightFixes = steps.some(isPreflightFixStep);
-  // A gate reads the document as it stands at that point in the chain: report.preflight.* only
-  // exists if a preflight step ran BEFORE this one (unlike routing, which sees the final state),
+  // Report namespaces emitted across the whole chain — routing reads the final state.
+  const reportAvailability = reportAvailabilityFromEndpoints(
+    stepEndpoints(steps),
+  );
+  // A gate reads the document as it stands at that point in the chain: report.* only
+  // exists if a producer step ran BEFORE this one (unlike routing, which sees the final state),
   // and classification.labels needs a classify step upstream. An incomplete condition would be
   // rejected by the backend validator, so it blocks here where the fix is.
   const gateIncomplete = steps
     .filter((step) => step.when && !isConditionComplete(step.when))
     .map(stepLabel);
-  const gateNeedsPreflight = steps
+  const gateNeedsReport = steps
     .filter(
       (step, i) =>
         step.when &&
-        requiresPreflight(step.when) &&
-        !steps.slice(0, i).some(isPreflightStep),
-    )
-    .map(stepLabel);
-  // Pre-fixup report fields are emitted only by a fix step, so a gate on them with no fix
-  // upstream can never match — same orphan check, one level deeper.
-  const gateNeedsPreflightFix = steps
-    .filter(
-      (step, i) =>
-        step.when &&
-        requiresPreflightFix(step.when) &&
-        !steps.slice(0, i).some(isPreflightFixStep),
+        readsReportField(step.when) &&
+        !reportFactsSatisfied(
+          step.when,
+          reportAvailabilityFromEndpoints(stepEndpoints(steps.slice(0, i))),
+        ),
     )
     .map(stepLabel);
   const gateNeedsClassify = steps
@@ -825,13 +814,10 @@ export function PipelineBuilder() {
   const routingHasVerdict = routingRules.every(
     (rule) => !requiresClassification(rule.condition) || classifies,
   );
-  // Same orphan check for report-based rules: a preflight rule without a preflight step can
+  // Same orphan check for report-based rules: a rule on a field no step emits can
   // never match, silently sending everything to the fallback.
-  const routingHasPreflight = routingRules.every(
-    (rule) => !requiresPreflight(rule.condition) || preflights,
-  );
-  const routingHasPreflightFix = routingRules.every(
-    (rule) => !requiresPreflightFix(rule.condition) || preflightFixes,
+  const routingServesReports = routingRules.every((rule) =>
+    reportFactsSatisfied(rule.condition, reportAvailability),
   );
 
   // The single source of truth for "can this be committed": every reason it can't be, in the order
@@ -861,18 +847,11 @@ export function PipelineBuilder() {
         "Add a Classify step, or turn off routing by document type",
       ),
     );
-  if (!routingHasPreflight)
+  if (!routingServesReports)
     blockers.push(
       t(
-        "portal.pipelines.builder.blocker.routingNeedsPreflight",
-        "Add a Print Preflight step, or turn off routing by preflight verdict",
-      ),
-    );
-  if (!routingHasPreflightFix)
-    blockers.push(
-      t(
-        "portal.pipelines.builder.blocker.routingNeedsPreflightFix",
-        "Add a Print Preflight fix step, or turn off routing on pre-fixup state",
+        "portal.pipelines.builder.blocker.routingNeedsReport",
+        "Add a step that emits the report fields the routes read, or remove those conditions",
       ),
     );
   if (gateIncomplete.length > 0)
@@ -883,20 +862,12 @@ export function PipelineBuilder() {
         { tools: gateIncomplete.join(", ") },
       ),
     );
-  if (gateNeedsPreflight.length > 0)
+  if (gateNeedsReport.length > 0)
     blockers.push(
       t(
-        "portal.pipelines.builder.blocker.gateNeedsPreflight",
-        "A condition on the preflight verdict needs a Print Preflight step before: {{tools}}",
-        { tools: gateNeedsPreflight.join(", ") },
-      ),
-    );
-  if (gateNeedsPreflightFix.length > 0)
-    blockers.push(
-      t(
-        "portal.pipelines.builder.blocker.gateNeedsPreflightFix",
-        "A condition on the pre-fixup state needs a Print Preflight fix step before: {{tools}}",
-        { tools: gateNeedsPreflightFix.join(", ") },
+        "portal.pipelines.builder.blocker.gateNeedsReport",
+        "A condition reads a report field no earlier step emits: {{tools}}",
+        { tools: gateNeedsReport.join(", ") },
       ),
     );
   if (gateNeedsClassify.length > 0)
@@ -1512,8 +1483,7 @@ export function PipelineBuilder() {
                 destinations={writableSources}
                 onCreateDestination={() => createSourceFor("output")}
                 canClassify={classifies}
-                canPreflight={preflights}
-                canPreflightFix={preflightFixes}
+                reportAvailability={reportAvailability}
                 aiClassificationEnabled={aiClassificationEnabled}
               />
               <DestinationPicker
@@ -1567,8 +1537,9 @@ export function PipelineBuilder() {
           classificationAvailable={
             aiClassificationEnabled && before.some(isClassifyStep)
           }
-          preflightAvailable={before.some(isPreflightStep)}
-          preflightFixAvailable={before.some(isPreflightFixStep)}
+          reportAvailability={reportAvailabilityFromEndpoints(
+            stepEndpoints(before),
+          )}
         />
       );
     }

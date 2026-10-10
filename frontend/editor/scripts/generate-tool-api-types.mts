@@ -48,6 +48,7 @@ const COMPONENT_REF_PREFIX = "#/components/schemas/";
 
 const IO_EXTENSION = "x-stirling-io";
 const IO_VOCABULARY_EXTENSION = "x-stirling-io-vocabulary";
+const REPORT_EXTENSION = "x-stirling-report";
 
 function fileHeader(...extra: string[]): string {
   return [
@@ -100,6 +101,40 @@ function deepSortKeys(value: unknown): unknown {
     return sorted;
   }
   return value;
+}
+
+const STRUCTURAL_SCHEMA_KEYS = new Set([
+  "properties",
+  "additionalProperties",
+  "patternProperties",
+  "items",
+  "required",
+  "enum",
+  "oneOf",
+  "anyOf",
+  "allOf",
+  "not",
+  "$ref",
+]);
+
+/**
+ * A `type: object` schema with no structure is a Java Object (e.g. a map's value
+ * type) — json-schema-to-typescript renders it as `{}`, which the lint rejects,
+ * when the truthful type for an unconstrained JSON value is `unknown`.
+ */
+function pinUnknownObjects(node: unknown): void {
+  if (Array.isArray(node)) {
+    node.forEach(pinUnknownObjects);
+    return;
+  }
+  if (!isObject(node)) return;
+  if (
+    node.type === "object" &&
+    !Object.keys(node).some((key) => STRUCTURAL_SCHEMA_KEYS.has(key))
+  ) {
+    node.tsType = "unknown";
+  }
+  for (const value of Object.values(node)) pinUnknownObjects(value);
 }
 
 function pascalCase(segment: string): string {
@@ -320,22 +355,167 @@ function writeOutput(outputPath: string, contents: string): void {
   writeFileSync(outputPath, contents, "utf-8");
 }
 
+/**
+ * The `x-stirling-report` declarations, grouped by report namespace: every
+ * endpoint emitting the namespace is a producer; fix endpoints additionally
+ * emit the corrector-level fields. Field descriptors merge by name — they all
+ * come from the same annotated record, so a divergence means a broken spec.
+ */
+function collectToolReports(
+  paths: Json,
+  endpoints: Set<string>,
+): { namespaces: Json[]; dropped: string[] } {
+  const byNamespace = new Map<
+    string,
+    {
+      namespace: string;
+      endpoints: Set<string>;
+      fixEndpoints: Set<string>;
+      fields: Map<string, Json>;
+    }
+  >();
+  const dropped: string[] = [];
+  for (const path of Object.keys(paths).sort()) {
+    const pathItem = paths[path];
+    if (!isObject(pathItem)) continue;
+    for (const operation of Object.values(pathItem)) {
+      const entries = isObject(operation)
+        ? operation[REPORT_EXTENSION]
+        : undefined;
+      if (!Array.isArray(entries)) continue;
+      if (!endpoints.has(path)) {
+        dropped.push(path);
+        continue;
+      }
+      for (const raw of entries) {
+        if (!isObject(raw)) continue;
+        const ns = typeof raw.namespace === "string" ? raw.namespace : "";
+        if (!ns) continue;
+        let entry = byNamespace.get(ns);
+        if (!entry) {
+          entry = {
+            namespace: ns,
+            endpoints: new Set(),
+            fixEndpoints: new Set(),
+            fields: new Map(),
+          };
+          byNamespace.set(ns, entry);
+        }
+        entry.endpoints.add(path);
+        if (raw.fix === true) entry.fixEndpoints.add(path);
+        if (!Array.isArray(raw.fields)) continue;
+        for (const rawField of raw.fields) {
+          if (!isObject(rawField) || typeof rawField.name !== "string")
+            continue;
+          const field: Json = {
+            path: `report.${ns}.${rawField.name}`,
+            kind: rawField.kind,
+            ...(Array.isArray(rawField.values)
+              ? { values: rawField.values }
+              : {}),
+            ...(typeof rawField.valueLabelPrefix === "string"
+              ? { valueLabelPrefix: rawField.valueLabelPrefix }
+              : {}),
+            producedBy: rawField.producedBy,
+            labelKey: rawField.labelKey,
+            labelDefault: rawField.labelDefault,
+          };
+          const existing = entry.fields.get(rawField.name);
+          if (
+            existing !== undefined &&
+            JSON.stringify(existing) !== JSON.stringify(field)
+          ) {
+            throw new Error(
+              `${REPORT_EXTENSION}: field ${rawField.name} of namespace ${ns} is declared differently across endpoints`,
+            );
+          }
+          entry.fields.set(rawField.name, field);
+        }
+      }
+    }
+  }
+  const namespaces = [...byNamespace.values()].map((entry) => ({
+    namespace: entry.namespace,
+    endpoints: [...entry.endpoints].sort(),
+    fixEndpoints: [...entry.fixEndpoints].sort(),
+    fields: [...entry.fields.values()],
+  }));
+  namespaces.sort((a, b) => a.namespace.localeCompare(b.namespace));
+  return { namespaces, dropped };
+}
+
+function renderToolReports(namespaces: Json[]): string {
+  if (namespaces.length === 0) {
+    throw new Error(
+      `No ${REPORT_EXTENSION} declarations in the spec. The backend publishes these from @ToolReport; regenerate with 'task backend:swagger'.`,
+    );
+  }
+  const table = Object.fromEntries(namespaces.map((ns) => [ns.namespace, ns]));
+  return `${fileHeader()}
+
+/**
+ * The \`report.<ns>.*\` facts a pipeline can route and gate on: which endpoints emit them and at
+ * which level. Declared in Java with \`@ToolReport\` + \`@ReportField\` on the report record, so
+ * the catalog cannot drift from the shape the backend actually emits. Read through
+ * \`core/data/reportCatalog.ts\`, which derives availability and field lookups from this table.
+ */
+
+import { type ToolEndpoint } from "@app/types/toolApiTypes";
+
+/** Which step variant emits a field: fix fields need the corrector endpoint upstream. */
+export type ToolReportProducedBy = "analysis" | "fix";
+
+/** One offerable report fact — a \`report.<ns>.<name>\` path. */
+export interface ToolReportField {
+  path: string;
+  kind: "enum" | "count" | "code-list";
+  /** Closed option set for enum and code-list fields, from the declared vocabulary. */
+  values?: string[];
+  /** i18n key prefix each member of \`values\` resolves under. */
+  valueLabelPrefix?: string;
+  producedBy: ToolReportProducedBy;
+  labelKey: string;
+  labelDefault: string;
+}
+
+/** One report namespace: the endpoints carrying it and the fields they emit. */
+export interface ToolReportNamespace {
+  namespace: string;
+  /** Endpoints emitting \`report.<ns>.*\` on the produced file. */
+  endpoints: ToolEndpoint[];
+  /** Subset additionally emitting the \`producedBy: "fix"\` fields. */
+  fixEndpoints: ToolEndpoint[];
+  fields: ToolReportField[];
+}
+
+/** Every report namespace a pipeline can gate or route on, keyed by namespace. */
+export const TOOL_REPORTS: Record<string, ToolReportNamespace> = ${JSON.stringify(table)};
+`;
+}
+
 async function main(): Promise<void> {
   const { values } = parseArgs({
     options: {
       spec: { type: "string" },
       output: { type: "string" },
       "io-output": { type: "string" },
+      "report-output": { type: "string" },
     },
   });
-  if (!values.spec || !values.output || !values["io-output"]) {
+  if (
+    !values.spec ||
+    !values.output ||
+    !values["io-output"] ||
+    !values["report-output"]
+  ) {
     throw new Error(
-      "Usage: generate-tool-api-types.mts --spec <SwaggerDoc.json> --output <file.ts> --io-output <file.ts>",
+      "Usage: generate-tool-api-types.mts --spec <SwaggerDoc.json> --output <file.ts> --io-output <file.ts> --report-output <file.ts>",
     );
   }
   const specPath = resolve(values.spec);
   const outputPath = resolve(values.output);
   const ioOutputPath = resolve(values["io-output"]);
+  const reportOutputPath = resolve(values["report-output"]);
 
   const spec = JSON.parse(readFileSync(specPath, "utf-8")) as Json;
 
@@ -461,6 +641,16 @@ async function main(): Promise<void> {
     `Generated ${Object.keys(ioDeclarations).length} tool I/O declarations.`,
   );
 
+  const { namespaces: reportNamespaces, dropped: reportDropped } =
+    collectToolReports(paths, new Set(tools.map((tool) => tool.path)));
+  if (reportDropped.length > 0) {
+    console.warn(
+      `Dropped ${reportDropped.length} @ToolReport declaration(s) on paths that are not tool endpoints:\n  ${reportDropped.join("\n  ")}`,
+    );
+  }
+  writeOutput(reportOutputPath, renderToolReports(reportNamespaces));
+  console.log(`Generated ${reportNamespaces.length} tool report namespace(s).`);
+
   // Transitively inline every referenced component into `definitions`, rewriting its refs too.
   const queue = [...pendingComponents];
   while (queue.length > 0) {
@@ -506,6 +696,8 @@ async function compileAndWrite(
     ),
     definitions: definitions,
   };
+
+  pinUnknownObjects(rootSchema);
 
   // Canonicalize key order so a reordering in SwaggerDoc.json can never change
   // the generated file (which would flake the committed-types CI check).

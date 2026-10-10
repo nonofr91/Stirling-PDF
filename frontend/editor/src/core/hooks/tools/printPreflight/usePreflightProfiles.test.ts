@@ -24,6 +24,7 @@ const fullProfile: PrintPreflightProfile = {
   includeSummaryPage: false,
   disabledChecks: ["SAFETY_MARGIN"],
   fixups: ["EXTEND_BLEED"],
+  fixupParams: { EXTEND_BLEED: { method: "PIXEL_REPEAT" } },
 };
 
 describe("profileToParameters", () => {
@@ -36,6 +37,9 @@ describe("profileToParameters", () => {
     expect(params.includeSummaryPage).toBe(false);
     expect(params.disabledChecks).toEqual(["SAFETY_MARGIN"]);
     expect(params.fixups).toEqual(["EXTEND_BLEED"]);
+    expect(params.fixupParams).toEqual({
+      EXTEND_BLEED: { method: "PIXEL_REPEAT" },
+    });
   });
 
   test("unset profile fields fall back to defaults, not stale input", () => {
@@ -77,6 +81,15 @@ describe("parametersToProfile", () => {
     const body = parametersToProfile("x", "", defaultParameters);
     expect(body.requiredBleedMm).toBeNull();
     expect(body.fixups).toBeNull();
+    expect(body.fixupParams).toBeNull();
     expect(body.checkBleedCoverage).toBe(true);
+  });
+
+  test("empty fixupParams never reaches the profile body", () => {
+    const body = parametersToProfile("x", "", {
+      ...defaultParameters,
+      fixupParams: {},
+    });
+    expect(body.fixupParams).toBeNull();
   });
 });

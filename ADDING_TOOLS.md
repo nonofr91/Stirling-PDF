@@ -291,3 +291,15 @@ Update translation files. **Important: Only update `en-US` files** - other langu
 - Tools with complex routing logic or non-standard processing
 - Provide `customProcessor` for full control
 - Examples: Convert, OCR
+
+## Detector/Corrector Tools
+
+Tools that **detect** issues in a document and/or **correct** them — the
+pattern print preflight introduced — follow extra rules so pipeline steps can
+be gated on precise detections and corrections selected individually with
+their own parameters: stable detection/fixup codes, a compact step report
+(`report.<ns>.*`), namespaced correction parameters (`fixupParams`), and a
+frontend catalog the pipeline UI derives from.
+
+See [`devGuide/prepress-tool-contract.md`](devGuide/prepress-tool-contract.md)
+for the full contract (rules R1–R6 and the registration checklist).

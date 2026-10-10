@@ -3,6 +3,11 @@ import {
   useBaseParameters,
   BaseParametersHook,
 } from "@app/hooks/tools/shared/useBaseParameters";
+import {
+  PREFLIGHT_FIXUP_IDS,
+  validateFixupParams,
+  type FixupParams,
+} from "@app/data/preflightCatalog";
 
 /** Thresholds for the print preflight checks; undefined falls back to backend defaults. */
 export interface PrintPreflightParameters extends BaseParameters {
@@ -33,6 +38,13 @@ export interface PrintPreflightParameters extends BaseParameters {
    */
   fixups?: string[];
   /**
+   * Per-fixup parameters keyed by fixup code
+   * (`{"EXTEND_BLEED":{"method":"MIRROR_IMAGE"}}`) — only keys the fixup
+   * declares in the catalog are accepted; shared thresholds stay top-level
+   * fields (contract R3). Serialized to a JSON string on the wire.
+   */
+  fixupParams?: FixupParams;
+  /**
    * Automation output: "annotatedPdf" returns a PDF copy with located issues
    * framed, "reportPdf" returns the standalone report document, "fixedPdf"
    * returns the corrected PDF, "json" returns the machine-readable report and
@@ -48,33 +60,8 @@ export interface PrintPreflightParameters extends BaseParameters {
     | "fixAuditJson";
 }
 
-/** Every fixup the print-preflight-fix endpoint understands. */
-export const FIXUP_CODES = [
-  "REMOVE_JAVASCRIPT",
-  "REMOVE_ATTACHMENTS",
-  "FLATTEN_FORM",
-  "NORMALIZE_USER_UNIT",
-  "SET_OUTPUT_INTENT",
-  "REMOVE_ANNOTATIONS_IN_TRIM",
-  "MERGE_SPOT_ALIASES",
-  "DOWNSAMPLE_IMAGES",
-  "EXTEND_BLEED",
-  "SET_MISSING_BOXES",
-  "REMOVE_EMPTY_PAGES",
-  "DISCARD_CROPBOX",
-  "CLIP_TO_CROPBOX",
-  "ENABLE_LAYER_PRINTING",
-  "REMOVE_INVISIBLE_TEXT",
-  "REGISTRATION_TO_BLACK",
-  "OVERPRINT_BLACK_TEXT",
-  "KNOCKOUT_WHITE",
-  "PURE_BLACK_TEXT",
-  "SPOT_TO_CMYK",
-  "REDUCE_INK_COVERAGE",
-  "RGB_TO_CMYK",
-  "FLATTEN_TRANSPARENCY",
-  "TEXT_TO_OUTLINES",
-] as const;
+/** Every fixup the print-preflight-fix endpoint understands — the catalog's vocabulary. */
+export const FIXUP_CODES = PREFLIGHT_FIXUP_IDS;
 
 export const defaultParameters: PrintPreflightParameters = {
   requiredBleedMm: undefined,
@@ -91,6 +78,7 @@ export const defaultParameters: PrintPreflightParameters = {
   includeSummaryPage: true,
   disabledChecks: undefined,
   fixups: undefined,
+  fixupParams: undefined,
   reportFormat: "annotatedPdf",
 };
 
@@ -146,6 +134,12 @@ export function validatePrintPreflightParameters(
     params.reportFormat !== "fixedPdf" &&
     params.reportFormat !== "json" &&
     params.reportFormat !== "fixAuditJson"
+  ) {
+    return false;
+  }
+  if (
+    params.fixupParams !== undefined &&
+    !validateFixupParams(params.fixupParams)
   ) {
     return false;
   }

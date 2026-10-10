@@ -1479,6 +1479,69 @@ class PreflightFixerTest {
         assertFalse(codes.contains("INK_COVERAGE_HIGH_RENDERED"), "the rendered pass is opt-in");
     }
 
+    @Test
+    void testDisablingRenderedInkCheckKeepsPaintedEstimate() throws Exception {
+        // Suppressing the rendered code must not silence the painted estimate: each ink
+        // detection is independently disableable (contract R1). Without Ghostscript the
+        // rendered measure reports nothing, so the painted estimate is what fires here.
+        PrintPreflightRequest req = request(richBlackPdf());
+        req.setRenderedInkCoverage(true);
+        req.setDisabledChecks(List.of("INK_COVERAGE_HIGH_RENDERED"));
+        stirling.software.SPDF.model.api.security.PrintPreflightReport report =
+                renderedController().printPreflight(req).getBody();
+        assertNotNull(report);
+        List<String> codes =
+                report.getFindings().stream()
+                        .map(
+                                stirling.software
+                                                .SPDF
+                                                .model
+                                                .api
+                                                .security
+                                                .PrintPreflightReport
+                                                .Finding
+                                        ::getCode)
+                        .toList();
+        assertTrue(
+                codes.contains("INK_COVERAGE_HIGH"),
+                "disabling the rendered check leaves the painted estimate reporting");
+        assertFalse(
+                codes.contains("INK_COVERAGE_HIGH_RENDERED"),
+                "the disabled rendered code emits nothing");
+    }
+
+    @Test
+    void testDisablingPaintedInkCheckKeepsRenderedPass() throws Exception {
+        org.junit.jupiter.api.Assumptions.assumeTrue(ghostscriptOnPath(), "gs binary not on PATH");
+        org.mockito.Mockito.when(endpointConfiguration.isGroupEnabled("Ghostscript"))
+                .thenReturn(true);
+        // Suppressing the painted code must not skip the rendered pass — the measurement is
+        // what the rendered finding needs, so it must run on its own flag alone.
+        PrintPreflightRequest req = request(richBlackPdf());
+        req.setRenderedInkCoverage(true);
+        req.setDisabledChecks(List.of("INK_COVERAGE_HIGH"));
+        stirling.software.SPDF.model.api.security.PrintPreflightReport report =
+                renderedController().printPreflight(req).getBody();
+        assertNotNull(report);
+        List<String> codes =
+                report.getFindings().stream()
+                        .map(
+                                stirling.software
+                                                .SPDF
+                                                .model
+                                                .api
+                                                .security
+                                                .PrintPreflightReport
+                                                .Finding
+                                        ::getCode)
+                        .toList();
+        assertTrue(
+                codes.contains("INK_COVERAGE_HIGH_RENDERED"),
+                "the rendered pass runs even with the painted check disabled");
+        assertFalse(
+                codes.contains("INK_COVERAGE_HIGH"), "the disabled painted check emits nothing");
+    }
+
     /** A 4×4 DeviceCMYK image whose every pixel is a 400% rich black. */
     private static byte[] cmykImagePdf(byte fillC, byte fillM, byte fillY, byte fillK)
             throws IOException {
@@ -1555,5 +1618,200 @@ class PreflightFixerTest {
                 new byte[] {64, 64, 64, 64},
                 new byte[] {raw[0], raw[1], raw[2], raw[3]},
                 "a compliant image keeps its original samples");
+    }
+
+    @Test
+    void testFixupParamsRejectsMalformed() throws Exception {
+        byte[] pdf = basePdf();
+
+        PrintPreflightRequest req = request(pdf);
+        req.setFixupParams("not json");
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> controller.printPreflightFix(req),
+                "invalid JSON must fail request validation");
+
+        req.setFixupParams("[\"EXTEND_BLEED\"]");
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> controller.printPreflightFix(req),
+                "a non-object fixupParams must be rejected");
+
+        req.setFixupParams("{\"NOT_A_FIXUP\":{}}");
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> controller.printPreflightFix(req),
+                "unknown fixup codes must be rejected");
+
+        req.setFixupParams("{\"EXTEND_BLEED\":{\"bogus\":1}}");
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> controller.printPreflightFix(req),
+                "undeclared parameter keys must be rejected");
+
+        req.setFixupParams("{\"EXTEND_BLEED\":{\"method\":\"SIDEWAYS\"}}");
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> controller.printPreflightFix(req),
+                "an invalid enum value must be rejected");
+
+        req.setFixupParams("{\"DOWNSAMPLE_IMAGES\":{\"jpegQuality\":5}}");
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> controller.printPreflightFix(req),
+                "out-of-range values must be rejected");
+
+        req.setFixupParams("{\"PURE_BLACK_TEXT\":{\"maxPt\":1e100}}");
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> controller.printPreflightFix(req),
+                "a value that narrows past Float.MAX_VALUE must be rejected");
+
+        req.setFixupParams("{\"DOWNSAMPLE_IMAGES\":{\"jpegQuality\":1e-50}}");
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> controller.printPreflightFix(req),
+                "a value that narrows to zero must be rejected");
+
+        req.setFixupParams("{\"DOWNSAMPLE_IMAGES\":{\"jpegQuality\":\"high\"}}");
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> controller.printPreflightFix(req),
+                "a non-numeric quality must be rejected, not defaulted");
+    }
+
+    @Test
+    void testFixupParamsExtendBleedHonoursMethod() throws Exception {
+        PrintPreflightRequest req = request(thinBleedPdf());
+        req.setFixups(List.of("EXTEND_BLEED"));
+        req.setFixupParams("{\"EXTEND_BLEED\":{\"method\":\"PIXEL_REPEAT\"}}");
+        ResponseEntity<Resource> response = controller.printPreflightFix(req);
+        assertEquals(List.of("EXTEND_BLEED"), response.getHeaders().get("X-Preflight-Fixups"));
+        try (PDDocument result = Loader.loadPDF(responseBytes(response))) {
+            PDPage page = result.getPage(0);
+            float required = 3 * MM;
+            assertTrue(
+                    page.getTrimBox().getLowerLeftX() - page.getBleedBox().getLowerLeftX()
+                            >= required - 0.5f,
+                    "PIXEL_REPEAT still grows the bleed to the required width");
+        }
+    }
+
+    @Test
+    void testSkippedFixupsAppearInToolReport() throws Exception {
+        // Nothing to remove: an explicit selection that finds no target is skipped, and the
+        // pipeline-visible report must say so instead of looking like an apply.
+        PrintPreflightRequest req = request(basePdf());
+        req.setFixups(List.of("REMOVE_JAVASCRIPT"));
+        ResponseEntity<Resource> response = controller.printPreflightFix(req);
+
+        String header = response.getHeaders().getFirst("X-Stirling-Tool-Report");
+        assertNotNull(header);
+        com.fasterxml.jackson.databind.JsonNode preflight =
+                new com.fasterxml.jackson.databind.ObjectMapper().readTree(header).get("preflight");
+        assertNotNull(preflight);
+        assertTrue(preflight.get("fixupsApplied").isEmpty());
+        com.fasterxml.jackson.databind.JsonNode skipped = preflight.get("fixupsSkipped");
+        assertNotNull(skipped, "explicit selections that change nothing must be reported");
+        assertEquals("REMOVE_JAVASCRIPT", skipped.get(0).asText());
+    }
+
+    @Test
+    void testImplicitFixupsReportNoSkipped() throws Exception {
+        // No explicit list means "everything applicable": there is no selection to miss, so
+        // fixupsSkipped stays empty even though most fixups had nothing to do.
+        PrintPreflightRequest req = request(basePdf());
+        ResponseEntity<Resource> response = controller.printPreflightFix(req);
+
+        String header = response.getHeaders().getFirst("X-Stirling-Tool-Report");
+        assertNotNull(header);
+        com.fasterxml.jackson.databind.JsonNode preflight =
+                new com.fasterxml.jackson.databind.ObjectMapper().readTree(header).get("preflight");
+        assertNotNull(preflight);
+        assertTrue(
+                preflight.get("fixupsSkipped").isEmpty(),
+                "implicit 'everything applicable' never reports skipped fixups");
+    }
+
+    @Test
+    void testStreamFixupReportsItselfApplied() throws Exception {
+        // The stream pass used to rewrite the document yet never reach the applied list — one
+        // flag that was never set. Each code now reports the rewrites it actually did.
+        PrintPreflightRequest req = request(richBlackTextPdf());
+        req.setFixups(List.of("PURE_BLACK_TEXT"));
+        ResponseEntity<Resource> response = controller.printPreflightFix(req);
+        assertEquals(List.of("PURE_BLACK_TEXT"), response.getHeaders().get("X-Preflight-Fixups"));
+    }
+
+    @Test
+    void testInvisibleTextFixupReportsApplied() throws Exception {
+        PrintPreflightRequest req = request(invisibleTextPdf());
+        req.setFixups(List.of("REMOVE_INVISIBLE_TEXT"));
+        ResponseEntity<Resource> response = controller.printPreflightFix(req);
+        assertEquals(
+                List.of("REMOVE_INVISIBLE_TEXT"), response.getHeaders().get("X-Preflight-Fixups"));
+    }
+
+    @Test
+    void testStreamFixupsSkippedReportedPerCode() throws Exception {
+        // A sibling's rewrite must not mark a targetless fixup applied: PURE_BLACK_TEXT works
+        // here, REMOVE_INVISIBLE_TEXT has nothing to do and must land in fixupsSkipped.
+        PrintPreflightRequest req = request(richBlackTextPdf());
+        req.setFixups(List.of("PURE_BLACK_TEXT", "REMOVE_INVISIBLE_TEXT"));
+        ResponseEntity<Resource> response = controller.printPreflightFix(req);
+
+        com.fasterxml.jackson.databind.JsonNode preflight = toolReportPreflight(response);
+        assertEquals(List.of("PURE_BLACK_TEXT"), texts(preflight.get("fixupsApplied")));
+        assertEquals(List.of("REMOVE_INVISIBLE_TEXT"), texts(preflight.get("fixupsSkipped")));
+    }
+
+    @Test
+    void testReduceInkCoverageReportsAppliedOnVectorPaint() throws Exception {
+        // A 400% CMYK vector fill with no image: only the token pass can reduce it, so the code
+        // must report applied even with no image path to credit it.
+        PrintPreflightRequest req = request(richBlackPdf());
+        req.setFixups(List.of("REDUCE_INK_COVERAGE"));
+        ResponseEntity<Resource> response = controller.printPreflightFix(req);
+        assertEquals(
+                List.of("REDUCE_INK_COVERAGE"), response.getHeaders().get("X-Preflight-Fixups"));
+    }
+
+    @Test
+    void testReduceInkCoverageSkippedUnderLimit() throws Exception {
+        // Under the 320% limit nothing needs reducing — emitting the same tokens is not work, so
+        // the fixup reports skipped rather than a value-identical rewrite counted as applied.
+        PrintPreflightRequest req = request(underTacFillPdf());
+        req.setFixups(List.of("REDUCE_INK_COVERAGE"));
+        ResponseEntity<Resource> response = controller.printPreflightFix(req);
+
+        com.fasterxml.jackson.databind.JsonNode preflight = toolReportPreflight(response);
+        assertTrue(preflight.get("fixupsApplied").isEmpty());
+        assertEquals(List.of("REDUCE_INK_COVERAGE"), texts(preflight.get("fixupsSkipped")));
+    }
+
+    private static com.fasterxml.jackson.databind.JsonNode toolReportPreflight(
+            ResponseEntity<Resource> response) throws IOException {
+        String header = response.getHeaders().getFirst("X-Stirling-Tool-Report");
+        assertNotNull(header);
+        return new com.fasterxml.jackson.databind.ObjectMapper().readTree(header).get("preflight");
+    }
+
+    private static List<String> texts(com.fasterxml.jackson.databind.JsonNode array) {
+        List<String> out = new java.util.ArrayList<>();
+        array.forEach(node -> out.add(node.asText()));
+        return out;
+    }
+
+    /** A CMYK fill under the default 320% limit — REDUCE_INK_COVERAGE has nothing to reduce. */
+    private static byte[] underTacFillPdf() throws IOException {
+        PDDocument doc = new PDDocument();
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
+        try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+            cs.setNonStrokingColor(0.5f, 0.5f, 0.5f, 0f);
+            cs.addRect(0, 0, page.getMediaBox().getWidth(), page.getMediaBox().getHeight());
+            cs.fill();
+        }
+        return toBytes(doc);
     }
 }

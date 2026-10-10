@@ -2,6 +2,7 @@ import { isConditionComplete } from "@app/conditions/validation";
 import {
   classificationCondition,
   documentFieldCondition,
+  readsFixReportField,
   requiresClassification,
   requiresPreflight,
 } from "@app/data/classificationConditions";
@@ -26,6 +27,7 @@ import {
   type PolicySetupResult,
 } from "@app/policies/catalog";
 import {
+  PREFLIGHT_FIX_STEP_ENDPOINTS,
   PREFLIGHT_STEP_ENDPOINTS,
   policyEndpoint,
   policyStep,
@@ -586,21 +588,22 @@ function PolicySetupWizardBody({
     ]);
     const preservedSteps = isRouting
       ? (policy?.steps ?? []).filter(
-          (step) => step.operation == null || !managedOperations.has(step.operation),
+          (step) =>
+            step.operation == null || !managedOperations.has(step.operation),
         )
       : [];
     const steps: PipelineStep[] = [
       ...preservedSteps,
       ...selectedTools.map((tool) => {
-      const step = policyStepToWire(tool);
-      const saved = policy?.steps.find(
-        (original) => original.operation === step.operation,
-      );
-      return {
-        ...saved,
-        ...step,
-        parameters: { ...saved?.parameters, ...step.parameters },
-      };
+        const step = policyStepToWire(tool);
+        const saved = policy?.steps.find(
+          (original) => original.operation === step.operation,
+        );
+        return {
+          ...saved,
+          ...step,
+          parameters: { ...saved?.parameters, ...step.parameters },
+        };
       }),
     ];
     // A verdict route needs a reporting step the routing category does not seed: inject the fix
@@ -609,10 +612,26 @@ function PolicySetupWizardBody({
     // classification written earlier, while classify's metadata write cannot change the verdict
     // (and emits no report, so the verdict carries through it).
     if (isRouting && routingNeedsPreflight) {
-      const preflightStep =
-        policy?.steps.find((step) =>
-          PREFLIGHT_STEP_ENDPOINTS.has(step.operation),
-        ) ?? policyStepToWire(policyStep("printPreflightFix"));
+      const saved = policy?.steps.find((step) =>
+        PREFLIGHT_STEP_ENDPOINTS.has(step.operation),
+      );
+      let preflightStep =
+        saved ?? policyStepToWire(policyStep("printPreflightFix"));
+      // A rule on a fix-only field (pre* state, fixup outcomes) can never match against an
+      // analysis-only variant's report — upgrade the reused step to the corrector endpoint,
+      // keeping its parameters.
+      const routingNeedsFixReport = routing.routingRules.some((rule) =>
+        readsFixReportField(rule.condition),
+      );
+      if (
+        routingNeedsFixReport &&
+        !PREFLIGHT_FIX_STEP_ENDPOINTS.has(preflightStep.operation)
+      ) {
+        preflightStep = {
+          ...preflightStep,
+          operation: policyEndpoint("printPreflightFix"),
+        };
+      }
       const classifyAt = steps.findIndex(
         (step) => step.operation === policyEndpoint("classify"),
       );

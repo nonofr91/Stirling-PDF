@@ -9769,16 +9769,14 @@ aiClassification = "Enable AI classification in Settings, or remove the Classify
 destination = "Choose a destination"
 gateIncomplete = "Complete or remove the condition on: {{tools}}"
 gateNeedsClassify = "A condition on document type needs a Classify step before: {{tools}}"
-gateNeedsPreflight = "A condition on the preflight verdict needs a Print Preflight step before: {{tools}}"
-gateNeedsPreflightFix = "A condition on the pre-fixup state needs a Print Preflight fix step before: {{tools}}"
+gateNeedsReport = "A condition reads a report field no earlier step emits: {{tools}}"
 heading = "To create this pipeline:"
 incompatible = "Fix steps that can't run in order: {{tools}}"
 managerOnly = "Only an admin or team leader can modify a policy"
 name = "Give the pipeline a name"
 routing = "Give every route document types and a destination"
 routingNeedsClassify = "Add a Classify step, or turn off routing by document type"
-routingNeedsPreflight = "Add a Print Preflight step, or turn off routing by preflight verdict"
-routingNeedsPreflightFix = "Add a Print Preflight fix step, or turn off routing on pre-fixup state"
+routingNeedsReport = "Add a step that emits the report fields the routes read, or remove those conditions"
 saveHeading = "To save your changes:"
 schedule = "Set how often it runs"
 setup = "Finish setting up: {{tools}}"
@@ -9838,8 +9836,13 @@ matchFilename = "Exact filename"
 matchPreflightErrors = "Preflight error count"
 matchPreflightFailingChecks = "Preflight error type"
 matchPreflightFixupsApplied = "Applied fixup"
+matchPreflightFixupsSkipped = "Skipped fixup"
 matchPreflightInfoChecks = "Preflight info type"
+matchPreflightPreErrors = "Preflight error count before fixups"
 matchPreflightPreFailingChecks = "Preflight error type before fixups"
+matchPreflightPreInfoChecks = "Preflight info type before fixups"
+matchPreflightPreWarningChecks = "Preflight warning type before fixups"
+matchPreflightPreWarnings = "Preflight warning count before fixups"
 matchPreflightVerdict = "Preflight verdict"
 matchPreflightWarningChecks = "Preflight warning type"
 matchPreflightWarnings = "Preflight warning count"
@@ -11230,6 +11233,25 @@ SET_MISSING_BOXES = "Declare missing TrimBox"
 SET_OUTPUT_INTENT = "Attach output intent (ICC)"
 SPOT_TO_CMYK = "Convert spot colours to CMYK"
 TEXT_TO_OUTLINES = "Convert text to outlines (Ghostscript)"
+
+[printPreflight.fixupParams]
+help = "Correction parameters — leave a field empty to use its default."
+
+[printPreflight.fixupParams.EXTEND_BLEED.method]
+help = "How the missing bleed band is painted. Leave empty for the default (MIRROR)."
+label = "Bleed generation method"
+options.MIRROR = "Mirror edge pixels"
+options.MIRROR_IMAGE = "Mirror the whole image"
+options.PIXEL_REPEAT = "Repeat edge pixels"
+options.UPSCALE = "Upscale the artwork"
+
+[printPreflight.fixupParams.DOWNSAMPLE_IMAGES.jpegQuality]
+help = "JPEG quality of re-encoded images, between 0 and 1. Leave empty for the default (0.9)."
+label = "JPEG quality"
+
+[printPreflight.fixupParams.PURE_BLACK_TEXT.maxPt]
+help = "Only rich-black text up to this size is converted. Leave empty for the default (24 pt)."
+label = "Maximum text size (pt)"
 
 [printPreflight.hairlineThresholdPt]
 help = "Strokes thinner than this are flagged — they may drop out on press."

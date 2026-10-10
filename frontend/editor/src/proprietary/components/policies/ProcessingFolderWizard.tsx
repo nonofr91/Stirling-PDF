@@ -9,6 +9,7 @@ import {
   PolicyRoutingDestinations,
   type RoutingDestination,
 } from "@app/components/policies/PolicyRoutingDestinations";
+import { REPORT_AVAILABILITY_ALL } from "@app/data/reportCatalog";
 import { FolderPolicySetupConfig } from "@app/components/policies/FolderPolicySetupConfig";
 import { PolicySetupWizard } from "@app/components/policies/PolicySetupWizard";
 import {
@@ -206,8 +207,7 @@ export function ProcessingFolderWizard({
             classificationAvailable={aiClassificationEnabled}
             // Always injectable: a preflight rule adds the fix step to the saved pipeline,
             // the same way a classification rule pulls in classify.
-            preflightAvailable
-            preflightFixAvailable
+            reportAvailability={REPORT_AVAILABILITY_ALL}
             compact
           />
         </>

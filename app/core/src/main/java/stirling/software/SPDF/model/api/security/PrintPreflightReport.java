@@ -6,6 +6,13 @@ import java.util.List;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import stirling.software.SPDF.service.preflight.PreflightCheck;
+import stirling.software.SPDF.service.preflight.PreflightFixer;
+import stirling.software.common.model.tool.ReportField;
+import stirling.software.common.model.tool.ReportFieldKind;
+import stirling.software.common.model.tool.ReportNamespace;
+import stirling.software.common.model.tool.ReportProducedBy;
+
 @Data
 @NoArgsConstructor
 public class PrintPreflightReport {
@@ -72,19 +79,97 @@ public class PrintPreflightReport {
      * pipeline gate can match on the kind of issue, not only its count; the {@code pre*} variants
      * are populated by {@link #afterFix} and stay {@code null} on a plain analysis.
      */
+    @ReportNamespace("preflight")
     public record Preflight(
-            String verdict,
-            int errors,
-            int warnings,
-            List<String> failingChecks,
-            List<String> warningChecks,
-            List<String> infoChecks,
-            List<String> fixupsApplied,
-            Integer preErrors,
-            Integer preWarnings,
-            List<String> preFailingChecks,
-            List<String> preWarningChecks,
-            List<String> preInfoChecks) {
+            @ReportField(
+                            kind = ReportFieldKind.ENUM,
+                            values = {"pass", "warn", "fail"},
+                            valueLabelPrefix = "printPreflight.verdict",
+                            labelKey = "portal.pipelines.builder.routing.matchPreflightVerdict",
+                            labelDefault = "Preflight verdict")
+                    String verdict,
+            @ReportField(
+                            kind = ReportFieldKind.COUNT,
+                            labelKey = "portal.pipelines.builder.routing.matchPreflightErrors",
+                            labelDefault = "Preflight error count")
+                    int errors,
+            @ReportField(
+                            kind = ReportFieldKind.COUNT,
+                            labelKey = "portal.pipelines.builder.routing.matchPreflightWarnings",
+                            labelDefault = "Preflight warning count")
+                    int warnings,
+            @ReportField(
+                            kind = ReportFieldKind.CODE_LIST,
+                            vocabulary = PreflightCheck.class,
+                            labelKey =
+                                    "portal.pipelines.builder.routing.matchPreflightFailingChecks",
+                            labelDefault = "Preflight error type")
+                    List<String> failingChecks,
+            @ReportField(
+                            kind = ReportFieldKind.CODE_LIST,
+                            vocabulary = PreflightCheck.class,
+                            labelKey =
+                                    "portal.pipelines.builder.routing.matchPreflightWarningChecks",
+                            labelDefault = "Preflight warning type")
+                    List<String> warningChecks,
+            @ReportField(
+                            kind = ReportFieldKind.CODE_LIST,
+                            vocabulary = PreflightCheck.class,
+                            labelKey = "portal.pipelines.builder.routing.matchPreflightInfoChecks",
+                            labelDefault = "Preflight info type")
+                    List<String> infoChecks,
+            @ReportField(
+                            kind = ReportFieldKind.CODE_LIST,
+                            vocabulary = PreflightFixer.Code.class,
+                            producedBy = ReportProducedBy.FIX,
+                            labelKey =
+                                    "portal.pipelines.builder.routing.matchPreflightFixupsApplied",
+                            labelDefault = "Applied fixup")
+                    List<String> fixupsApplied,
+            @ReportField(
+                            kind = ReportFieldKind.CODE_LIST,
+                            vocabulary = PreflightFixer.Code.class,
+                            producedBy = ReportProducedBy.FIX,
+                            labelKey =
+                                    "portal.pipelines.builder.routing.matchPreflightFixupsSkipped",
+                            labelDefault = "Skipped fixup")
+                    List<String> fixupsSkipped,
+            @ReportField(
+                            kind = ReportFieldKind.COUNT,
+                            producedBy = ReportProducedBy.FIX,
+                            labelKey = "portal.pipelines.builder.routing.matchPreflightPreErrors",
+                            labelDefault = "Preflight error count before fixups")
+                    Integer preErrors,
+            @ReportField(
+                            kind = ReportFieldKind.COUNT,
+                            producedBy = ReportProducedBy.FIX,
+                            labelKey = "portal.pipelines.builder.routing.matchPreflightPreWarnings",
+                            labelDefault = "Preflight warning count before fixups")
+                    Integer preWarnings,
+            @ReportField(
+                            kind = ReportFieldKind.CODE_LIST,
+                            vocabulary = PreflightCheck.class,
+                            producedBy = ReportProducedBy.FIX,
+                            labelKey =
+                                    "portal.pipelines.builder.routing.matchPreflightPreFailingChecks",
+                            labelDefault = "Preflight error type before fixups")
+                    List<String> preFailingChecks,
+            @ReportField(
+                            kind = ReportFieldKind.CODE_LIST,
+                            vocabulary = PreflightCheck.class,
+                            producedBy = ReportProducedBy.FIX,
+                            labelKey =
+                                    "portal.pipelines.builder.routing.matchPreflightPreWarningChecks",
+                            labelDefault = "Preflight warning type before fixups")
+                    List<String> preWarningChecks,
+            @ReportField(
+                            kind = ReportFieldKind.CODE_LIST,
+                            vocabulary = PreflightCheck.class,
+                            producedBy = ReportProducedBy.FIX,
+                            labelKey =
+                                    "portal.pipelines.builder.routing.matchPreflightPreInfoChecks",
+                            labelDefault = "Preflight info type before fixups")
+                    List<String> preInfoChecks) {
 
         public static Preflight of(Counts counts, List<Finding> findings) {
             return new Preflight(
@@ -94,6 +179,7 @@ public class PrintPreflightReport {
                     codesOf(findings, Severity.ERROR),
                     codesOf(findings, Severity.WARNING),
                     codesOf(findings, Severity.INFO),
+                    List.of(),
                     List.of(),
                     null,
                     null,
@@ -106,6 +192,7 @@ public class PrintPreflightReport {
                 Counts post,
                 List<Finding> postFindings,
                 List<String> fixupsApplied,
+                List<String> fixupsSkipped,
                 Counts pre,
                 List<Finding> preFindings) {
             return new Preflight(
@@ -116,6 +203,7 @@ public class PrintPreflightReport {
                     codesOf(postFindings, Severity.WARNING),
                     codesOf(postFindings, Severity.INFO),
                     List.copyOf(fixupsApplied),
+                    List.copyOf(fixupsSkipped),
                     pre.getErrors(),
                     pre.getWarnings(),
                     codesOf(preFindings, Severity.ERROR),

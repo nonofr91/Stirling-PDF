@@ -9613,16 +9613,14 @@ aiClassification = "Activez la classification AI dans les paramètres, ou suppri
 destination = "Choisissez une destination"
 gateIncomplete = "Complétez ou supprimez la condition de : {{tools}}"
 gateNeedsClassify = "Une condition sur le type de document exige une étape Classifier avant : {{tools}}"
-gateNeedsPreflight = "Une condition sur le verdict preflight exige une étape Print Preflight avant : {{tools}}"
-gateNeedsPreflightFix = "Une condition sur l’état avant correction exige une étape de correction Print Preflight avant : {{tools}}"
+gateNeedsReport = "Une condition lit un champ de rapport qu’aucune étape précédente n’émet : {{tools}}"
 heading = "Pour créer ce pipeline :"
 incompatible = "Corrigez les étapes qui ne peuvent pas s’exécuter dans l’ordre : {{tools}}"
 managerOnly = "Seul un administrateur ou un responsable d’équipe peut modifier une politique"
 name = "Donnez un nom au pipeline"
 routing = "Donnez à chaque route des types de documents et une destination"
 routingNeedsClassify = "Ajoutez une étape Classifier, ou désactivez le routage par type de document"
-routingNeedsPreflight = "Ajoutez une étape Print Preflight, ou désactivez le routage par verdict preflight"
-routingNeedsPreflightFix = "Ajoutez une étape de correction Print Preflight, ou désactivez le routage sur l’état avant correction"
+routingNeedsReport = "Ajoutez une étape qui émet les champs de rapport lus par les routes, ou supprimez ces conditions"
 saveHeading = "Pour enregistrer vos modifications :"
 schedule = "Définissez la fréquence d’exécution"
 setup = "Terminez la configuration : {{tools}}"
@@ -9682,8 +9680,13 @@ matchFilename = "Nom de fichier exact"
 matchPreflightErrors = "Nombre d’erreurs preflight"
 matchPreflightFailingChecks = "Type d’erreur preflight"
 matchPreflightFixupsApplied = "Correction appliquée"
+matchPreflightFixupsSkipped = "Correction ignorée"
 matchPreflightInfoChecks = "Type d’information preflight"
+matchPreflightPreErrors = "Nombre d’erreurs preflight avant correction"
 matchPreflightPreFailingChecks = "Type d’erreur preflight avant correction"
+matchPreflightPreInfoChecks = "Type d’information preflight avant correction"
+matchPreflightPreWarningChecks = "Type d’avertissement preflight avant correction"
+matchPreflightPreWarnings = "Nombre d’avertissements preflight avant correction"
 matchPreflightVerdict = "Verdict preflight"
 matchPreflightWarningChecks = "Type d’avertissement preflight"
 matchPreflightWarnings = "Nombre d’avertissements preflight"
@@ -14403,6 +14406,25 @@ SET_MISSING_BOXES = "Déclarer le TrimBox manquant"
 SET_OUTPUT_INTENT = "Attacher un output intent (ICC)"
 SPOT_TO_CMYK = "Convertir les tons directs en CMJN"
 TEXT_TO_OUTLINES = "Vectoriser le texte (Ghostscript)"
+
+[printPreflight.fixupParams]
+help = "Paramètres des corrections — laissez un champ vide pour utiliser sa valeur par défaut."
+
+[printPreflight.fixupParams.EXTEND_BLEED.method]
+help = "Méthode de génération du fond perdu manquant. Laissez vide pour la valeur par défaut (MIRROR)."
+label = "Méthode de génération du fond perdu"
+options.MIRROR = "Miroir des pixels du bord"
+options.MIRROR_IMAGE = "Miroir de l'image entière"
+options.PIXEL_REPEAT = "Répétition des pixels du bord"
+options.UPSCALE = "Agrandissement de l'illustration"
+
+[printPreflight.fixupParams.DOWNSAMPLE_IMAGES.jpegQuality]
+help = "Qualité JPEG des images ré-encodées, entre 0 et 1. Laissez vide pour la valeur par défaut (0,9)."
+label = "Qualité JPEG"
+
+[printPreflight.fixupParams.PURE_BLACK_TEXT.maxPt]
+help = "Seul le texte noir enrichi jusqu'à cette taille est converti. Laissez vide pour la valeur par défaut (24 pt)."
+label = "Taille maximale du texte (pt)"
 
 [printPreflight.hairlineThresholdPt]
 help = "Les traits plus fins que ce seuil sont signalés — ils risquent de disparaître à l'impression."

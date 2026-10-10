@@ -11,7 +11,12 @@ change visual output or violate the production intent the check was guarding.
 `POST /api/v1/security/print-preflight-fix` runs the analysis, applies the
 `fixups` request field (an empty list means "everything applicable") and
 returns the corrected PDF — the uploaded file is never modified. The applied
-codes come back in the `X-Preflight-Fixups` response header. `PreflightFixer`
+codes come back in the `X-Preflight-Fixups` response header and
+`report.preflight.fixupsApplied`; explicitly requested fixups that found no
+target land in `report.preflight.fixupsSkipped`. Per-correction parameters
+travel namespaced in `fixupParams` (a JSON object keyed by fixup code — e.g.
+`{"EXTEND_BLEED":{"method":"PIXEL_REPEAT"}}`), strictly validated against the
+fixup's declared keys. `PreflightFixer`
 performs dictionary- and resource-level corrections; `PreflightStreamFixer`
 rewrites content streams token-by-token (colour, overprint, text state and CTM
 tracked per stream, one pass for all stream-level fixups, pages plus nested

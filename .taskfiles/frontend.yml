@@ -579,7 +579,7 @@ tasks:
     desc: "Generate tool API types from the Java OpenAPI spec"
     deps: [install, ":backend:swagger"]
     cmds:
-      - npx tsx editor/scripts/generate-tool-api-types.mts --spec ../SwaggerDoc.json --output editor/src/core/types/toolApiTypes.ts --io-output editor/src/core/types/toolIO.ts
+      - npx tsx editor/scripts/generate-tool-api-types.mts --spec ../SwaggerDoc.json --output editor/src/core/types/toolApiTypes.ts --io-output editor/src/core/types/toolIO.ts --report-output editor/src/core/types/toolReports.ts
       - task: format
     sources:
       - editor/scripts/generate-tool-api-types.mts
@@ -587,12 +587,13 @@ tasks:
     generates:
       - editor/src/core/types/toolApiTypes.ts
       - editor/src/core/types/toolIO.ts
+      - editor/src/core/types/toolReports.ts
 
   tool-models:check:
     desc: "Fail if committed tool API types are out of date"
     cmds:
       - task: tool-models
-      - git diff --exit-code -- editor/src/core/types/toolApiTypes.ts editor/src/core/types/toolIO.ts
+      - git diff --exit-code -- editor/src/core/types/toolApiTypes.ts editor/src/core/types/toolIO.ts editor/src/core/types/toolReports.ts
 
   licenses:generate:
     desc: "Generate frontend license report"

@@ -22,6 +22,7 @@ import {
   usePreflightProfiles,
   profileToParameters,
 } from "@app/hooks/tools/printPreflight/usePreflightProfiles";
+import FixupParamsEditor from "@app/components/tools/printPreflight/FixupParamsEditor";
 
 interface PrintPreflightSettingsProps {
   parameters: PrintPreflightParameters;
@@ -590,6 +591,12 @@ const PrintPreflightSettings = ({
                   searchable
                   disabled={disabled}
                   comboboxProps={{ withinPortal: true }}
+                />
+                <FixupParamsEditor
+                  fixups={parameters.fixups}
+                  fixupParams={parameters.fixupParams}
+                  onChange={(next) => onParameterChange("fixupParams", next)}
+                  disabled={disabled}
                 />
               </Stack>
             </Collapse>

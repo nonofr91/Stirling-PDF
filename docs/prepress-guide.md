@@ -117,8 +117,22 @@ findings — the engine knows `CutContour` & co. are not process inks.
 ## The fixups
 
 Requested via the `fixups` list; empty = everything applicable. A fixup with
-nothing to do is silently skipped — the applied codes come back in
-`X-Preflight-Fixups` and `report.preflight.fixupsApplied`.
+nothing to do is skipped — the applied codes come back in `X-Preflight-Fixups`
+and `report.preflight.fixupsApplied`, the explicitly requested ones that found
+no target in `report.preflight.fixupsSkipped`.
+
+Correction parameters travel namespaced per fixup in `fixupParams`, a single
+JSON-object field: `{"EXTEND_BLEED":{"method":"PIXEL_REPEAT"}}`. Only the keys
+a fixup declares are accepted — an unknown code or key fails the request.
+Thresholds that mean the same thing to the check and the fix stay flat
+(`requiredBleedMm` sizes both the `BLEED_INSUFFICIENT` finding and the band
+`EXTEND_BLEED` paints).
+
+| Fixup | Parameter | Values |
+|---|---|---|
+| `EXTEND_BLEED` | `method` | `MIRROR` (default), `MIRROR_IMAGE`, `PIXEL_REPEAT`, `UPSCALE` |
+| `DOWNSAMPLE_IMAGES` | `jpegQuality` | JPEG quality in (0, 1] — default 0.9 |
+| `PURE_BLACK_TEXT` | `maxPt` | Max text size in pt — default 24 |
 
 | Fixup | What it does | Resolves |
 |---|---|---|
@@ -169,6 +183,7 @@ step replaces it (a fix keeps the pre-fixup state under `pre*`).
 | `failingChecks` | list | Distinct finding codes at error severity. |
 | `warningChecks` / `infoChecks` | list | Same for warnings / infos. |
 | `fixupsApplied` | list | Fixup codes that changed something (empty on analysis). |
+| `fixupsSkipped` | list | Requested fixups with nothing to correct (fix steps only). |
 | `preErrors` / `preWarnings` | count | Pre-fixup counts (fix steps only). |
 | `preFailingChecks` / `preWarningChecks` / `preInfoChecks` | list | Pre-fixup check codes (fix steps only). |
 

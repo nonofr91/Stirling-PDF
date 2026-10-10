@@ -48,11 +48,16 @@ import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotation;
 import org.apache.pdfbox.pdmodel.interactive.form.PDAcroForm;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import lombok.extern.slf4j.Slf4j;
 
 import stirling.software.SPDF.model.api.security.PrintPreflightReport;
 import stirling.software.SPDF.model.api.security.PrintPreflightRequest;
 import stirling.software.SPDF.service.preflight.PreflightGraphicsEngine.ImageUse;
+import stirling.software.common.util.ExceptionUtils;
 import stirling.software.common.util.PageBleedGenerator;
 import stirling.software.common.util.PageBleedGenerator.BleedEdges;
 import stirling.software.common.util.PageBleedGenerator.BleedMethod;
@@ -70,6 +75,7 @@ public final class PreflightFixer {
 
     private static final float MM_TO_POINTS = 72f / 25.4f;
     private static final float JPEG_QUALITY = 0.9f;
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     /** Decoded input plus converted output sample bytes one image remap may hold at once. */
     private static final long MAX_REMAP_BYTES = 256L * 1024 * 1024;
@@ -103,6 +109,17 @@ public final class PreflightFixer {
         TEXT_TO_OUTLINES
     }
 
+    /**
+     * The {@code fixupParams.<CODE>} keys each fixup accepts. The backend side of the contract from
+     * {@code devGuide/prepress-tool-contract.md}: the frontend catalog mirrors it to render
+     * per-fixup editors, and {@link #parseFixupParams} rejects anything not declared here.
+     */
+    static final Map<Code, Set<String>> FIXUP_PARAMS =
+            Map.of(
+                    Code.EXTEND_BLEED, Set.of("method"),
+                    Code.DOWNSAMPLE_IMAGES, Set.of("jpegQuality"),
+                    Code.PURE_BLACK_TEXT, Set.of("maxPt"));
+
     /** Fixups implemented by {@link PreflightStreamFixer} — they share one token pass. */
     private static final Set<Code> STREAM_FIXUPS =
             Set.of(
@@ -121,9 +138,9 @@ public final class PreflightFixer {
      */
     static final Map<Code, String> GS_FIXUP_FINDINGS =
             Map.of(
-                    Code.RGB_TO_CMYK, "COLOR_RGB_USED",
-                    Code.FLATTEN_TRANSPARENCY, "TRANSPARENCY",
-                    Code.TEXT_TO_OUTLINES, "FONT_NOT_EMBEDDED");
+                    Code.RGB_TO_CMYK, PreflightCheck.COLOR_RGB_USED.code(),
+                    Code.FLATTEN_TRANSPARENCY, PreflightCheck.TRANSPARENCY.code(),
+                    Code.TEXT_TO_OUTLINES, PreflightCheck.FONT_NOT_EMBEDDED.code());
 
     private PreflightFixer() {}
 
@@ -135,6 +152,7 @@ public final class PreflightFixer {
     public static List<String> apply(
             PDDocument document, PrintPreflightRequest request, PrintPreflightReport report) {
         Set<Code> wanted = resolveWanted(request.getFixups());
+        Map<Code, Map<String, JsonNode>> fixupParams = parseFixupParams(request);
         List<String> applied = new ArrayList<>();
 
         if (wanted.contains(Code.REMOVE_JAVASCRIPT) && removeJavascript(document)) {
@@ -165,22 +183,24 @@ public final class PreflightFixer {
         if (wanted.contains(Code.DISCARD_CROPBOX) && discardCropBox(document)) {
             applied.add(Code.DISCARD_CROPBOX.name());
         }
-        if (wanted.contains(Code.EXTEND_BLEED) && extendBleed(document, request)) {
+        if (wanted.contains(Code.EXTEND_BLEED) && extendBleed(document, request, fixupParams)) {
             applied.add(Code.EXTEND_BLEED.name());
         }
-        if (wanted.contains(Code.DOWNSAMPLE_IMAGES) && downsampleImages(document, request)) {
+        if (wanted.contains(Code.DOWNSAMPLE_IMAGES)
+                && downsampleImages(document, request, fixupParams)) {
             applied.add(Code.DOWNSAMPLE_IMAGES.name());
         }
         if (wanted.contains(Code.ENABLE_LAYER_PRINTING) && enableLayerPrinting(document)) {
             applied.add(Code.ENABLE_LAYER_PRINTING.name());
         }
-        // One token pass applies every wanted stream-level fixup.
+        // One token pass applies every wanted stream-level fixup; it reports which of them
+        // actually rewrote so applied/skipped stays honest per code.
         Set<Code> streamWanted = new LinkedHashSet<>(wanted);
         streamWanted.retainAll(STREAM_FIXUPS);
-        if (!streamWanted.isEmpty()
-                && PreflightStreamFixer.apply(
-                        document, streamWanted, request.getMaxInkCoveragePercent())) {
-            streamWanted.forEach(code -> applied.add(code.name()));
+        if (!streamWanted.isEmpty()) {
+            PreflightStreamFixer.apply(
+                            document, streamWanted, request.getMaxInkCoveragePercent(), fixupParams)
+                    .forEach(code -> applied.add(code.name()));
         }
         // Spot image XObjects follow the paint-op rewrite: their pixels live behind a `Do`, out
         // of the token pass's reach, and get remapped through the document's own tint transform.
@@ -199,7 +219,7 @@ public final class PreflightFixer {
         // Clip runs after every geometry fixup has settled (boxes, bleed), and only when the
         // analysis saw paint out there — a clean page keeps its original content stream untouched.
         if (wanted.contains(Code.CLIP_TO_CROPBOX)
-                && hasFinding(report, "OBJECT_OUTSIDE_PAGE")
+                && hasFinding(report, PreflightCheck.OBJECT_OUTSIDE_PAGE.code())
                 && clipToCropBox(document)) {
             applied.add(Code.CLIP_TO_CROPBOX.name());
         }
@@ -647,6 +667,155 @@ public final class PreflightFixer {
         return wanted;
     }
 
+    /**
+     * Fixups the request explicitly named but that applied nothing: either their target was absent
+     * or a backend they needed (e.g. Ghostscript) was unavailable. Empty when {@code fixups} is
+     * implicit — "everything applicable" has no notion of a missed selection.
+     */
+    public static List<String> skippedFixups(PrintPreflightRequest request, List<String> applied) {
+        List<String> requested = request.getFixups();
+        if (requested == null
+                || requested.isEmpty()
+                || requested.stream().anyMatch(s -> "NONE".equalsIgnoreCase(s.trim()))) {
+            return List.of();
+        }
+        Set<String> appliedSet = new TreeSet<>(applied);
+        List<String> skipped = new ArrayList<>();
+        for (Code code : resolveWanted(requested)) {
+            if (!appliedSet.contains(code.name())) {
+                skipped.add(code.name());
+            }
+        }
+        return skipped;
+    }
+
+    /**
+     * Decodes {@code fixupParams} — a JSON object keyed by fixup code — into per-fixup parameter
+     * maps. Unknown fixup codes and undeclared parameter keys fail loudly: a mis-addressed or
+     * mistyped correction parameter must surface instead of being silently dropped.
+     */
+    public static Map<Code, Map<String, JsonNode>> parseFixupParams(PrintPreflightRequest request) {
+        String raw = request.getFixupParams();
+        if (raw == null || raw.isBlank()) {
+            return Map.of();
+        }
+        JsonNode root;
+        try {
+            root = MAPPER.readTree(raw);
+        } catch (JsonProcessingException e) {
+            throw ExceptionUtils.createIllegalArgumentException(
+                    "error.invalidArgument",
+                    "fixupParams is not valid JSON: " + e.getOriginalMessage());
+        }
+        if (!root.isObject()) {
+            throw ExceptionUtils.createIllegalArgumentException(
+                    "error.invalidArgument",
+                    "fixupParams must be a JSON object keyed by fixup code");
+        }
+        Map<Code, Map<String, JsonNode>> resolved = new LinkedHashMap<>();
+        root.fields()
+                .forEachRemaining(
+                        entry -> {
+                            Code code;
+                            try {
+                                code = Code.valueOf(entry.getKey());
+                            } catch (IllegalArgumentException e) {
+                                throw ExceptionUtils.createIllegalArgumentException(
+                                        "error.invalidArgument",
+                                        "fixupParams names unknown fixup: " + entry.getKey());
+                            }
+                            if (!entry.getValue().isObject()) {
+                                throw ExceptionUtils.createIllegalArgumentException(
+                                        "error.invalidArgument",
+                                        "fixupParams."
+                                                + code.name()
+                                                + " must be a parameter object");
+                            }
+                            Set<String> accepted = FIXUP_PARAMS.getOrDefault(code, Set.of());
+                            Map<String, JsonNode> inner = new LinkedHashMap<>();
+                            entry.getValue()
+                                    .fields()
+                                    .forEachRemaining(
+                                            param -> {
+                                                if (!accepted.contains(param.getKey())) {
+                                                    throw ExceptionUtils
+                                                            .createIllegalArgumentException(
+                                                                    "error.invalidArgument",
+                                                                    "fixupParams."
+                                                                            + code.name()
+                                                                            + "."
+                                                                            + param.getKey()
+                                                                            + " is not a parameter"
+                                                                            + " of that fixup");
+                                                }
+                                                validateParamValue(
+                                                        code, param.getKey(), param.getValue());
+                                                inner.put(param.getKey(), param.getValue());
+                                            });
+                            resolved.put(code, Map.copyOf(inner));
+                        });
+        return Map.copyOf(resolved);
+    }
+
+    /**
+     * Eager value checks for the declared params — a malformed value fails at request validation
+     * instead of being silently defaulted or blowing up inside the fix pass.
+     */
+    private static void validateParamValue(Code code, String key, JsonNode value) {
+        switch (code) {
+            case EXTEND_BLEED -> {
+                if ("method".equals(key) && !value.isTextual()) {
+                    throw invalidParam(code, key, "expects a string");
+                }
+                if ("method".equals(key)) {
+                    try {
+                        BleedMethod.parse(value.asText());
+                    } catch (IllegalArgumentException e) {
+                        throw invalidParam(code, key, e.getMessage());
+                    }
+                }
+            }
+            case DOWNSAMPLE_IMAGES -> {
+                // Narrow to float at the boundary: a subnormal double collapses to 0f and would
+                // encode JPEGs at quality zero instead of being rejected.
+                if ("jpegQuality".equals(key)
+                        && (!value.isNumber()
+                                || !((float) value.asDouble() > 0f)
+                                || value.asDouble() > 1)) {
+                    throw invalidParam(code, key, "expects a number in (0, 1]");
+                }
+            }
+            case PURE_BLACK_TEXT -> {
+                // A finite double above Float.MAX_VALUE narrows to +Inf — an infinite cutoff
+                // rewrites text at every size instead of honoring the bound.
+                if ("maxPt".equals(key)
+                        && (!value.isNumber()
+                                || !Float.isFinite((float) value.asDouble())
+                                || (float) value.asDouble() <= 0f)) {
+                    throw invalidParam(code, key, "expects a positive float-representable number");
+                }
+            }
+            default -> {}
+        }
+    }
+
+    private static IllegalArgumentException invalidParam(Code code, String key, String why) {
+        return ExceptionUtils.createIllegalArgumentException(
+                "error.invalidArgument", "fixupParams." + code.name() + "." + key + " " + why);
+    }
+
+    private static String stringParam(
+            Map<Code, Map<String, JsonNode>> params, Code code, String key) {
+        JsonNode value = params.getOrDefault(code, Map.of()).get(key);
+        return value == null || value.isNull() ? null : value.asText();
+    }
+
+    private static float floatParam(
+            Map<Code, Map<String, JsonNode>> params, Code code, String key, float fallback) {
+        JsonNode value = params.getOrDefault(code, Map.of()).get(key);
+        return value == null || !value.isNumber() ? fallback : (float) value.asDouble();
+    }
+
     private static boolean removeJavascript(PDDocument document) {
         PDDocumentNameDictionary names = document.getDocumentCatalog().getNames();
         if (names != null && names.getJavaScript() != null) {
@@ -938,8 +1107,15 @@ public final class PreflightFixer {
      * grown BleedBox and enlarges MediaBox/CropBox so the new area stays reachable. Pages that
      * already bleed enough — or that have no content to mirror — are untouched.
      */
-    private static boolean extendBleed(PDDocument document, PrintPreflightRequest request) {
+    private static boolean extendBleed(
+            PDDocument document,
+            PrintPreflightRequest request,
+            Map<Code, Map<String, JsonNode>> fixupParams) {
         float requiredPt = request.getRequiredBleedMm() * MM_TO_POINTS;
+        // The shared requiredBleedMm threshold sets the target; the fill style is the fixup's own.
+        String methodParam = stringParam(fixupParams, Code.EXTEND_BLEED, "method");
+        BleedMethod method =
+                methodParam == null ? BleedMethod.MIRROR : BleedMethod.parse(methodParam);
         if (requiredPt <= 0) {
             return false;
         }
@@ -976,15 +1152,7 @@ public final class PreflightFixer {
             if (page.hasContents()) {
                 try {
                     PageBleedGenerator.generateBleed(
-                            document,
-                            page,
-                            pageIndex,
-                            trim,
-                            gaps,
-                            BleedMethod.MIRROR,
-                            true,
-                            300,
-                            0f);
+                            document, page, pageIndex, trim, gaps, method, true, 300, 0f);
                 } catch (IOException e) {
                     log.debug(
                             "Bleed generation failed on page {}: {}",
@@ -1009,8 +1177,13 @@ public final class PreflightFixer {
      * resources by object identity. Skips 1-bit art, stencils, soft-masked images and colour spaces
      * a BufferedImage round-trip cannot represent faithfully (CMYK, separations).
      */
-    private static boolean downsampleImages(PDDocument document, PrintPreflightRequest request) {
+    private static boolean downsampleImages(
+            PDDocument document,
+            PrintPreflightRequest request,
+            Map<Code, Map<String, JsonNode>> fixupParams) {
         float maxDpi = request.getMaxImageDpi();
+        float jpegQuality =
+                floatParam(fixupParams, Code.DOWNSAMPLE_IMAGES, "jpegQuality", JPEG_QUALITY);
         if (maxDpi <= 0) {
             return false;
         }
@@ -1047,7 +1220,8 @@ public final class PreflightFixer {
         try {
             for (Map.Entry<COSBase, Float> entry : minDpiByImage.entrySet()) {
                 PDImageXObject source = imageByObj.get(entry.getKey());
-                PDImageXObject replaced = resample(document, source, maxDpi, entry.getValue());
+                PDImageXObject replaced =
+                        resample(document, source, maxDpi, entry.getValue(), jpegQuality);
                 if (replaced == null) {
                     continue;
                 }
@@ -1060,7 +1234,11 @@ public final class PreflightFixer {
     }
 
     private static PDImageXObject resample(
-            PDDocument document, PDImageXObject image, float targetDpi, float currentDpi)
+            PDDocument document,
+            PDImageXObject image,
+            float targetDpi,
+            float currentDpi,
+            float jpegQuality)
             throws IOException {
         try {
             if (!(image.getColorSpace() instanceof PDDeviceRGB)
@@ -1098,7 +1276,7 @@ public final class PreflightFixer {
                 image.getCOSObject() instanceof COSStream stream ? stream.getFilters() : null;
         boolean jpegSource = COSName.DCT_DECODE.equals(filters) || filterListContains(filters);
         if (jpegSource) {
-            return JPEGFactory.createFromImage(document, scaled, JPEG_QUALITY, (int) targetDpi);
+            return JPEGFactory.createFromImage(document, scaled, jpegQuality, (int) targetDpi);
         }
         return LosslessFactory.createFromImage(document, scaled);
     }
