@@ -126,11 +126,13 @@ final class PreflightGraphicsEngine extends PDFGraphicsStreamEngine {
         final float widthPt;
         final float[] bounds;
         final boolean technical;
+        final boolean white;
 
-        StrokeUse(float widthPt, float[] bounds, boolean technical) {
+        StrokeUse(float widthPt, float[] bounds, boolean technical, boolean white) {
             this.widthPt = widthPt;
             this.bounds = bounds;
             this.technical = technical;
+            this.white = white;
         }
     }
 
@@ -140,17 +142,30 @@ final class PreflightGraphicsEngine extends PDFGraphicsStreamEngine {
         final float[] bounds;
         final boolean technical;
 
+        /** White paint deposits no ink — nothing to overprint, bleed or protect from the knife. */
+        final boolean white;
+
         /** Total ink coverage of the paint color in percent — NaN when not measured. */
         final float totalInk;
 
         PaintedArea(String label, float[] bounds, boolean technical) {
-            this(label, bounds, technical, Float.NaN);
+            this(label, bounds, technical, false, Float.NaN);
         }
 
         PaintedArea(String label, float[] bounds, boolean technical, float totalInk) {
+            this(label, bounds, technical, false, totalInk);
+        }
+
+        PaintedArea(String label, float[] bounds, boolean technical, boolean white) {
+            this(label, bounds, technical, white, Float.NaN);
+        }
+
+        private PaintedArea(
+                String label, float[] bounds, boolean technical, boolean white, float totalInk) {
             this.label = label;
             this.bounds = bounds;
             this.technical = technical;
+            this.white = white;
             this.totalInk = totalInk;
         }
     }
@@ -414,34 +429,42 @@ final class PreflightGraphicsEngine extends PDFGraphicsStreamEngine {
                     stroked && !filled
                             ? state.getStrokingColorSpace()
                             : state.getNonStrokingColorSpace();
+            float[] painted = clippedBounds(bounds);
             if (filled || stroked) {
-                paintedOps++;
-                recordPainted(paintCs, bounds);
-                boolean technical = isTechnicalPaint(paintCs);
-                checkTransparency(bounds, technical);
+                if (painted != null) {
+                    paintedOps++;
+                    PDColor color =
+                            stroked && !filled
+                                    ? state.getStrokingColor()
+                                    : state.getNonStrokingColor();
+                    recordPainted(paintCs, painted, color);
+                    boolean technical = isTechnicalPaint(paintCs);
+                    checkTransparency(painted, technical);
 
-                float fontSize =
-                        (float)
-                                Math.min(
-                                        Math.abs(textRenderingMatrix.getScalingFactorX()),
-                                        Math.abs(textRenderingMatrix.getScalingFactorY()));
-                if (Float.isNaN(minFontSize) || fontSize < minFontSize) {
-                    minFontSize = fontSize;
-                }
-                PDColor color =
-                        stroked && !filled ? state.getStrokingColor() : state.getNonStrokingColor();
-                boolean overprint =
-                        stroked && !filled ? state.isOverprint() : state.isNonStrokingOverprint();
-                boolean overEarlier = hasUnderlyingNonBlackInk(bounds);
-                if (!technical) {
-                    checkWhiteOverprint(color, overprint, bounds, "text");
-                    checkKnockoutBlack(color, overprint, bounds, "text", overEarlier);
-                    recordInk(paintCs, color, bounds);
-                    if (fontSize < TEXT_RECORD_MAX_PT && textUses.size() < MAX_TEXT_USES) {
-                        textUses.add(new TextUse(fontSize, bounds, color));
+                    float fontSize =
+                            (float)
+                                    Math.min(
+                                            Math.abs(textRenderingMatrix.getScalingFactorX()),
+                                            Math.abs(textRenderingMatrix.getScalingFactorY()));
+                    if (Float.isNaN(minFontSize) || fontSize < minFontSize) {
+                        minFontSize = fontSize;
                     }
+                    boolean overprint =
+                            stroked && !filled
+                                    ? state.isOverprint()
+                                    : state.isNonStrokingOverprint();
+                    boolean overEarlier = hasUnderlyingNonBlackInk(painted);
+                    if (!technical) {
+                        checkWhiteOverprint(color, overprint, painted, "text");
+                        checkKnockoutBlack(color, overprint, painted, "text", overEarlier);
+                        recordInk(paintCs, color, painted);
+                        if (fontSize < TEXT_RECORD_MAX_PT && textUses.size() < MAX_TEXT_USES) {
+                            textUses.add(new TextUse(fontSize, painted, color));
+                        }
+                    }
+                    recordUnderlying(
+                            painted, color, technical || isWhiteOverprint(color, overprint));
                 }
-                recordUnderlying(bounds, color, technical || isWhiteOverprint(color, overprint));
             } else {
                 invisibleTextUsed = true;
             }
@@ -451,7 +474,6 @@ final class PreflightGraphicsEngine extends PDFGraphicsStreamEngine {
 
     @Override
     public void drawImage(PDImage pdImage) throws IOException {
-        paintedOps++;
         PDGraphicsState state = getGraphicsState();
         Matrix ctm = state.getCurrentTransformationMatrix();
         double dpi = Double.NaN;
@@ -465,6 +487,11 @@ final class PreflightGraphicsEngine extends PDFGraphicsStreamEngine {
             // The image unit square under the CTM is the quad painted on the page.
             bounds = matrixBounds(ctm);
         }
+        float[] painted = clippedBounds(bounds);
+        if (bounds != null && painted == null) {
+            return;
+        }
+        paintedOps++;
         boolean smasked = pdImage instanceof PDImageXObject xo && xo.getSoftMask() != null;
         boolean technical = isTechnicalContext();
         String label = null;
@@ -472,10 +499,11 @@ final class PreflightGraphicsEngine extends PDFGraphicsStreamEngine {
         try {
             imageCs = pdImage.getColorSpace();
             technical = technical || isTechnicalPaint(imageCs);
-            label = recordPainted(imageCs, bounds);
+            label = recordPainted(imageCs, painted);
             if (pdImage.isStencil()) {
                 technical = technical || isTechnicalPaint(state.getNonStrokingColorSpace());
-                recordPainted(state.getNonStrokingColorSpace(), bounds);
+                recordPainted(
+                        state.getNonStrokingColorSpace(), painted, state.getNonStrokingColor());
             }
         } catch (IOException ignored) {
             // unresolvable image color space is surfaced through other checks
@@ -484,101 +512,111 @@ final class PreflightGraphicsEngine extends PDFGraphicsStreamEngine {
             if (!technical) {
                 transparencyUsed = true;
             }
-            recordAlpha(bounds, "soft-masked image", technical);
+            recordAlpha(painted, "soft-masked image", technical);
         }
         int bpc = pdImage.getBitsPerComponent();
-        images.add(new ImageUse(dpi, smasked, label, bounds, technical, bpc, pdImage));
-        checkTransparency(bounds, technical);
+        images.add(new ImageUse(dpi, smasked, label, painted, technical, bpc, pdImage));
+        checkTransparency(painted, technical);
         // An image is opaque paint: it covers whatever it overlaps. Gray-only content carries no
         // chromatic ink for knockout-black purposes; everything else counts as coloured ink.
-        recordUnderlyingOpaque(bounds, imageCs, technical || smasked);
+        recordUnderlyingOpaque(painted, imageCs, technical || smasked);
     }
 
     @Override
     public void strokePath() throws IOException {
+        float[] painted = clippedBounds(takePathBounds());
+        if (painted == null) {
+            return;
+        }
         paintedOps++;
-        float[] bounds = takePathBounds();
         PDGraphicsState state = getGraphicsState();
         PDColorSpace cs = state.getStrokingColorSpace();
+        PDColor color = state.getStrokingColor();
         boolean technical = isTechnicalPaint(cs);
-        recordPainted(cs, bounds);
-        recordStrokeWidth(bounds, technical);
-        checkTransparency(bounds, technical);
+        recordPainted(cs, painted, color);
+        recordStrokeWidth(painted, technical, color);
+        checkTransparency(painted, technical);
         if (!technical) {
-            PDColor color = state.getStrokingColor();
             boolean overprint = state.isOverprint();
-            boolean overEarlier = hasUnderlyingNonBlackInk(bounds);
-            checkWhiteOverprint(color, overprint, bounds, "stroke");
-            checkKnockoutBlack(color, overprint, bounds, "stroke", overEarlier);
-            recordInk(cs, color, bounds);
-            recordUnderlying(bounds, color, isWhiteOverprint(color, overprint));
+            boolean overEarlier = hasUnderlyingNonBlackInk(painted);
+            checkWhiteOverprint(color, overprint, painted, "stroke");
+            checkKnockoutBlack(color, overprint, painted, "stroke", overEarlier);
+            recordInk(cs, color, painted);
+            recordUnderlying(painted, color, isWhiteOverprint(color, overprint));
         }
     }
 
     @Override
     public void fillPath(int windingRule) throws IOException {
+        float[] painted = clippedBounds(takePathBounds());
+        if (painted == null) {
+            return;
+        }
         paintedOps++;
-        float[] bounds = takePathBounds();
         PDGraphicsState state = getGraphicsState();
         PDColorSpace cs = state.getNonStrokingColorSpace();
+        PDColor color = state.getNonStrokingColor();
         boolean technical = isTechnicalPaint(cs);
-        recordPainted(cs, bounds);
-        checkTransparency(bounds, technical);
+        recordPainted(cs, painted, color);
+        checkTransparency(painted, technical);
         if (!technical) {
-            PDColor color = state.getNonStrokingColor();
             boolean overprint = state.isNonStrokingOverprint();
-            boolean overEarlier = hasUnderlyingNonBlackInk(bounds);
-            checkWhiteOverprint(color, overprint, bounds, "fill");
-            checkKnockoutBlack(color, overprint, bounds, "fill", overEarlier);
-            recordInk(cs, color, bounds);
-            recordUnderlying(bounds, color, isWhiteOverprint(color, overprint));
+            boolean overEarlier = hasUnderlyingNonBlackInk(painted);
+            checkWhiteOverprint(color, overprint, painted, "fill");
+            checkKnockoutBlack(color, overprint, painted, "fill", overEarlier);
+            recordInk(cs, color, painted);
+            recordUnderlying(painted, color, isWhiteOverprint(color, overprint));
         }
     }
 
     @Override
     public void fillAndStrokePath(int windingRule) throws IOException {
+        float[] painted = clippedBounds(takePathBounds());
+        if (painted == null) {
+            return;
+        }
         paintedOps++;
-        float[] bounds = takePathBounds();
         PDGraphicsState state = getGraphicsState();
         PDColorSpace fillCs = state.getNonStrokingColorSpace();
         PDColorSpace strokeCs = state.getStrokingColorSpace();
+        PDColor fillColor = state.getNonStrokingColor();
+        PDColor strokeColor = state.getStrokingColor();
         boolean fillTechnical = isTechnicalPaint(fillCs);
         boolean strokeTechnical = isTechnicalPaint(strokeCs);
-        recordPainted(fillCs, bounds);
-        recordPainted(strokeCs, bounds);
-        recordStrokeWidth(bounds, strokeTechnical);
-        checkTransparency(bounds, fillTechnical && strokeTechnical);
+        recordPainted(fillCs, painted, fillColor);
+        recordPainted(strokeCs, painted, strokeColor);
+        recordStrokeWidth(painted, strokeTechnical, strokeColor);
+        checkTransparency(painted, fillTechnical && strokeTechnical);
         if (!fillTechnical) {
-            PDColor color = state.getNonStrokingColor();
             boolean overprint = state.isNonStrokingOverprint();
-            boolean overEarlier = hasUnderlyingNonBlackInk(bounds);
-            checkWhiteOverprint(color, overprint, bounds, "fill");
-            checkKnockoutBlack(color, overprint, bounds, "fill", overEarlier);
-            recordInk(fillCs, color, bounds);
+            boolean overEarlier = hasUnderlyingNonBlackInk(painted);
+            checkWhiteOverprint(fillColor, overprint, painted, "fill");
+            checkKnockoutBlack(fillColor, overprint, painted, "fill", overEarlier);
+            recordInk(fillCs, fillColor, painted);
         }
         if (!strokeTechnical) {
-            PDColor color = state.getStrokingColor();
             boolean overprint = state.isOverprint();
-            boolean overEarlier = hasUnderlyingNonBlackInk(bounds);
-            checkWhiteOverprint(color, overprint, bounds, "stroke");
-            checkKnockoutBlack(color, overprint, bounds, "stroke", overEarlier);
-            recordInk(strokeCs, color, bounds);
+            boolean overEarlier = hasUnderlyingNonBlackInk(painted);
+            checkWhiteOverprint(strokeColor, overprint, painted, "stroke");
+            checkKnockoutBlack(strokeColor, overprint, painted, "stroke", overEarlier);
+            recordInk(strokeCs, strokeColor, painted);
         }
         if (!fillTechnical) {
             recordUnderlying(
-                    bounds,
-                    state.getNonStrokingColor(),
-                    isWhiteOverprint(state.getNonStrokingColor(), state.isNonStrokingOverprint()));
+                    painted,
+                    fillColor,
+                    isWhiteOverprint(fillColor, state.isNonStrokingOverprint()));
         } else if (!strokeTechnical) {
             recordUnderlying(
-                    bounds,
-                    state.getStrokingColor(),
-                    isWhiteOverprint(state.getStrokingColor(), state.isOverprint()));
+                    painted, strokeColor, isWhiteOverprint(strokeColor, state.isOverprint()));
         }
     }
 
     @Override
     public void shadingFill(COSName shadingName) throws IOException {
+        if (clipBounds == EMPTY_CLIP) {
+            return;
+        }
         paintedOps++;
         shadingUsed = true;
         boolean technical = isTechnicalContext();
@@ -814,7 +852,7 @@ final class PreflightGraphicsEngine extends PDFGraphicsStreamEngine {
         return new float[] {minX, minY, maxX, maxY};
     }
 
-    private void recordStrokeWidth(float[] bounds, boolean technical) {
+    private void recordStrokeWidth(float[] bounds, boolean technical, PDColor color) {
         PDGraphicsState state = getGraphicsState();
         Matrix ctm = state.getCurrentTransformationMatrix();
         float scale = 1;
@@ -825,7 +863,7 @@ final class PreflightGraphicsEngine extends PDFGraphicsStreamEngine {
                                     Math.abs(ctm.getScalingFactorX()),
                                     Math.abs(ctm.getScalingFactorY()));
         }
-        strokes.add(new StrokeUse(state.getLineWidth() * scale, bounds, technical));
+        strokes.add(new StrokeUse(state.getLineWidth() * scale, bounds, technical, isWhite(color)));
     }
 
     private void checkTransparency(float[] bounds, boolean technical) {
@@ -867,6 +905,11 @@ final class PreflightGraphicsEngine extends PDFGraphicsStreamEngine {
     }
 
     private String recordPainted(PDColorSpace cs, float[] bounds) throws IOException {
+        return recordPainted(cs, bounds, null);
+    }
+
+    private String recordPainted(PDColorSpace cs, float[] bounds, PDColor color)
+            throws IOException {
         if (cs == null) {
             return null;
         }
@@ -894,7 +937,7 @@ final class PreflightGraphicsEngine extends PDFGraphicsStreamEngine {
             patternUsed = true;
         }
         if (bounds != null && paintAreas.size() < MAX_PAINT_AREAS) {
-            paintAreas.add(new PaintedArea(label, bounds, technical));
+            paintAreas.add(new PaintedArea(label, bounds, technical, isWhite(color)));
         }
         if (cs instanceof PDSeparation sep
                 && isRegistrationColorant(sep.getColorantName())
@@ -931,6 +974,17 @@ final class PreflightGraphicsEngine extends PDFGraphicsStreamEngine {
                         || painted[0] > cropBox.getUpperRightX()
                         || painted[3] < cropBox.getLowerLeftY()
                         || painted[1] > cropBox.getUpperRightY());
+    }
+
+    /**
+     * Bounds limited to the active clip; null means the op deposits nothing visible — a path
+     * clipped away entirely neither paints ink nor counts toward EMPTY_PAGE.
+     */
+    private float[] clippedBounds(float[] bounds) {
+        if (bounds == null) {
+            return null;
+        }
+        return clipBounds == null ? bounds : intersect(bounds, clipBounds);
     }
 
     /** Bounds intersection in page space; null when either side is empty or they are disjoint. */
@@ -1045,12 +1099,15 @@ final class PreflightGraphicsEngine extends PDFGraphicsStreamEngine {
     }
 
     /** Every channel at ~zero tint — DeviceGray inverted: 1.0 is white there. */
-    private static boolean isWhite(PDColor color) {
+    static boolean isWhite(PDColor color) {
         if (color == null) {
             return false;
         }
         PDColorSpace cs = color.getColorSpace();
         float[] c = color.getComponents();
+        if (c == null || c.length == 0) {
+            return false;
+        }
         if (cs instanceof PDDeviceGray) {
             return c[0] >= 1f - WHITE_EPSILON;
         }
@@ -1080,6 +1137,9 @@ final class PreflightGraphicsEngine extends PDFGraphicsStreamEngine {
         }
         PDColorSpace cs = color.getColorSpace();
         float[] c = color.getComponents();
+        if (c == null || c.length == 0) {
+            return false;
+        }
         if (cs instanceof PDDeviceCMYK) {
             return c[0] <= CHROMATIC_EPSILON
                     && c[1] <= CHROMATIC_EPSILON
@@ -1105,6 +1165,9 @@ final class PreflightGraphicsEngine extends PDFGraphicsStreamEngine {
         }
         PDColorSpace cs = color.getColorSpace();
         float[] c = color.getComponents();
+        if (c == null || c.length == 0) {
+            return false;
+        }
         if (cs instanceof PDDeviceCMYK) {
             return c[0] > CHROMATIC_EPSILON || c[1] > CHROMATIC_EPSILON || c[2] > CHROMATIC_EPSILON;
         }
@@ -1133,11 +1196,19 @@ final class PreflightGraphicsEngine extends PDFGraphicsStreamEngine {
         return rgb[0] < 229 || rgb[1] < 229 || rgb[2] < 229;
     }
 
+    /**
+     * RGB approximant for color families without direct components. Pattern colors have none —
+     * {@link PDPattern#toRGB()} refuses the conversion outright — and exotic spaces may reject it
+     * too, so every runtime failure degrades to "unknown", not a crashed page pass.
+     */
     private static int[] rgbComponents(PDColor color) {
+        if (color == null || color.getColorSpace() instanceof PDPattern) {
+            return null;
+        }
         try {
             int rgb = color.toRGB();
             return new int[] {(rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF};
-        } catch (IOException | IllegalArgumentException e) {
+        } catch (IOException | RuntimeException e) {
             return null;
         }
     }
@@ -1154,6 +1225,9 @@ final class PreflightGraphicsEngine extends PDFGraphicsStreamEngine {
         }
         PDColorSpace cs = color.getColorSpace();
         float[] c = color.getComponents();
+        if (c == null || c.length == 0) {
+            return Float.NaN;
+        }
         if (cs instanceof PDDeviceCMYK || cs instanceof PDDeviceN) {
             float sum = 0;
             for (float v : c) {

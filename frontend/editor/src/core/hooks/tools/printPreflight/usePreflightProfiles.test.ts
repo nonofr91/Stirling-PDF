@@ -1,6 +1,8 @@
 import { describe, expect, test } from "vitest";
+import type { TFunction } from "i18next";
 import {
   parametersToProfile,
+  profileLabel,
   profileToParameters,
 } from "@app/hooks/tools/printPreflight/usePreflightProfiles";
 import { defaultParameters } from "@app/hooks/tools/printPreflight/usePrintPreflightParameters";
@@ -91,5 +93,35 @@ describe("parametersToProfile", () => {
       fixupParams: {},
     });
     expect(body.fixupParams).toBeNull();
+  });
+});
+
+describe("profileLabel", () => {
+  const t = ((key: string, fallback?: string) => {
+    if (key === "printPreflight.profiles.builtin.offset-press") {
+      return "Offset Press";
+    }
+    if (key === "printPreflight.profiles.modified") {
+      return "(modified)";
+    }
+    return fallback ?? key;
+  }) as TFunction;
+
+  test("built-in shows its translated name", () => {
+    const label = profileLabel({ name: "offset-press", builtin: true }, t);
+    expect(label).toBe("Offset Press");
+  });
+
+  test("override keeps the translated name plus the modified marker", () => {
+    const label = profileLabel(
+      { name: "offset-press", builtin: false, overridden: true },
+      t,
+    );
+    expect(label).toBe("Offset Press (modified)");
+  });
+
+  test("plain custom profile keeps its raw name", () => {
+    const label = profileLabel({ name: "client-a", builtin: false }, t);
+    expect(label).toBe("client-a");
   });
 });

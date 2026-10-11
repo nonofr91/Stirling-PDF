@@ -83,8 +83,9 @@ public class PrintPreflightController {
     @Operation(
             summary = "Save a preflight profile",
             description =
-                    "Creates or replaces a custom preflight profile under its name. Built-in names"
-                            + " are reserved.")
+                    "Creates or replaces a custom preflight profile under its name. Reusing a"
+                            + " built-in name stores an override that shadows the shipped defaults"
+                            + " until it is deleted.")
     @PostMapping(
             value = "/print-preflight-profiles",
             consumes = MediaType.APPLICATION_JSON_VALUE,
@@ -96,7 +97,10 @@ public class PrintPreflightController {
 
     @Operation(
             summary = "Delete a preflight profile",
-            description = "Deletes a custom preflight profile; built-ins cannot be deleted.")
+            description =
+                    "Deletes a custom preflight profile — for a built-in name this removes the"
+                            + " override and restores the shipped defaults. Unmodified built-ins"
+                            + " cannot be deleted.")
     @DeleteMapping("/print-preflight-profiles/{name}")
     public ResponseEntity<Void> deleteProfile(@PathVariable String name) {
         if (!profileService.delete(name)) {

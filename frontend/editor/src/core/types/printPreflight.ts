@@ -135,6 +135,8 @@ export interface PrintPreflightProfile {
   name: string;
   description?: string | null;
   builtin: boolean;
+  /** Custom profile shadowing the built-in of the same name — deleting it restores the shipped defaults. */
+  overridden?: boolean;
   requiredBleedMm?: number | null;
   minImageDpi?: number | null;
   hairlineThresholdPt?: number | null;

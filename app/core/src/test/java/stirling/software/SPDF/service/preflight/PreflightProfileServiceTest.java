@@ -79,8 +79,40 @@ class PreflightProfileServiceTest {
     }
 
     @Test
-    void builtinNamesAreReserved() {
-        assertThrows(IllegalArgumentException.class, () -> service.save(profile("offset-press")));
+    void builtinNameSavesOverride() {
+        PrintPreflightProfile custom = profile("offset-press");
+        custom.setMinImageDpi(72);
+        service.save(custom);
+
+        PrintPreflightProfile resolved = service.find("offset-press").orElseThrow();
+        assertFalse(resolved.isBuiltin());
+        assertTrue(resolved.isOverridden());
+        assertEquals(72, resolved.getMinImageDpi());
+        long count =
+                service.list().stream().filter(p -> p.getName().equals("offset-press")).count();
+        assertEquals(1, count, "the override must shadow, not duplicate, the built-in");
+        assertTrue(
+                service.list().stream()
+                        .anyMatch(p -> p.getName().equals("offset-press") && p.isOverridden()));
+
+        // Reset: deleting the override exposes the shipped profile again.
+        assertTrue(service.delete("offset-press"));
+        PrintPreflightProfile restored = service.find("offset-press").orElseThrow();
+        assertTrue(restored.isBuiltin());
+        assertFalse(restored.isOverridden());
+        assertEquals(300, restored.getMaxInkCoveragePercent());
+    }
+
+    @Test
+    void overridePersistsAcrossInstances() {
+        service.save(profile("offset-press"));
+
+        PreflightProfileService reloaded =
+                new PreflightProfileService(dir.resolve("preflight-profiles.json"));
+        PrintPreflightProfile resolved = reloaded.find("offset-press").orElseThrow();
+        assertFalse(resolved.isBuiltin());
+        assertTrue(resolved.isOverridden());
+        assertEquals(300, resolved.getMinImageDpi());
     }
 
     @Test

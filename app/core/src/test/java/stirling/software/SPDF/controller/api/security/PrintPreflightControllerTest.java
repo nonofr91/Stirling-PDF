@@ -8,14 +8,23 @@ import java.awt.image.BufferedImage;
 import java.io.IOException;
 
 import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.cos.COSArray;
+import org.apache.pdfbox.cos.COSDictionary;
+import org.apache.pdfbox.cos.COSFloat;
+import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.PDResources;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.font.PDType1Font;
 import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
+import org.apache.pdfbox.pdmodel.graphics.color.PDColor;
+import org.apache.pdfbox.pdmodel.graphics.color.PDPattern;
 import org.apache.pdfbox.pdmodel.graphics.image.LosslessFactory;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
+import org.apache.pdfbox.pdmodel.graphics.pattern.PDShadingPattern;
+import org.apache.pdfbox.pdmodel.graphics.shading.PDShadingType2;
 import org.apache.pdfbox.pdmodel.graphics.state.PDExtendedGraphicsState;
 import org.apache.pdfbox.pdmodel.interactive.annotation.PDAnnotationText;
 import org.junit.jupiter.api.BeforeEach;
@@ -180,8 +189,9 @@ class PrintPreflightControllerTest {
     }
 
     @Test
-    void testDeclaredBleedNotPainted() throws Exception {
-        // bleed box declared but the page is white — coverage must flag it
+    void testBlankBleedIsNotOwed() throws Exception {
+        // Bleed is only owed where artwork reaches the trim edge — a page of white space
+        // declares a BleedBox but requires no paint in it.
         PDDocument doc = new PDDocument();
         PDPage page = new PDPage(PDRectangle.A4);
         doc.addPage(page);
@@ -201,7 +211,138 @@ class PrintPreflightControllerTest {
 
         PrintPreflightReport report = controller.printPreflight(request(pdf)).getBody();
         assertNotNull(report);
+        assertFalse(hasFinding(report, "BLEED_UNPAINTED"));
+    }
+
+    @Test
+    void testArtworkEndingAtTrimNeedsBleed() throws Exception {
+        // Art covering the trim and stopping dead at the cut line leaves every band exposed.
+        PDDocument doc = new PDDocument();
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
+        PDRectangle trim =
+                new PDRectangle(
+                        5 * MM,
+                        5 * MM,
+                        page.getMediaBox().getWidth() - 10 * MM,
+                        page.getMediaBox().getHeight() - 10 * MM);
+        try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+            cs.setNonStrokingColor(0.8f, 0f, 0f);
+            cs.addRect(
+                    trim.getLowerLeftX(), trim.getLowerLeftY(), trim.getWidth(), trim.getHeight());
+            cs.fill();
+        }
+        page.setTrimBox(trim);
+        page.setBleedBox(page.getMediaBox());
+        byte[] pdf = toBytes(doc);
+
+        PrintPreflightReport report = controller.printPreflight(request(pdf)).getBody();
+        assertNotNull(report);
         assertTrue(hasFinding(report, "BLEED_UNPAINTED"));
+    }
+
+    @Test
+    void testBleedOwedOnlyWhereArtReachesEdge() throws Exception {
+        // A red bar touching only the left trim edge — only the left band can lack paint.
+        PDDocument doc = new PDDocument();
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
+        PDRectangle trim =
+                new PDRectangle(
+                        5 * MM,
+                        5 * MM,
+                        page.getMediaBox().getWidth() - 10 * MM,
+                        page.getMediaBox().getHeight() - 10 * MM);
+        try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+            cs.setNonStrokingColor(0.8f, 0f, 0f);
+            cs.addRect(trim.getLowerLeftX(), 200, 50, 50);
+            cs.fill();
+        }
+        page.setTrimBox(trim);
+        page.setBleedBox(page.getMediaBox());
+        byte[] pdf = toBytes(doc);
+
+        PrintPreflightReport report = controller.printPreflight(request(pdf)).getBody();
+        assertNotNull(report);
+        Finding f = finding(report, "BLEED_UNPAINTED");
+        assertNotNull(f);
+        assertFalse(f.getAreas().isEmpty());
+        assertTrue(
+                f.getAreas().stream()
+                        .allMatch(a -> a.getLabel() != null && a.getLabel().startsWith("left")),
+                "only the left band can be unpainted: " + f.getAreas());
+    }
+
+    @Test
+    void testTrimBeyondCropStillChecksBleed() throws Exception {
+        // PDFBox clips page boxes to the MediaBox, so a TrimBox can only overshoot the raster
+        // through a CropBox smaller than the media. The probe band clamps to trim∩image —
+        // unclamped reads would throw away the whole page's bleed check.
+        PDDocument doc = new PDDocument();
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
+        PDRectangle media = page.getMediaBox();
+        page.setCropBox(
+                new PDRectangle(
+                        10 * MM, 10 * MM, media.getWidth() - 20 * MM, media.getHeight() - 20 * MM));
+        // Trim top 5 mm above the crop top; the other sides stay inside it.
+        PDRectangle trim =
+                new PDRectangle(
+                        15 * MM, 15 * MM, media.getWidth() - 30 * MM, media.getHeight() - 20 * MM);
+        try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+            // Art stops dead at the trim — it reaches the edges but paints nothing in the bleed.
+            cs.setNonStrokingColor(0.8f, 0f, 0f);
+            cs.addRect(
+                    trim.getLowerLeftX(), trim.getLowerLeftY(), trim.getWidth(), trim.getHeight());
+            cs.fill();
+        }
+        page.setTrimBox(trim);
+        // Bleed must clear the trim on every side or the gap check short-circuits coverage.
+        page.setBleedBox(
+                new PDRectangle(
+                        10 * MM, 10 * MM, media.getWidth() - 20 * MM, media.getHeight() - 12 * MM));
+        byte[] pdf = toBytes(doc);
+
+        PrintPreflightReport report = controller.printPreflight(request(pdf)).getBody();
+        assertNotNull(report);
+        assertFalse(hasFinding(report, "CONTENT_PARSE_ERROR"));
+        assertTrue(
+                hasFinding(report, "BLEED_UNPAINTED"),
+                "ink reaches the trim edges — the check must still run");
+    }
+
+    @Test
+    void testMarginStripDoesNotEscapeTrim() throws Exception {
+        // An object bleeding past the top edge but hugging the left edge: the left annotation
+        // must stay inside the trim vertically instead of following the object into the bleed.
+        PDDocument doc = new PDDocument();
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
+        PDRectangle media = page.getMediaBox();
+        PDRectangle trim =
+                new PDRectangle(
+                        10 * MM, 10 * MM, media.getWidth() - 20 * MM, media.getHeight() - 20 * MM);
+        try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+            cs.setNonStrokingColor(0f, 0f, 0f, 1f);
+            cs.addRect(11 * MM, trim.getUpperRightY() - 20, 40, 20 + 10 * MM);
+            cs.fill();
+        }
+        page.setTrimBox(trim);
+        byte[] pdf = toBytes(doc);
+
+        PrintPreflightReport report = controller.printPreflight(request(pdf)).getBody();
+        assertNotNull(report);
+        Finding f = finding(report, "SAFETY_MARGIN");
+        assertNotNull(f);
+        assertFalse(f.getAreas().isEmpty());
+        assertTrue(
+                f.getAreas().stream()
+                        .allMatch(
+                                a ->
+                                        a.getY() >= trim.getLowerLeftY() - 0.5f
+                                                && a.getY() + a.getHeight()
+                                                        <= trim.getUpperRightY() + 0.5f),
+                "annotations must stay inside the trim vertically: " + f.getAreas());
     }
 
     @Test
@@ -1037,16 +1178,159 @@ class PrintPreflightControllerTest {
         try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
             // 1 mm inside the trim on the left, well under the 3 mm default margin.
             cs.setNonStrokingColor(0f, 0f, 0f, 1f);
-            cs.addRect(11 * MM, 100, 5, 5);
+            cs.addRect(11 * MM, 100, 40, 5);
             cs.fill();
         }
         byte[] pdf = toBytes(doc);
 
         PrintPreflightReport report = controller.printPreflight(request(pdf)).getBody();
         assertNotNull(report);
-        assertTrue(
-                hasFinding(report, "SAFETY_MARGIN"),
-                "content 1 mm from the trim edge risks the blade");
+        Finding f = finding(report, "SAFETY_MARGIN");
+        assertNotNull(f, "content 1 mm from the trim edge risks the blade");
+        assertFalse(f.getAreas().isEmpty());
+        // The annotation frames the marginal strip, not the whole object: 1 mm inside a 3 mm
+        // margin leaves a 2 mm strip even though the rect itself is 40 pt wide.
+        FindingArea strip = f.getAreas().get(0);
+        assertEquals(11 * MM, strip.getX(), 0.5);
+        assertEquals(2 * MM, strip.getWidth(), 0.5);
+    }
+
+    @Test
+    void testWhitePaintNearTrimIsSafe() throws Exception {
+        // White deposits no ink — it cannot produce a visible defect at the cut.
+        PDDocument doc = new PDDocument();
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
+        page.setTrimBox(
+                new PDRectangle(
+                        10 * MM,
+                        10 * MM,
+                        page.getMediaBox().getWidth() - 20 * MM,
+                        page.getMediaBox().getHeight() - 20 * MM));
+        try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+            cs.setNonStrokingColor(1f, 1f, 1f);
+            cs.addRect(11 * MM, 100, 40, 5);
+            cs.fill();
+        }
+        byte[] pdf = toBytes(doc);
+
+        PrintPreflightReport report = controller.printPreflight(request(pdf)).getBody();
+        assertNotNull(report);
+        assertFalse(hasFinding(report, "SAFETY_MARGIN"));
+    }
+
+    @Test
+    void testStrokeNearTrimEdgeFlagged() throws Exception {
+        // A hairline frame next to the trim is the canonical massicot risk.
+        PDDocument doc = new PDDocument();
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
+        page.setTrimBox(
+                new PDRectangle(
+                        10 * MM,
+                        10 * MM,
+                        page.getMediaBox().getWidth() - 20 * MM,
+                        page.getMediaBox().getHeight() - 20 * MM));
+        try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+            cs.setStrokingColor(0f, 0f, 0f, 1f);
+            cs.setLineWidth(2f);
+            cs.moveTo(11 * MM, 100);
+            cs.lineTo(11 * MM, 200);
+            cs.stroke();
+        }
+        byte[] pdf = toBytes(doc);
+
+        PrintPreflightReport report = controller.printPreflight(request(pdf)).getBody();
+        assertNotNull(report);
+        assertTrue(hasFinding(report, "SAFETY_MARGIN"));
+    }
+
+    @Test
+    void testClippedObjectMeasuredOnVisiblePart() throws Exception {
+        // The rect's raw bounds cross the trim edge, but the clip keeps only a sliver 1 mm
+        // inside — the check must see the clipped geometry, not the raw path.
+        PDDocument doc = new PDDocument();
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
+        page.setTrimBox(
+                new PDRectangle(
+                        10 * MM,
+                        10 * MM,
+                        page.getMediaBox().getWidth() - 20 * MM,
+                        page.getMediaBox().getHeight() - 20 * MM));
+        try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+            cs.saveGraphicsState();
+            cs.addRect(11 * MM, 100, 20, 60);
+            cs.clip();
+            cs.setNonStrokingColor(0f, 0f, 0f, 1f);
+            cs.addRect(5 * MM, 100, 40, 60);
+            cs.fill();
+            cs.restoreGraphicsState();
+        }
+        byte[] pdf = toBytes(doc);
+
+        PrintPreflightReport report = controller.printPreflight(request(pdf)).getBody();
+        assertNotNull(report);
+        Finding f = finding(report, "SAFETY_MARGIN");
+        assertNotNull(f, "the visible clipped sliver sits 1 mm from the trim");
+        FindingArea strip = f.getAreas().get(0);
+        assertTrue(strip.getX() >= 10.9 * MM, "clipped strip starts at the clip, got " + strip);
+    }
+
+    @Test
+    void testPatternFillDoesNotFailParse() throws Exception {
+        // Shading patterns cannot be RGB-converted — they used to sink the whole page pass.
+        PDDocument doc = new PDDocument();
+        PDPage page = new PDPage(PDRectangle.A4);
+        doc.addPage(page);
+        PDResources resources = new PDResources();
+        page.setResources(resources);
+
+        COSDictionary shadingDict = new COSDictionary();
+        shadingDict.setInt(COSName.SHADING_TYPE, 2);
+        shadingDict.setItem(COSName.COLORSPACE, COSName.DEVICERGB);
+        COSArray coords = new COSArray();
+        for (float v : new float[] {50, 50, 250, 250}) {
+            coords.add(new COSFloat(v));
+        }
+        shadingDict.setItem(COSName.COORDS, coords);
+        COSDictionary fn = new COSDictionary();
+        fn.setInt(COSName.FUNCTION_TYPE, 2);
+        COSArray domain = new COSArray();
+        domain.add(new COSFloat(0));
+        domain.add(new COSFloat(1));
+        fn.setItem(COSName.DOMAIN, domain);
+        fn.setItem(COSName.C0, coordsFl(0, 0, 0));
+        fn.setItem(COSName.C1, coordsFl(1, 1, 1));
+        fn.setFloat(COSName.N, 1);
+        shadingDict.setItem(COSName.FUNCTION, fn);
+
+        PDShadingPattern pattern = new PDShadingPattern();
+        pattern.setShading(new PDShadingType2(shadingDict));
+        COSName name = resources.add(pattern);
+        PDPattern patternSpace = new PDPattern(resources);
+
+        try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+            cs.setNonStrokingColor(new PDColor(name, patternSpace));
+            cs.addRect(50, 50, 200, 200);
+            cs.fill();
+        }
+        byte[] pdf = toBytes(doc);
+
+        PrintPreflightReport report = controller.printPreflight(request(pdf)).getBody();
+        assertNotNull(report);
+        assertFalse(
+                hasFinding(report, "CONTENT_PARSE_ERROR"),
+                "pattern paint must not sink the content pass");
+        assertTrue(hasFinding(report, "PATTERN_USED"));
+    }
+
+    private static COSArray coordsFl(float... values) {
+        COSArray array = new COSArray();
+        for (float v : values) {
+            array.add(new COSFloat(v));
+        }
+        return array;
     }
 
     @Test

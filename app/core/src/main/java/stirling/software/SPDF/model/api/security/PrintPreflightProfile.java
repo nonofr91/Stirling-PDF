@@ -3,6 +3,8 @@ package stirling.software.SPDF.model.api.security;
 import java.util.List;
 import java.util.Map;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 import io.swagger.v3.oas.annotations.media.Schema;
 
 import lombok.Data;
@@ -29,6 +31,14 @@ public class PrintPreflightProfile {
 
     @Schema(description = "Shipped with the application — true for built-ins, ignored on save")
     private boolean builtin;
+
+    @JsonProperty(access = JsonProperty.Access.READ_ONLY)
+    @Schema(
+            description =
+                    "Custom profile shadowing the built-in of the same name — true until the"
+                            + " override is deleted, which restores the shipped defaults",
+            accessMode = Schema.AccessMode.READ_ONLY)
+    private boolean overridden;
 
     @Schema(description = "Bleed width in millimetres required on every side beyond the TrimBox")
     private Float requiredBleedMm;

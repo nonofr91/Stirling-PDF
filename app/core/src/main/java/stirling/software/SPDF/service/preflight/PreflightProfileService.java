@@ -27,7 +27,9 @@ import stirling.software.common.util.ExceptionUtils;
  * Named preflight profiles: a snapshot of every threshold plus fixups and disabled checks. Built-in
  * profiles ship in {@code resources/preflight-profiles.json}; user profiles persist in {@code
  * configs/preflight-profiles.json} so they survive restarts and redeployments. A request carrying
- * {@code profileName} runs with the profile as its complete parameter set.
+ * {@code profileName} runs with the profile as its complete parameter set. Saving a custom profile
+ * under a built-in name stores an override that shadows the shipped defaults everywhere; deleting
+ * it restores the built-in.
  */
 @Slf4j
 @Service
@@ -55,6 +57,9 @@ public class PreflightProfileService {
     public List<PrintPreflightProfile> list() {
         Map<String, PrintPreflightProfile> all = new LinkedHashMap<>(builtins);
         all.putAll(loadCustoms());
+        for (PrintPreflightProfile p : all.values()) {
+            p.setOverridden(!p.isBuiltin() && builtins.containsKey(p.getName()));
+        }
         return List.copyOf(all.values());
     }
 
@@ -63,7 +68,11 @@ public class PreflightProfileService {
             return Optional.empty();
         }
         PrintPreflightProfile custom = loadCustoms().get(name);
-        return Optional.ofNullable(custom != null ? custom : builtins.get(name));
+        if (custom != null) {
+            custom.setOverridden(builtins.containsKey(name));
+            return Optional.of(custom);
+        }
+        return Optional.ofNullable(builtins.get(name));
     }
 
     /**
@@ -118,7 +127,11 @@ public class PreflightProfileService {
         }
     }
 
-    /** Creates or replaces a custom profile. Built-in names are reserved. */
+    /**
+     * Creates or replaces a custom profile. Reusing a built-in name stores an override: the shipped
+     * profile stays untouched but every lookup now resolves to the custom version until the
+     * override is deleted.
+     */
     public synchronized PrintPreflightProfile save(PrintPreflightProfile profile) {
         validate(profile);
         Map<String, PrintPreflightProfile> customs = new LinkedHashMap<>(loadCustoms());
@@ -129,14 +142,18 @@ public class PreflightProfileService {
                     MAX_CUSTOM_PROFILES);
         }
         profile.setBuiltin(false);
+        profile.setOverridden(builtins.containsKey(profile.getName()));
         customs.put(profile.getName(), profile);
         writeCustoms(customs.values());
         return profile;
     }
 
-    /** Deletes a custom profile; built-ins cannot be deleted. Returns false if nothing matched. */
+    /**
+     * Deletes a custom profile — for a built-in name this removes the override and restores the
+     * shipped profile. Built-ins themselves cannot be deleted. Returns false if nothing matched.
+     */
     public synchronized boolean delete(String name) {
-        if (name == null || builtins.containsKey(name)) {
+        if (name == null) {
             return false;
         }
         Map<String, PrintPreflightProfile> customs = new LinkedHashMap<>(loadCustoms());
@@ -173,9 +190,7 @@ public class PreflightProfileService {
             Map<String, PrintPreflightProfile> map = new LinkedHashMap<>();
             for (PrintPreflightProfile p :
                     mapper.readValue(file.toFile(), PrintPreflightProfile[].class)) {
-                if (p.getName() != null
-                        && !p.getName().isBlank()
-                        && !builtins.containsKey(p.getName())) {
+                if (p.getName() != null && !p.getName().isBlank()) {
                     map.put(p.getName(), p);
                 }
             }
@@ -209,10 +224,6 @@ public class PreflightProfileService {
                     "error.invalidArgument",
                     "Profile name must be 1-{0} characters",
                     MAX_NAME_LENGTH);
-        }
-        if (builtins.containsKey(name)) {
-            throw ExceptionUtils.createIllegalArgumentException(
-                    "error.invalidArgument", "Profile name '{0}' is reserved by a built-in", name);
         }
         p.setName(name);
         requireRange(p.getRequiredBleedMm(), 0, Float.MAX_VALUE, "requiredBleedMm");

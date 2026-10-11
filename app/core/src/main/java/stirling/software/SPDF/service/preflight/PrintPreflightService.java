@@ -72,6 +72,10 @@ public class PrintPreflightService {
     private static final int COVERAGE_STRIDE = 2;
     private static final float COVERAGE_MIN_PERCENT = 95f;
     private static final int WHITE_RGB_THRESHOLD = 245;
+
+    /** Pixels probed inside the trim to decide whether an edge position carries ink (~1 pt). */
+    private static final int EDGE_PROBE_PX = 3;
+
     private static final float BLEED_TOLERANCE_PT = 0.5f;
     private static final float PAGE_SIZE_TOLERANCE_PT = 0.5f;
 
@@ -173,7 +177,11 @@ public class PrintPreflightService {
                                     Category.CONTENT,
                                     PreflightCheck.CONTENT_PARSE_ERROR.code(),
                                     PreflightReportText.msg(
-                                            bundle, "finding.CONTENT_PARSE_ERROR", e.getMessage()),
+                                            bundle,
+                                            "finding.CONTENT_PARSE_ERROR",
+                                            e.getMessage() != null
+                                                    ? e.getMessage()
+                                                    : e.getClass().getSimpleName()),
                                     List.of(pageNum)));
                 }
             }
@@ -1117,6 +1125,9 @@ public class PrintPreflightService {
         }
         PDColorSpace cs = color.getColorSpace();
         float[] c = color.getComponents();
+        if (c == null || c.length == 0) {
+            return false;
+        }
         if (cs instanceof PDDeviceCMYK
                 || (cs instanceof PDICCBased icc && icc.getNumberOfComponents() == 4)) {
             if (c.length >= 4 && c[3] >= 0.4f) {
@@ -1155,7 +1166,7 @@ public class PrintPreflightService {
             Map<Integer, List<FindingArea>> out) {
         List<FindingArea> hits = new ArrayList<>();
         for (PaintedArea a : engine.getPaintAreas()) {
-            if (!a.technical && a.bounds != null) {
+            if (!a.technical && !a.white && a.bounds != null) {
                 addIfNearEdge(bundle, pageNum, a.bounds, a.label, trim, marginPt, hits);
             }
         }
@@ -1165,8 +1176,23 @@ public class PrintPreflightService {
                         bundle, pageNum, img.bounds, img.colorSpaceLabel, trim, marginPt, hits);
             }
         }
+        for (StrokeUse s : engine.getStrokes()) {
+            if (!s.technical && !s.white && s.bounds != null) {
+                addIfNearEdge(
+                        bundle,
+                        pageNum,
+                        s.bounds,
+                        PreflightReportText.msg(
+                                bundle,
+                                "label.stroke",
+                                String.format(Locale.ROOT, "%.2f", s.widthPt)),
+                        trim,
+                        marginPt,
+                        hits);
+            }
+        }
         for (TextUse t : engine.getTextUses()) {
-            if (t.bounds != null) {
+            if (t.bounds != null && !PreflightGraphicsEngine.isWhite(t.color)) {
                 addIfNearEdge(
                         bundle,
                         pageNum,
@@ -1185,6 +1211,11 @@ public class PrintPreflightService {
         }
     }
 
+    /**
+     * One finding area per violated side — the object's intersection with the marginal strip, so
+     * the annotation frames the at-risk sliver along the edge rather than the whole object. An
+     * object crossing an edge is bleed content: that side is skipped, the others still apply.
+     */
     private static void addIfNearEdge(
             ResourceBundle bundle,
             int page,
@@ -1193,34 +1224,73 @@ public class PrintPreflightService {
             PDRectangle trim,
             float marginPt,
             List<FindingArea> hits) {
-        if (hits.size() >= 64
-                || b[0] < trim.getLowerLeftX()
-                || b[2] > trim.getUpperRightX()
-                || b[1] < trim.getLowerLeftY()
-                || b[3] > trim.getUpperRightY()) {
-            return;
+        float llx = trim.getLowerLeftX();
+        float lly = trim.getLowerLeftY();
+        float urx = trim.getUpperRightX();
+        float ury = trim.getUpperRightY();
+        // Side order matches sideLabel/bleedGapArea: left, bottom, right, top.
+        for (int side = 0; side < 4 && hits.size() < 64; side++) {
+            float dist =
+                    switch (side) {
+                        case 0 -> b[0] >= llx ? b[0] - llx : -1;
+                        case 1 -> b[1] >= lly ? b[1] - lly : -1;
+                        case 2 -> b[2] <= urx ? urx - b[2] : -1;
+                        default -> b[3] <= ury ? ury - b[3] : -1;
+                    };
+            if (dist < 0 || dist >= marginPt) {
+                continue;
+            }
+            float[] strip =
+                    switch (side) {
+                        case 0 ->
+                                new float[] {
+                                    b[0],
+                                    Math.max(b[1], lly),
+                                    Math.min(b[2], llx + marginPt),
+                                    Math.min(b[3], ury)
+                                };
+                        case 1 ->
+                                new float[] {
+                                    Math.max(b[0], llx),
+                                    b[1],
+                                    Math.min(b[2], urx),
+                                    Math.min(b[3], lly + marginPt)
+                                };
+                        case 2 ->
+                                new float[] {
+                                    Math.max(b[0], urx - marginPt),
+                                    Math.max(b[1], lly),
+                                    b[2],
+                                    Math.min(b[3], ury)
+                                };
+                        default ->
+                                new float[] {
+                                    Math.max(b[0], llx),
+                                    Math.max(b[1], ury - marginPt),
+                                    Math.min(b[2], urx),
+                                    b[3]
+                                };
+                    };
+            if (strip[2] < strip[0] || strip[3] < strip[1]) {
+                // The object never faces this edge — it sits fully beside the trim on the
+                // perpendicular axis, so there is no marginal sliver to annotate.
+                continue;
+            }
+            String detail =
+                    PreflightReportText.msg(
+                            bundle, "label.nearTrim", Math.round(dist / PT_PER_MM * 10) / 10f);
+            if (label != null) {
+                detail += " · " + label;
+            }
+            hits.add(
+                    new FindingArea(
+                            page,
+                            strip[0],
+                            strip[1],
+                            Math.max(strip[2] - strip[0], 0.5f),
+                            Math.max(strip[3] - strip[1], 0.5f),
+                            detail));
         }
-        float dist =
-                Math.min(
-                        Math.min(b[0] - trim.getLowerLeftX(), trim.getUpperRightX() - b[2]),
-                        Math.min(b[1] - trim.getLowerLeftY(), trim.getUpperRightY() - b[3]));
-        if (dist >= marginPt) {
-            return;
-        }
-        String detail =
-                PreflightReportText.msg(
-                        bundle, "label.nearTrim", Math.round(dist / PT_PER_MM * 10) / 10f);
-        if (label != null) {
-            detail += " · " + label;
-        }
-        hits.add(
-                new FindingArea(
-                        page,
-                        b[0],
-                        b[1],
-                        Math.max(b[2] - b[0], 0.5f),
-                        Math.max(b[3] - b[1], 0.5f),
-                        detail));
     }
 
     private static boolean rectEquals(PDRectangle a, PDRectangle b) {
@@ -1481,6 +1551,48 @@ public class PrintPreflightService {
             int ty0 = Math.round((crop.getUpperRightY() - trim.getUpperRightY()) * scale);
             int ty1 = Math.round((crop.getUpperRightY() - trim.getLowerLeftY()) * scale);
 
+            // Bleed is only owed where artwork reaches the trim edge: sample a thin band just
+            // inside the trim to find which edge positions actually carry ink. A declared bleed
+            // next to deliberate white space needs no paint.
+            boolean[] liveTop = new boolean[Math.max(0, tx1 - tx0)];
+            boolean[] liveBottom = new boolean[Math.max(0, tx1 - tx0)];
+            boolean[] liveLeft = new boolean[Math.max(0, ty1 - ty0)];
+            boolean[] liveRight = new boolean[Math.max(0, ty1 - ty0)];
+            // Probe coordinates must stay inside the trim∩image segment: a TrimBox poking past the
+            // CropBox would otherwise index outside the raster and sink the whole page's check.
+            int sx0 = Math.max(0, tx0);
+            int sy0 = Math.max(0, ty0);
+            int ex1 = Math.min(tx1, img.getWidth());
+            int ey1 = Math.min(ty1, img.getHeight());
+            if (sy0 < ey1) {
+                for (int x = sx0; x < ex1; x++) {
+                    for (int d = 0; d < EDGE_PROBE_PX; d++) {
+                        int top = Math.min(Math.max(ty0 + d, sy0), ey1 - 1);
+                        int bottom = Math.min(Math.max(ty1 - 1 - d, sy0), ey1 - 1);
+                        if (isInk(img, x, top)) {
+                            liveTop[x - tx0] = true;
+                        }
+                        if (isInk(img, x, bottom)) {
+                            liveBottom[x - tx0] = true;
+                        }
+                    }
+                }
+            }
+            if (sx0 < ex1) {
+                for (int y = sy0; y < ey1; y++) {
+                    for (int d = 0; d < EDGE_PROBE_PX; d++) {
+                        int left = Math.min(Math.max(tx0 + d, sx0), ex1 - 1);
+                        int right = Math.min(Math.max(tx1 - 1 - d, sx0), ex1 - 1);
+                        if (isInk(img, left, y)) {
+                            liveLeft[y - ty0] = true;
+                        }
+                        if (isInk(img, right, y)) {
+                            liveRight[y - ty0] = true;
+                        }
+                    }
+                }
+            }
+
             // Band index: 0 left, 1 bottom, 2 right, 3 top — image y grows downward.
             // Corner pixels fold into the side bands since x is tested first.
             float[][] white = new float[4][];
@@ -1491,23 +1603,28 @@ public class PrintPreflightService {
                     if (x >= tx0 && x < tx1 && y >= ty0 && y < ty1) {
                         continue;
                     }
+                    int band = x < tx0 ? 0 : x >= tx1 ? 2 : y >= ty1 ? 1 : 3;
+                    boolean live =
+                            switch (band) {
+                                case 0 -> liveAt(liveLeft, y - ty0);
+                                case 2 -> liveAt(liveRight, y - ty0);
+                                case 1 -> liveAt(liveBottom, x - tx0);
+                                default -> liveAt(liveTop, x - tx0);
+                            };
+                    if (!live) {
+                        continue;
+                    }
                     total++;
-                    int rgb = img.getRGB(x, y);
-                    int r = (rgb >> 16) & 0xFF;
-                    int g = (rgb >> 8) & 0xFF;
-                    int b = rgb & 0xFF;
-                    if (r < WHITE_RGB_THRESHOLD
-                            || g < WHITE_RGB_THRESHOLD
-                            || b < WHITE_RGB_THRESHOLD) {
+                    if (isInk(img, x, y)) {
                         painted++;
                     } else {
-                        int band = x < tx0 ? 0 : x >= tx1 ? 2 : y >= ty1 ? 1 : 3;
                         grow(white, band, x, y);
                     }
                 }
             }
             if (total == 0) {
-                return null;
+                // Nothing reaches the trim edge — no bleed is required anywhere.
+                return new BleedCoverage(100f, List.of());
             }
             List<FindingArea> zones = new ArrayList<>();
             for (int band = 0; band < white.length; band++) {
@@ -1535,6 +1652,24 @@ public class PrintPreflightService {
         } finally {
             page.setRotation(rotation);
         }
+    }
+
+    /**
+     * Whether ink reaches the trim edge at position {@code index} along a side. Out-of-range
+     * indices (corner pixels past the trim's ends) clamp onto the nearest edge position.
+     */
+    private static boolean liveAt(boolean[] live, int index) {
+        if (live.length == 0) {
+            return false;
+        }
+        return live[Math.max(0, Math.min(index, live.length - 1))];
+    }
+
+    private static boolean isInk(BufferedImage img, int x, int y) {
+        int rgb = img.getRGB(x, y);
+        return ((rgb >> 16) & 0xFF) < WHITE_RGB_THRESHOLD
+                || ((rgb >> 8) & 0xFF) < WHITE_RGB_THRESHOLD
+                || (rgb & 0xFF) < WHITE_RGB_THRESHOLD;
     }
 
     private static void grow(float[][] boxes, int band, float x, float y) {

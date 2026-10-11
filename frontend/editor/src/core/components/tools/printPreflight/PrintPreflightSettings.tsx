@@ -20,9 +20,11 @@ import {
 } from "@app/hooks/tools/printPreflight/usePrintPreflightParameters";
 import {
   usePreflightProfiles,
+  profileLabel,
   profileToParameters,
 } from "@app/hooks/tools/printPreflight/usePreflightProfiles";
 import FixupParamsEditor from "@app/components/tools/printPreflight/FixupParamsEditor";
+import type { PrintPreflightProfile } from "@app/types/printPreflight";
 
 interface PrintPreflightSettingsProps {
   parameters: PrintPreflightParameters;
@@ -64,18 +66,16 @@ const PrintPreflightSettings = ({
   const [saving, setSaving] = useState(false);
 
   const selectedProfile = profiles.find((p) => p.name === activeProfile);
+  const namesABuiltin = profiles.some(
+    (p) => (p.builtin || p.overridden) && p.name === saveName.trim(),
+  );
 
   const optionalNumber = (
     value: string | number | undefined,
   ): number | undefined =>
     value === "" || value === undefined ? undefined : Number(value);
 
-  const applyProfile = (name: string | null) => {
-    setActiveProfile(name);
-    const profile = profiles.find((p) => p.name === name);
-    if (!profile) {
-      return;
-    }
+  const applyParameters = (profile: PrintPreflightProfile) => {
     const next = profileToParameters(profile, parameters);
     if (onApplyParameters) {
       onApplyParameters(next);
@@ -85,6 +85,14 @@ const PrintPreflightSettings = ({
           onParameterChange(key, next[key]);
         },
       );
+    }
+  };
+
+  const applyProfile = (name: string | null) => {
+    setActiveProfile(name);
+    const profile = profiles.find((p) => p.name === name);
+    if (profile) {
+      applyParameters(profile);
     }
   };
 
@@ -101,7 +109,18 @@ const PrintPreflightSettings = ({
   };
 
   const handleDelete = async () => {
-    if (activeProfile && (await deleteProfile(activeProfile))) {
+    if (!activeProfile) {
+      return;
+    }
+    const fresh = await deleteProfile(activeProfile);
+    if (fresh === null) {
+      return;
+    }
+    const restored = fresh.find((p) => p.name === activeProfile);
+    if (restored) {
+      setActiveProfile(restored.name);
+      applyParameters(restored);
+    } else {
       setActiveProfile(null);
     }
   };
@@ -119,9 +138,7 @@ const PrintPreflightSettings = ({
             placeholder={t("printPreflight.profiles.custom", "Custom settings")}
             data={profiles.map((p) => ({
               value: p.name,
-              label: p.builtin
-                ? t(`printPreflight.profiles.builtin.${p.name}`, p.name)
-                : p.name,
+              label: profileLabel(p, t),
             }))}
             value={activeProfile}
             onChange={applyProfile}
@@ -133,7 +150,8 @@ const PrintPreflightSettings = ({
 
           {selectedProfile && (
             <Text size="xs" c="dimmed">
-              {selectedProfile.builtin
+              {selectedProfile.builtin ||
+              (selectedProfile.overridden && !selectedProfile.description)
                 ? t(
                     `printPreflight.profiles.builtinDesc.${selectedProfile.name}`,
                     selectedProfile.description ?? "",
@@ -163,7 +181,9 @@ const PrintPreflightSettings = ({
                 onClick={handleDelete}
                 disabled={disabled}
               >
-                {t("printPreflight.profiles.delete", "Delete profile")}
+                {selectedProfile.overridden
+                  ? t("printPreflight.profiles.reset", "Reset to default")
+                  : t("printPreflight.profiles.delete", "Delete profile")}
               </Button>
             )}
           </Group>
@@ -218,6 +238,14 @@ const PrintPreflightSettings = ({
                   setSaveDescription(event.currentTarget.value)
                 }
               />
+              {namesABuiltin && (
+                <Text size="xs" c="dimmed">
+                  {t(
+                    "printPreflight.profiles.overrideHint",
+                    "This name belongs to a built-in profile — saving stores an override that shadows the shipped defaults until reset.",
+                  )}
+                </Text>
+              )}
               <Group justify="flex-end">
                 <Button
                   variant="tertiary"

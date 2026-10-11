@@ -37,7 +37,10 @@ A profile is a named bundle of thresholds, enabled checks and preferred fixups.
 
 Pick a profile with `profileName` (UI: profile picker). Everything it sets can
 still be overridden per request; named profiles can also be saved/edited from
-the UI and are shared server-side.
+the UI and are shared server-side. Saving under a built-in name stores an
+override that shadows the shipped defaults everywhere the profile is referenced
+(shown as "(modified)" in the pickers); deleting the override restores the
+built-in.
 
 ### Tunable thresholds
 
@@ -83,7 +86,7 @@ Default severities — profiles can disable a check entirely via `disabledChecks
 |---|---|---|
 | `TRIMBOX_MISSING` | Warning | No TrimBox — finished size undefined. |
 | `BLEED_MISSING` / `BLEED_INSUFFICIENT` | Error | No/short BleedBox — white edges after trimming. |
-| `BLEED_UNPAINTED` | Warning | Declared bleed band not painted (expensive check). |
+| `BLEED_UNPAINTED` | Warning | Bleed left unpainted where artwork reaches the trim — white slivers after trimming (expensive check). |
 | `SAFETY_MARGIN` | Warning | Content within X mm of trim — may be cut. |
 | `CROPBOX_NE_MEDIA` | Info | CropBox ≠ MediaBox — slug margin, usually fine. |
 | `USER_UNIT` | Warning | Non-default /UserUnit scaling. |

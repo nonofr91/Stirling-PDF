@@ -3,7 +3,10 @@ import { useTranslation } from "react-i18next";
 import { Banner } from "@app/ui";
 import PrintPreflightSettings from "@app/components/tools/printPreflight/PrintPreflightSettings";
 import type { PrintPreflightStepParameters } from "@app/hooks/tools/printPreflight/preflightStep";
-import { usePreflightProfiles } from "@app/hooks/tools/printPreflight/usePreflightProfiles";
+import {
+  profileLabel,
+  usePreflightProfiles,
+} from "@app/hooks/tools/printPreflight/usePreflightProfiles";
 
 interface PrintPreflightStepSettingsProps {
   parameters: PrintPreflightStepParameters;
@@ -44,9 +47,7 @@ const PrintPreflightStepSettings = ({
         placeholder={t("printPreflight.profiles.custom", "Custom settings")}
         data={profiles.map((profile) => ({
           value: profile.name,
-          label: profile.builtin
-            ? t(`printPreflight.profiles.builtin.${profile.name}`, profile.name)
-            : profile.name,
+          label: profileLabel(profile, t),
         }))}
         value={profileName === "" ? null : profileName}
         onChange={(value) => onParameterChange("profileName", value ?? "")}
