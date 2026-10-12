@@ -4621,6 +4621,7 @@ label = "Distance de la découpe (mm)"
 
 [eyeletMarks.preview]
 count = "Repères dessinés :"
+invalid = "Disposition invalide : les décalages ou l’espacement d’un côté ne laissent plus de place aux repères."
 toggle = "Aperçu des repères d’œillets sur le document"
 
 [eyeletMarks.results]

@@ -31,34 +31,41 @@ export interface EyeletMarkPoint {
 const MM_TO_PT = 72 / 25.4;
 const mmToPt = (mm: number) => mm * MM_TO_PT;
 
+/** Mirrors `EyeletMarkPlacer.MAX_MARKS_PER_SIDE` — beyond this the backend rejects the side. */
+export const MAX_MARKS_PER_SIDE = 500;
+
 const enabled = (mode: EyeletMarkMode, side: EyeletSideGeometry): boolean =>
   mode === "COUNT" ? side.count > 0 : side.maxSpacingMm > 0;
 
 /**
- * The side's mark centres. Returns an empty list for a disabled side and for
- * the configurations the backend would reject (a single mark on a side, or
- * offsets that consume the whole span) — the preview then draws nothing.
+ * The side's mark centres, or `null` for the configurations the backend
+ * rejects (offsets consuming the whole span, a single mark, or a count over
+ * the per-side limit) — the whole page preview is dropped rather than drawn
+ * partially, matching the backend's reject-the-page behaviour.
  */
 function sidePoints(
   mode: EyeletMarkMode,
   side: EyeletSideGeometry,
   a0: { x: number; y: number },
   a1: { x: number; y: number },
-): { x: number; y: number }[] {
+): { x: number; y: number }[] | null {
   // The segment is axis-aligned, so the span is a signed coordinate delta —
   // hypot() would hide a reversed interval where neighbouring offsets overlap.
   const span = a1.x - a0.x + (a1.y - a0.y);
   if (span <= 0) {
-    return [];
+    return null;
   }
   let n: number;
   if (mode === "COUNT") {
     if (side.count <= 1) {
-      return [];
+      return null;
     }
     n = side.count;
   } else {
     n = Math.ceil(span / mmToPt(side.maxSpacingMm)) + 1;
+  }
+  if (n > MAX_MARKS_PER_SIDE) {
+    return null;
   }
   const out: { x: number; y: number }[] = [];
   for (let i = 0; i < n; i++) {
@@ -72,17 +79,21 @@ function sidePoints(
  * All mark centres for one page, `trim` in PDF points (bottom-left origin).
  * Corner marks land at the intersection of the two enabled sides' offset
  * lines; a corner with a single enabled side gets the end mark of that side.
+ * Returns `null` when the backend would reject the page — either nothing is
+ * enabled or an enabled side's layout is invalid — so the preview never
+ * paints a partial layout that could not be produced.
+ * `/UserUnit` is assumed to be 1: page-box snapshots don't carry it.
  */
 export function computeEyeletMarks(
   mode: EyeletMarkMode,
   trim: BoxRect,
   sides: Record<EyeletSide, EyeletSideGeometry>,
-): EyeletMarkPoint[] {
+): EyeletMarkPoint[] | null {
   const on = Object.fromEntries(
     EYELET_SIDES.map((s) => [s, enabled(mode, sides[s])]),
   ) as Record<EyeletSide, boolean>;
   if (!EYELET_SIDES.some((s) => on[s])) {
-    return [];
+    return null;
   }
 
   const lx = trim.x;
@@ -110,30 +121,33 @@ export function computeEyeletMarks(
 
   if (on.top) {
     const y = ty - mmToPt(sides.top.offsetMm);
-    for (const p of sidePoints(mode, sides.top, { x: x0, y }, { x: x1, y })) {
+    const pts = sidePoints(mode, sides.top, { x: x0, y }, { x: x1, y });
+    if (pts === null) return null;
+    for (const p of pts) {
       put(p.x, p.y);
     }
   }
   if (on.right) {
     const x = rx - mmToPt(sides.right.offsetMm);
-    for (const p of sidePoints(mode, sides.right, { x, y: y0 }, { x, y: y1 })) {
+    const pts = sidePoints(mode, sides.right, { x, y: y0 }, { x, y: y1 });
+    if (pts === null) return null;
+    for (const p of pts) {
       put(p.x, p.y);
     }
   }
   if (on.bottom) {
     const y = ly + mmToPt(sides.bottom.offsetMm);
-    for (const p of sidePoints(
-      mode,
-      sides.bottom,
-      { x: x0, y },
-      { x: x1, y },
-    )) {
+    const pts = sidePoints(mode, sides.bottom, { x: x0, y }, { x: x1, y });
+    if (pts === null) return null;
+    for (const p of pts) {
       put(p.x, p.y);
     }
   }
   if (on.left) {
     const x = lx + mmToPt(sides.left.offsetMm);
-    for (const p of sidePoints(mode, sides.left, { x, y: y0 }, { x, y: y1 })) {
+    const pts = sidePoints(mode, sides.left, { x, y: y0 }, { x, y: y1 });
+    if (pts === null) return null;
+    for (const p of pts) {
       put(p.x, p.y);
     }
   }

@@ -42,7 +42,7 @@ public class EyeletMarksController {
     private static final float MAX_OFFSET_MM = 200f;
     private static final float MAX_DIAMETER_MM = 100f;
     private static final float MAX_SPACING_MM = 20000f;
-    private static final int MAX_COUNT = 500;
+    private static final int MAX_COUNT = EyeletMarkPlacer.MAX_MARKS_PER_SIDE;
 
     private final CustomPDFDocumentFactory pdfDocumentFactory;
     private final TempFileManager tempFileManager;

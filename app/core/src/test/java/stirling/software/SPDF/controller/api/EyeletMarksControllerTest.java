@@ -11,6 +11,7 @@ import java.nio.file.Path;
 import java.util.Optional;
 
 import org.apache.pdfbox.Loader;
+import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
@@ -153,6 +154,35 @@ class EyeletMarksControllerTest {
             assertNotNull(group, "EyeletMarks OCG missing");
             assertTrue(contentText(out).contains(" BDC"), "marked content missing");
         }
+    }
+
+    @Test
+    void eyeletMarks_outsideOffsetMaterializesImplicitTrim() throws IOException {
+        EyeletMarksRequest req = request(blankPdf(1));
+        req.setOffsetTopMm(-20);
+        req.setMaxSpacingBottomMm(0);
+        req.setMaxSpacingLeftMm(0);
+        req.setMaxSpacingRightMm(0);
+        ResponseEntity<Resource> response = controller.eyeletMarks(req);
+        try (PDDocument out = Loader.loadPDF(response.getBody().getInputStream().readAllBytes())) {
+            PDPage page = out.getPage(0);
+            // The blank page has no TrimBox: growing the MediaBox must not move
+            // the effective trim, so the resolved trim is frozen explicitly.
+            assertNotNull(page.getCOSObject().getItem(COSName.TRIM_BOX));
+            assertEquals(PDRectangle.A4.getUpperRightY(), page.getTrimBox().getUpperRightY(), 0.01);
+        }
+    }
+
+    @Test
+    void eyeletMarks_tinySpacingRejected() throws IOException {
+        EyeletMarksRequest req = request(blankPdf(1));
+        // ~0.000001 mm would need ~2·10⁸ marks on the side — rejected by the
+        // per-side mark limit, not by spacing validation (which only needs > 0).
+        req.setMaxSpacingTopMm(0.000001f);
+        req.setMaxSpacingRightMm(0);
+        req.setMaxSpacingBottomMm(0);
+        req.setMaxSpacingLeftMm(0);
+        assertThrows(IllegalArgumentException.class, () -> controller.eyeletMarks(req));
     }
 
     @Test

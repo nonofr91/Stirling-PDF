@@ -222,4 +222,73 @@ class EyeletMarkPlacerTest {
             assertNull(group.getCOSObject().getDictionaryObject(COSName.USAGE));
         }
     }
+
+    @Test
+    void spacingMode_tinySpacing_isRejected() {
+        Settings s = settings();
+        s.mode = Mode.MAX_SPACING;
+        // 0.001 mm over a 600 pt span would need ~200M marks — the per-side
+        // limit must reject it before the loop runs.
+        s.sides.get(Side.TOP).maxSpacingMm = 0.001f;
+        assertThrows(IllegalArgumentException.class, () -> EyeletMarkPlacer.placements(TRIM, s));
+    }
+
+    @Test
+    void countAbovePerSideLimit_isRejected() {
+        Settings s = settings();
+        s.sides.get(Side.TOP).count = EyeletMarkPlacer.MAX_MARKS_PER_SIDE + 1;
+        assertThrows(IllegalArgumentException.class, () -> EyeletMarkPlacer.placements(TRIM, s));
+    }
+
+    @Test
+    void apply_missingTrimBox_materializesItBeforeGrowing() throws IOException {
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = new PDPage(TRIM);
+            doc.addPage(page);
+            Settings s = settings();
+            s.sides.get(Side.TOP).count = 2;
+            s.sides.get(Side.TOP).offsetMm = -20;
+
+            int first = EyeletMarkPlacer.apply(doc, page, s);
+
+            // The implicit trim must be frozen as an explicit TrimBox: otherwise the
+            // grown MediaBox would become the new trim reference on a second run.
+            assertNotNull(page.getCOSObject().getItem(COSName.TRIM_BOX));
+            assertEquals(0f, page.getTrimBox().getLowerLeftY(), 0.01);
+            assertEquals(800f, page.getTrimBox().getUpperRightY(), 0.01);
+            assertEquals(first, EyeletMarkPlacer.apply(doc, page, s));
+            assertEquals(800f, page.getTrimBox().getUpperRightY(), 0.01);
+        }
+    }
+
+    @Test
+    void placements_userUnit_scalesMillimetreParameters() {
+        Settings s = settings();
+        s.sides.get(Side.TOP).count = 2;
+        // UserUnit = 10: every mm and pt parameter is divided down, so the
+        // 15 mm offset becomes 15·MM/10 user units inside the trim.
+        List<Mark> marks = EyeletMarkPlacer.placements(TRIM, s, 10f);
+        assertEquals(2, marks.size());
+        assertTrue(marks.stream().allMatch(p -> close(p.y, 800 - 1.5f * MM)));
+    }
+
+    @Test
+    void apply_userUnit_keepsBoxesInUserSpace() throws IOException {
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = new PDPage(TRIM);
+            page.getCOSObject().setFloat(COSName.USER_UNIT, 10f);
+            doc.addPage(page);
+            Settings s = settings();
+            s.sides.get(Side.TOP).count = 2;
+            s.sides.get(Side.TOP).offsetMm = -20;
+
+            EyeletMarkPlacer.apply(doc, page, s);
+
+            // The mark line sits 20·MM/10 user units above the trim — physical 20 mm.
+            float margin = 2 * MM + s.eyeletDiameterMm * MM / 20f + s.strokeWidthPt / 20f;
+            assertTrue(
+                    page.getMediaBox().getUpperRightY() >= 800 + margin - 0.01,
+                    "MediaBox should cover the painted marks in user units");
+        }
+    }
 }

@@ -4714,6 +4714,7 @@ label = "Distance from trim (mm)"
 
 [eyeletMarks.preview]
 count = "Marks drawn:"
+invalid = "Invalid layout: a side's offsets or spacing leave no room for marks."
 toggle = "Preview eyelet marks on the document"
 
 [eyeletMarks.results]

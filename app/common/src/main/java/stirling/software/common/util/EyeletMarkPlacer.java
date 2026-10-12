@@ -39,6 +39,7 @@ public final class EyeletMarkPlacer {
     public static final float DEFAULT_STROKE_PT = 0.5f;
     public static final float DEFAULT_OFFSET_MM = 15f;
     public static final float DEFAULT_SPACING_MM = 500f;
+    public static final int MAX_MARKS_PER_SIDE = 500;
 
     private static final float MM_TO_PT = 72f / 25.4f;
     private static final String RESOURCE_PREFIX = "SPDF_EM_";
@@ -106,9 +107,18 @@ public final class EyeletMarkPlacer {
     /**
      * Every mark centre in PDF user space, deduplicated so a shared corner is painted once.
      * Iteration order is stable (top, right, bottom, left; each side from its start to end).
+     * Assumes {@code /UserUnit = 1}; pass the page's user unit to the overload otherwise.
      */
     public static List<Mark> placements(PDRectangle trim, Settings s) {
-        Layout layout = layout(trim, s);
+        return placements(trim, s, 1f);
+    }
+
+    /**
+     * {@code userUnit} is the page's {@code /UserUnit}: user-space coordinates are physically
+     * scaled by it, so every millimetre/point parameter is divided down by it here and in paint.
+     */
+    public static List<Mark> placements(PDRectangle trim, Settings s, float userUnit) {
+        Layout layout = layout(trim, s, userUnit);
         List<Mark> marks = new ArrayList<>(layout.points.size());
         for (Map.Entry<Long, Point2D.Float> entry : layout.points.entrySet()) {
             Point2D.Float p = entry.getValue();
@@ -124,7 +134,7 @@ public final class EyeletMarkPlacer {
         final Set<Long> shared = new HashSet<>();
     }
 
-    private static Layout layout(PDRectangle trim, Settings s) {
+    private static Layout layout(PDRectangle trim, Settings s, float unit) {
         boolean top = enabled(s, Side.TOP);
         boolean right = enabled(s, Side.RIGHT);
         boolean bottom = enabled(s, Side.BOTTOM);
@@ -140,27 +150,27 @@ public final class EyeletMarkPlacer {
 
         // Along-axis interval of a side is shortened by the corner marks of its enabled
         // neighbours, so every side's endpoints land exactly on the shared corner marks.
-        float x0 = left ? lx + mmToPt(s.sides.get(Side.LEFT).offsetMm) : lx;
-        float x1 = right ? rx - mmToPt(s.sides.get(Side.RIGHT).offsetMm) : rx;
-        float y0 = bottom ? ly + mmToPt(s.sides.get(Side.BOTTOM).offsetMm) : ly;
-        float y1 = top ? ty - mmToPt(s.sides.get(Side.TOP).offsetMm) : ty;
+        float x0 = left ? lx + mmToPt(s.sides.get(Side.LEFT).offsetMm, unit) : lx;
+        float x1 = right ? rx - mmToPt(s.sides.get(Side.RIGHT).offsetMm, unit) : rx;
+        float y0 = bottom ? ly + mmToPt(s.sides.get(Side.BOTTOM).offsetMm, unit) : ly;
+        float y1 = top ? ty - mmToPt(s.sides.get(Side.TOP).offsetMm, unit) : ty;
 
         Layout layout = new Layout();
         if (top) {
-            float y = ty - mmToPt(s.sides.get(Side.TOP).offsetMm);
-            addSide(layout, s, Side.TOP, x0, y, x1, y);
+            float y = ty - mmToPt(s.sides.get(Side.TOP).offsetMm, unit);
+            addSide(layout, s, Side.TOP, x0, y, x1, y, unit);
         }
         if (right) {
-            float x = rx - mmToPt(s.sides.get(Side.RIGHT).offsetMm);
-            addSide(layout, s, Side.RIGHT, x, y0, x, y1);
+            float x = rx - mmToPt(s.sides.get(Side.RIGHT).offsetMm, unit);
+            addSide(layout, s, Side.RIGHT, x, y0, x, y1, unit);
         }
         if (bottom) {
-            float y = ly + mmToPt(s.sides.get(Side.BOTTOM).offsetMm);
-            addSide(layout, s, Side.BOTTOM, x0, y, x1, y);
+            float y = ly + mmToPt(s.sides.get(Side.BOTTOM).offsetMm, unit);
+            addSide(layout, s, Side.BOTTOM, x0, y, x1, y, unit);
         }
         if (left) {
-            float x = lx + mmToPt(s.sides.get(Side.LEFT).offsetMm);
-            addSide(layout, s, Side.LEFT, x, y0, x, y1);
+            float x = lx + mmToPt(s.sides.get(Side.LEFT).offsetMm, unit);
+            addSide(layout, s, Side.LEFT, x, y0, x, y1, unit);
         }
         return layout;
     }
@@ -170,7 +180,15 @@ public final class EyeletMarkPlacer {
      * lands outside them. Returns the number of marks painted.
      */
     public static int apply(PDDocument document, PDPage page, Settings s) throws IOException {
-        Layout layout = layout(resolveTrim(page), s);
+        PDRectangle trim = resolveTrim(page);
+        // Freeze the implicit trim before growBoxes expands the MediaBox: without an
+        // explicit TrimBox the resolved trim is the MediaBox, and growing it would move
+        // the trim out from under the marks on any later run.
+        if (page.getCOSObject().getItem(COSName.TRIM_BOX) == null) {
+            page.setTrimBox(trim);
+        }
+        float unit = page.getUserUnit() > 0 ? page.getUserUnit() : 1f;
+        Layout layout = layout(trim, s, unit);
         PDOptionalContentGroup layer = layerFor(document, s.layerName);
 
         PDResources resources = page.getResources();
@@ -182,7 +200,7 @@ public final class EyeletMarkPlacer {
             resources.put(uniqueName(resources.getPropertiesNames(), "EM"), layer);
         }
 
-        float r = s.eyeletDiameterMm * MM_TO_PT / 2f;
+        float r = s.eyeletDiameterMm * MM_TO_PT / (2f * unit);
         float d = (float) (r / Math.sqrt(2.0));
         try (PDPageContentStream cs =
                 new PDPageContentStream(
@@ -192,7 +210,7 @@ public final class EyeletMarkPlacer {
                 cs.beginMarkedContent(COSName.OC, layer);
             }
             cs.setStrokingColor(MARK_COLOR);
-            cs.setLineWidth(s.strokeWidthPt);
+            cs.setLineWidth(s.strokeWidthPt / unit);
             for (Map.Entry<Long, Point2D.Float> entry : layout.points.entrySet()) {
                 Point2D.Float p = entry.getValue();
                 if (layout.shared.contains(entry.getKey())) {
@@ -214,7 +232,7 @@ public final class EyeletMarkPlacer {
             cs.restoreGraphicsState();
         }
 
-        growBoxes(page, List.copyOf(layout.points.values()), r + s.strokeWidthPt / 2f);
+        growBoxes(page, List.copyOf(layout.points.values()), r + s.strokeWidthPt / (2f * unit));
         return layout.points.size();
     }
 
@@ -242,7 +260,14 @@ public final class EyeletMarkPlacer {
      * reversed interval where the neighbouring offsets overlap and leave no room.
      */
     private static void addSide(
-            Layout layout, Settings s, Side side, float a0x, float a0y, float a1x, float a1y) {
+            Layout layout,
+            Settings s,
+            Side side,
+            float a0x,
+            float a0y,
+            float a1x,
+            float a1y,
+            float unit) {
         float span = (a1x - a0x) + (a1y - a0y);
         if (span <= 0) {
             throw new IllegalArgumentException(
@@ -257,7 +282,25 @@ public final class EyeletMarkPlacer {
             }
             n = ss.count;
         } else {
-            n = (int) Math.ceil(span / mmToPt(ss.maxSpacingMm)) + 1;
+            // The count must be bounded before the cast: a tiny maxSpacingMm otherwise
+            // overflows the int loop into millions — or an endless — number of marks.
+            double needed = Math.ceil(span / mmToPt(ss.maxSpacingMm, unit)) + 1;
+            if (needed > MAX_MARKS_PER_SIDE) {
+                throw new IllegalArgumentException(
+                        side
+                                + " side needs "
+                                + needed
+                                + " marks at "
+                                + ss.maxSpacingMm
+                                + " mm spacing (limit "
+                                + MAX_MARKS_PER_SIDE
+                                + ")");
+            }
+            n = (int) needed;
+        }
+        if (n > MAX_MARKS_PER_SIDE) {
+            throw new IllegalArgumentException(
+                    side + " side cannot carry more than " + MAX_MARKS_PER_SIDE + " marks");
         }
         for (int i = 0; i < n; i++) {
             float t = (float) i / (n - 1f);
@@ -325,7 +368,7 @@ public final class EyeletMarkPlacer {
         return COSName.getPDFName(candidate);
     }
 
-    private static float mmToPt(float mm) {
-        return mm * MM_TO_PT;
+    private static float mmToPt(float mm, float unit) {
+        return mm * MM_TO_PT / unit;
     }
 }

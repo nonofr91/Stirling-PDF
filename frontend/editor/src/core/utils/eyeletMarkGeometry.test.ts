@@ -39,7 +39,7 @@ describe("computeEyeletMarks", () => {
         bottom: { count: 2 },
         left: { count: 2 },
       }),
-    );
+    )!;
     expect(marks).toHaveLength(4);
     expect(marks.every((m) => m.corner)).toBe(true);
     expect(hasMarkAt(marks, OFF, 800 - OFF)).toBe(true);
@@ -53,7 +53,7 @@ describe("computeEyeletMarks", () => {
       "COUNT",
       TRIM,
       sides({ top: { count: 4 } }),
-    );
+    )!;
     expect(marks).toHaveLength(4);
     expect(hasMarkAt(marks, 0, 800 - OFF)).toBe(true);
     expect(hasMarkAt(marks, 200, 800 - OFF)).toBe(true);
@@ -66,7 +66,7 @@ describe("computeEyeletMarks", () => {
       "COUNT",
       TRIM,
       sides({ top: { count: 2 }, left: { count: 2 } }),
-    );
+    )!;
     expect(marks).toHaveLength(3);
     expect(marks.filter((m) => m.corner)).toHaveLength(1);
     expect(hasMarkAt(marks, OFF, 800 - OFF)).toBe(true);
@@ -79,7 +79,7 @@ describe("computeEyeletMarks", () => {
       "MAX_SPACING",
       TRIM,
       sides({ top: { maxSpacingMm: 100 } }),
-    );
+    )!;
     // 100 mm = 283.46 pt over a 600 pt span → 3 intervals → 4 marks.
     expect(marks).toHaveLength(4);
     expect(hasMarkAt(marks, 0, 800 - OFF)).toBe(true);
@@ -91,7 +91,7 @@ describe("computeEyeletMarks", () => {
       "MAX_SPACING",
       TRIM,
       sides({ top: { maxSpacingMm: 500 } }),
-    );
+    )!;
     expect(marks).toHaveLength(2);
   });
 
@@ -100,7 +100,7 @@ describe("computeEyeletMarks", () => {
       "COUNT",
       TRIM,
       sides({ top: { count: 2, offsetMm: -10 } }),
-    );
+    )!;
     expect(marks.every((p) => Math.abs(p.y - (800 + 10 * MM)) < 0.05)).toBe(
       true,
     );
@@ -108,27 +108,29 @@ describe("computeEyeletMarks", () => {
 
   test.each<[EyeletMarkMode, Parameters<typeof sides>[0]]>([
     ["COUNT", { top: { count: 1 } }],
+    ["COUNT", { top: { count: 501 } }],
     ["COUNT", {}],
     ["MAX_SPACING", {}],
     ["MAX_SPACING", { top: { maxSpacingMm: 0 } }],
+    ["MAX_SPACING", { top: { maxSpacingMm: 0.001 } }],
   ])("invalid configuration %s %j yields no marks", (mode, overrides) => {
-    expect(computeEyeletMarks(mode, TRIM, sides(overrides))).toHaveLength(0);
+    expect(computeEyeletMarks(mode, TRIM, sides(overrides))).toBeNull();
   });
 
-  test("offsets overlapping across a side yield no marks on it", () => {
-    const marks = computeEyeletMarks(
-      "COUNT",
-      TRIM,
-      sides({
-        top: { count: 4 },
-        left: { count: 2, offsetMm: 200 },
-        right: { count: 2, offsetMm: 200 },
-      }),
-    );
-    // 200 mm offsets on a 600 pt trim leave a negative top interval: only the
-    // two lateral sides paint, 4 marks after corner dedup, none mid-page.
-    expect(marks).toHaveLength(4);
-    expect(hasMarkAt(marks, 389, 800 - OFF)).toBe(false);
-    expect(hasMarkAt(marks, 211, 800 - OFF)).toBe(false);
+  test("offsets overlapping across a side invalidate the whole page", () => {
+    // 200 mm offsets on a 600 pt trim leave a negative top interval: the
+    // backend rejects the page, so the preview drops every mark, not just
+    // the offending side's.
+    expect(
+      computeEyeletMarks(
+        "COUNT",
+        TRIM,
+        sides({
+          top: { count: 4 },
+          left: { count: 2, offsetMm: 200 },
+          right: { count: 2, offsetMm: 200 },
+        }),
+      ),
+    ).toBeNull();
   });
 });

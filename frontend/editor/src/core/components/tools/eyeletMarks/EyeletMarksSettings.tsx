@@ -128,6 +128,7 @@ const EyeletMarksSettings = ({
   const [selectedFile = null] = useViewScopedFiles();
   const [previewEnabled, setPreviewEnabled] = useState(true);
   const [markCount, setMarkCount] = useState<number | null>(null);
+  const [layoutInvalid, setLayoutInvalid] = useState(false);
   const setOverlay = useSetPageOverlay();
   // Single-entry cache: only the current document's snapshots are reusable.
   const snapshotsRef = useRef<{
@@ -140,6 +141,7 @@ const EyeletMarksSettings = ({
     if (!documentKey || !selectedFile || !previewEnabled || disabled) {
       setOverlay(null);
       setMarkCount(null);
+      setLayoutInvalid(false);
       return;
     }
 
@@ -155,6 +157,7 @@ const EyeletMarksSettings = ({
         if (!read) {
           setOverlay(null);
           setMarkCount(null);
+          setLayoutInvalid(false);
           return;
         }
         snapshots = read;
@@ -172,22 +175,26 @@ const EyeletMarksSettings = ({
             parameters.maxSpacingTopMm ?? defaultParameters.maxSpacingTopMm!,
         },
         right: {
-          offsetMm: parameters.offsetRightMm ?? defaultParameters.offsetTopMm!,
+          offsetMm:
+            parameters.offsetRightMm ?? defaultParameters.offsetRightMm!,
           count: parameters.countRight ?? 0,
           maxSpacingMm:
-            parameters.maxSpacingRightMm ?? defaultParameters.maxSpacingTopMm!,
+            parameters.maxSpacingRightMm ??
+            defaultParameters.maxSpacingRightMm!,
         },
         bottom: {
-          offsetMm: parameters.offsetBottomMm ?? defaultParameters.offsetTopMm!,
+          offsetMm:
+            parameters.offsetBottomMm ?? defaultParameters.offsetBottomMm!,
           count: parameters.countBottom ?? 0,
           maxSpacingMm:
-            parameters.maxSpacingBottomMm ?? defaultParameters.maxSpacingTopMm!,
+            parameters.maxSpacingBottomMm ??
+            defaultParameters.maxSpacingBottomMm!,
         },
         left: {
-          offsetMm: parameters.offsetLeftMm ?? defaultParameters.offsetTopMm!,
+          offsetMm: parameters.offsetLeftMm ?? defaultParameters.offsetLeftMm!,
           count: parameters.countLeft ?? 0,
           maxSpacingMm:
-            parameters.maxSpacingLeftMm ?? defaultParameters.maxSpacingTopMm!,
+            parameters.maxSpacingLeftMm ?? defaultParameters.maxSpacingLeftMm!,
         },
       };
 
@@ -195,6 +202,7 @@ const EyeletMarksSettings = ({
       const armPt = Math.max(parameters.strokeWidthPt ?? 0.5, MIN_ARM_PT);
 
       let total = 0;
+      let invalid = false;
       const pathsPerPage: PageOverlayPath[][] = snapshots.map((snapshot) => {
         if (!snapshot) return [];
         const marks = computeEyeletMarks(
@@ -202,6 +210,12 @@ const EyeletMarksSettings = ({
           snapshot.boxes.TRIM_BOX,
           sides,
         );
+        if (marks === null) {
+          // The backend rejects the whole request on the first invalid page —
+          // draw nothing anywhere rather than preview an impossible layout.
+          invalid = true;
+          return [];
+        }
         total += marks.length;
         return marks.flatMap((m) =>
           markPaths(
@@ -216,7 +230,8 @@ const EyeletMarksSettings = ({
       });
       if (cancelled) return;
       setOverlay({ documentKey, rects: [], pathsPerPage });
-      setMarkCount(total);
+      setMarkCount(invalid ? null : total);
+      setLayoutInvalid(invalid);
     })();
 
     return () => {
@@ -245,6 +260,14 @@ const EyeletMarksSettings = ({
             onChange={(e) => setPreviewEnabled(e.currentTarget.checked)}
             disabled={disabled}
           />
+          {previewEnabled && layoutInvalid && (
+            <Text size="xs" c="red">
+              {t(
+                "eyeletMarks.preview.invalid",
+                "Invalid layout: a side's offsets or spacing leave no room for marks.",
+              )}
+            </Text>
+          )}
           {previewEnabled && markCount !== null && (
             <Text size="xs" c="dimmed">
               {t("eyeletMarks.preview.count", "Marks drawn:")} {markCount}

@@ -53,10 +53,20 @@ const numberOrUndefined = (v: string | number) =>
 const sideEnabled = (
   parameters: EyeletMarksParameters,
   side: SideKey,
-): boolean =>
-  parameters.mode === "COUNT"
-    ? ((parameters[COUNT_KEYS[side]] as number | undefined) ?? 0) > 0
-    : ((parameters[SPACING_KEYS[side]] as number | undefined) ?? 0) > 0;
+): boolean => {
+  // Cleared fields are omitted from the request and rebound to backend
+  // defaults — a cleared spacing means "500 mm, enabled" while a cleared
+  // count means "0, disabled" — so the checkbox mirrors the same fallback.
+  if (parameters.mode === "COUNT") {
+    return ((parameters[COUNT_KEYS[side]] as number | undefined) ?? 0) > 0;
+  }
+  const key = SPACING_KEYS[side];
+  return (
+    ((parameters[key] as number | undefined) ??
+      (defaultParameters[key] as number | undefined) ??
+      0) > 0
+  );
+};
 
 /**
  * The pure parameter inputs, shared by the tool's settings panel (which adds a
@@ -70,19 +80,21 @@ const EyeletMarksFields = ({
   const { t } = useTranslation();
 
   const toggleSide = (side: SideKey, enabled: boolean) => {
+    const key =
+      parameters.mode === "COUNT" ? COUNT_KEYS[side] : SPACING_KEYS[side];
+    if (!enabled) {
+      onParameterChange(key, 0);
+      return;
+    }
+    const prev = parameters[key] as number | undefined;
     if (parameters.mode === "COUNT") {
-      onParameterChange(
-        COUNT_KEYS[side],
-        enabled
-          ? Math.max(2, (parameters[COUNT_KEYS[side]] as number) ?? 0)
-          : 0,
-      );
+      // Re-enabling a side left at 0 restores the smallest valid count (1 is
+      // rejected by the backend: it cannot honour both end marks).
+      onParameterChange(key, prev && prev >= 2 ? prev : 2);
     } else {
       onParameterChange(
-        SPACING_KEYS[side],
-        enabled
-          ? Math.max(1, (parameters[SPACING_KEYS[side]] as number) ?? 0)
-          : 0,
+        key,
+        prev && prev > 0 ? prev : (defaultParameters[key] as number),
       );
     }
   };
