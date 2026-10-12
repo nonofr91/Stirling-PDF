@@ -41,6 +41,7 @@ export const CORE_REGULAR_TOOL_IDS = [
   "crop",
   "setPageBoxes",
   "cutContour",
+  "eyeletMarks",
   "textToOutlines",
   "printPreflight",
   "printPreflightFix",

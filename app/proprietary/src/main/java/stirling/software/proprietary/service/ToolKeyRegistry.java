@@ -49,6 +49,7 @@ public class ToolKeyRegistry {
                     "crop",
                     "setPageBoxes",
                     "cutContour",
+                    "eyeletMarks",
                     "textToOutlines",
                     "printPreflight",
                     "pdfToSinglePage",

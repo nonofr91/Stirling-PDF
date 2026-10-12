@@ -645,6 +645,72 @@ export interface ExtractSingleAttachmentRequest {
    */
   attachmentName: string;
 }
+export interface EyeletMarksRequest {
+  /**
+   * COUNT mode: marks on the bottom side (see countTop)
+   */
+  countBottom?: number;
+  /**
+   * COUNT mode: marks on the left side (see countTop)
+   */
+  countLeft?: number;
+  /**
+   * COUNT mode: marks on the right side (see countTop)
+   */
+  countRight?: number;
+  /**
+   * COUNT mode: marks on the top side, ends included; 0 disables the side
+   */
+  countTop?: number;
+  /**
+   * Eyelet (grommet) diameter in millimetres; the cross mark's span matches it
+   */
+  eyeletDiameterMm?: number;
+  /**
+   * Optional-content (layer) name the marks are grouped under; blank draws them as plain page content
+   */
+  layerName?: string;
+  /**
+   * MAX_SPACING mode: largest gap on the bottom side (see maxSpacingTopMm)
+   */
+  maxSpacingBottomMm?: number;
+  /**
+   * MAX_SPACING mode: largest gap on the left side (see maxSpacingTopMm)
+   */
+  maxSpacingLeftMm?: number;
+  /**
+   * MAX_SPACING mode: largest gap on the right side (see maxSpacingTopMm)
+   */
+  maxSpacingRightMm?: number;
+  /**
+   * MAX_SPACING mode: largest allowed gap between marks on the top side in millimetres; a value <= 0 disables the side
+   */
+  maxSpacingTopMm?: number;
+  /**
+   * How marks are distributed along each side. COUNT places the side's count of marks equidistantly including both ends; MAX_SPACING computes the count from the largest allowed gap between marks
+   */
+  mode?: "COUNT" | "MAX_SPACING";
+  /**
+   * Signed distance in millimetres from the bottom trim edge (see offsetTopMm)
+   */
+  offsetBottomMm?: number;
+  /**
+   * Signed distance in millimetres from the left trim edge (see offsetTopMm)
+   */
+  offsetLeftMm?: number;
+  /**
+   * Signed distance in millimetres from the right trim edge (see offsetTopMm)
+   */
+  offsetRightMm?: number;
+  /**
+   * Signed distance in millimetres from the top trim edge: positive draws the marks inside the trim (on the product), negative outside into the slug
+   */
+  offsetTopMm?: number;
+  /**
+   * Cross stroke width in points
+   */
+  strokeWidthPt?: number;
+}
 export interface FileSizeRequest {
   /**
    * The comparison type, accepts Greater, Equal, Less than
@@ -1238,6 +1304,10 @@ export interface PrintPreflightProfile {
    * Unique profile name — the key used in profileName
    */
   name?: string;
+  /**
+   * Custom profile shadowing the built-in of the same name — true until the override is deleted, which restores the shipped defaults
+   */
+  overridden?: boolean;
   /**
    * Measure ink coverage from a rendered CMYK raster instead of painted fills
    */
@@ -1963,6 +2033,7 @@ export type ToolEndpoint =
   | "/api/v1/general/edit-table-of-contents"
   | "/api/v1/general/edit-text"
   | "/api/v1/general/extract-bookmarks"
+  | "/api/v1/general/eyelet-marks"
   | "/api/v1/general/merge-pdfs"
   | "/api/v1/general/multi-page-layout"
   | "/api/v1/general/overlay-pdfs"
@@ -2084,6 +2155,7 @@ export interface ToolApiParams {
   "/api/v1/general/edit-table-of-contents": EditTableOfContentsRequest;
   "/api/v1/general/edit-text": EditTextRequest;
   "/api/v1/general/extract-bookmarks": GeneralExtractBookmarksRequest;
+  "/api/v1/general/eyelet-marks": EyeletMarksRequest;
   "/api/v1/general/merge-pdfs": MergePdfsRequest;
   "/api/v1/general/multi-page-layout": MergeMultiplePagesRequest;
   "/api/v1/general/overlay-pdfs": OverlayPdfsRequest;
@@ -2206,6 +2278,7 @@ export const TOOL_ENDPOINTS = [
   "/api/v1/general/edit-table-of-contents",
   "/api/v1/general/edit-text",
   "/api/v1/general/extract-bookmarks",
+  "/api/v1/general/eyelet-marks",
   "/api/v1/general/merge-pdfs",
   "/api/v1/general/multi-page-layout",
   "/api/v1/general/overlay-pdfs",

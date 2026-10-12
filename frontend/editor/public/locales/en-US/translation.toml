@@ -4684,6 +4684,56 @@ title = "Settings"
 [extractPages.tooltip]
 description = "Extracts the selected pages into a new PDF, preserving order."
 
+[eyeletMarks]
+help = "Draw a cross at each eyelet (grommet) position along the trim edges. Corners always carry a mark; spacing per side is either a fixed count or a maximum gap."
+submit = "Add Eyelet Marks"
+
+[eyeletMarks.count]
+desc = "Equidistant, both ends included"
+label = "Marks on this side"
+
+[eyeletMarks.diameterMm]
+desc = "The cross span matches the eyelet diameter"
+label = "Eyelet diameter (mm)"
+
+[eyeletMarks.error]
+failed = "An error occurred while adding eyelet marks."
+
+[eyeletMarks.layerName]
+desc = "Group the marks under an optional-content layer; blank draws plain content"
+label = "Layer name (optional)"
+
+[eyeletMarks.mode]
+count = "Fixed mark count per side"
+label = "Placement mode"
+maxSpacing = "Maximum spacing between marks"
+
+[eyeletMarks.offsetMm]
+desc = "Positive inside the trim, negative outside"
+label = "Distance from trim (mm)"
+
+[eyeletMarks.preview]
+count = "Marks drawn:"
+toggle = "Preview eyelet marks on the document"
+
+[eyeletMarks.results]
+title = "Eyelet Marks Results"
+
+[eyeletMarks.sides]
+bottom = "Bottom"
+left = "Left"
+right = "Right"
+top = "Top"
+
+[eyeletMarks.spacingMm]
+label = "Max gap between marks (mm)"
+
+[eyeletMarks.steps]
+configure = "Eyelet Mark Settings"
+
+[eyeletMarks.strokeWidthPt]
+label = "Stroke width (pt)"
+
 [fileCard]
 openInFileEditor = "Open in File Editor"
 viewInViewer = "View in Viewer"
@@ -5801,6 +5851,11 @@ title = "Extract Images"
 desc = "Extract specific pages from a PDF document"
 tags = "pull,select,copy,extract,extract pages,get pages,pull out,save pages,export pages,copy pages,select pages,specific pages"
 title = "Extract Pages"
+
+[home.eyeletMarks]
+desc = "Draw cross marks at each eyelet (grommet) position along the trim edges for banner finishing."
+tags = "eyelet,eyelets,grommet,grommets,banner,banners,eyelet marks,grommet marks,finishing,hem,prepress,oillets,oeillets,illet"
+title = "Eyelet Marks"
 
 [home.flatten]
 desc = "Remove all interactive elements and forms from a PDF"
@@ -10357,6 +10412,10 @@ label = "Crop pages"
 [portal.policies.wizard.capability.cutContour]
 desc = "Reads the finishing contour from the artwork so a cutter can follow it."
 label = "Extract the cut contour"
+
+[portal.policies.wizard.capability.eyeletMarks]
+desc = "Draws a cross at each eyelet position along the trim edges so banners can be finished with grommets."
+label = "Add eyelet marks"
 
 [portal.policies.wizard.capability.flatten]
 desc = "Merges form fields and annotations into the page so they can't be edited."
