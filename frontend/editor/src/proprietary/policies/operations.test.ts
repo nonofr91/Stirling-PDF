@@ -21,6 +21,7 @@ describe("POLICY_OPERATIONS", () => {
       "crop",
       "cutContour",
       "externalApiCall",
+      "eyeletMarks",
       "flatten",
       "ingest",
       "ocr",

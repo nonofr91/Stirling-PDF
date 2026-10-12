@@ -302,6 +302,13 @@ const CAPABILITY_META: Record<
     descEn:
       "Reads the finishing contour from the artwork so a cutter can follow it.",
   },
+  eyeletMarks: {
+    labelKey: "portal.policies.wizard.capability.eyeletMarks.label",
+    labelEn: "Add eyelet marks",
+    descKey: "portal.policies.wizard.capability.eyeletMarks.desc",
+    descEn:
+      "Draws a cross at each eyelet position along the trim edges so banners can be finished with grommets.",
+  },
   textToOutlines: {
     labelKey: "portal.policies.wizard.capability.textToOutlines.label",
     labelEn: "Convert text to outlines",

@@ -368,6 +368,7 @@ public class EndpointConfiguration {
         addEndpointToGroup("PageOps", "set-page-boxes");
         addEndpointToGroup("PageOps", "cut-contour");
         addEndpointToGroup("PageOps", "cut-contour-preview");
+        addEndpointToGroup("PageOps", "eyelet-marks");
 
         // Adding endpoints to "Convert" group (Frontend has 15 convert endpoints)
         addEndpointToGroup("Convert", "pdf-to-img");
@@ -543,6 +544,7 @@ public class EndpointConfiguration {
         addEndpointToGroup("Java", "set-page-boxes");
         addEndpointToGroup("Java", "cut-contour");
         addEndpointToGroup("Java", "cut-contour-preview");
+        addEndpointToGroup("Java", "eyelet-marks");
         addEndpointToGroup("Java", "get-info-on-pdf");
         addEndpointToGroup("Java", "print-preflight");
         addEndpointToGroup("Java", "print-preflight-annotated");

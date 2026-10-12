@@ -4591,6 +4591,57 @@ title = "Paramètres"
 [extractPages.tooltip]
 description = "Extrait les pages sélectionnées dans un nouveau PDF, en conservant l’ordre."
 
+[eyeletMarks]
+help = "Dessine une croix à chaque position d’œillet le long des bords de découpe. Les angles portent toujours un repère ; l’espacement par côté est soit un nombre fixe, soit un écart maximal."
+submit = "Ajouter les repères d’œillets"
+
+[eyeletMarks.count]
+desc = "Équidistants, extrémités incluses"
+label = "Repères sur ce côté"
+
+[eyeletMarks.diameterMm]
+desc = "L’envergure de la croix correspond au diamètre de l’œillet"
+label = "Diamètre de l’œillet (mm)"
+
+[eyeletMarks.error]
+failed = "Une erreur est survenue lors de l’ajout des repères d’œillets."
+
+[eyeletMarks.layerName]
+desc = "Regroupe les repères dans un calque de contenu optionnel ; vide dessine un contenu normal"
+label = "Nom du calque (optionnel)"
+
+[eyeletMarks.mode]
+count = "Nombre fixe de repères par côté"
+label = "Mode de placement"
+maxSpacing = "Espacement maximal entre repères"
+
+[eyeletMarks.offsetMm]
+desc = "Positif vers l’intérieur de la découpe, négatif vers l’extérieur"
+label = "Distance de la découpe (mm)"
+
+[eyeletMarks.preview]
+count = "Repères dessinés :"
+invalid = "Disposition invalide : les décalages ou l’espacement d’un côté ne laissent plus de place aux repères."
+toggle = "Aperçu des repères d’œillets sur le document"
+
+[eyeletMarks.results]
+title = "Résultats des repères d’œillets"
+
+[eyeletMarks.sides]
+bottom = "Bas"
+left = "Gauche"
+right = "Droite"
+top = "Haut"
+
+[eyeletMarks.spacingMm]
+label = "Écart max entre repères (mm)"
+
+[eyeletMarks.steps]
+configure = "Paramètres des repères d’œillets"
+
+[eyeletMarks.strokeWidthPt]
+label = "Épaisseur du trait (pt)"
+
 [fileCard]
 openInFileEditor = "Ouvrir dans l’éditeur de fichiers"
 viewInViewer = "Afficher dans la visionneuse"
@@ -5683,6 +5734,11 @@ title = "Extraire les images"
 desc = "Extraire des pages spécifiques d’un document PDF"
 tags = "extraire,sélectionner,copier,extraire,extraire pages,récupérer pages,sortir,enregistrer pages,exporter pages,copier pages,sélectionner pages,pages spécifiques"
 title = "Extraire des pages"
+
+[home.eyeletMarks]
+desc = "Dessine des croix à chaque position d’œillet le long des bords de découpe pour la finition des bâches."
+tags = "œillet,œillets,oeillet,oeillets,illet,illets,bâche,bâches,repères œillets,finition,ourlet,prépresse"
+title = "Repères d’œillets"
 
 [home.flatten]
 desc = "Supprimez tous les éléments et formulaires interactifs d'un PDF."
@@ -10176,6 +10232,10 @@ label = "Rogner les pages"
 [portal.policies.wizard.capability.cutContour]
 desc = "Lit le contour de finition dans l’illustration pour qu’une découpeuse puisse le suivre."
 label = "Extraire le contour de découpe"
+
+[portal.policies.wizard.capability.eyeletMarks]
+desc = "Dessine une croix à chaque position d’œillet le long des bords de découpe pour permettre la pose d’œillets sur les bâches."
+label = "Ajouter des repères d’œillets"
 
 [portal.policies.wizard.capability.flatten]
 desc = "Fusionne les champs de formulaire et les annotations dans la page afin qu’ils ne puissent pas être modifiés."

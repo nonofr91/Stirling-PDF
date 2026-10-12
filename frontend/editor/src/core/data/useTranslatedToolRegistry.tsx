@@ -53,6 +53,7 @@ import { signOperationConfig } from "@app/hooks/tools/sign/useSignOperation";
 import { cropOperationConfig } from "@app/hooks/tools/crop/useCropOperation";
 import { setPageBoxesOperationConfig } from "@app/hooks/tools/setPageBoxes/useSetPageBoxesOperation";
 import { cutContourOperationConfig } from "@app/hooks/tools/cutContour/useCutContourOperation";
+import { eyeletMarksOperationConfig } from "@app/hooks/tools/eyeletMarks/useEyeletMarksOperation";
 import { printPreflightOperationConfig } from "@app/hooks/tools/printPreflight/usePrintPreflightOperation";
 import { printPreflightFixOperationConfig } from "@app/hooks/tools/printPreflightFix/usePrintPreflightFixOperation";
 import { printPreflightCheckOperationConfig } from "@app/hooks/tools/printPreflightCheck/usePrintPreflightCheckOperation";
@@ -583,6 +584,25 @@ export function useTranslatedToolCatalog(): TranslatedToolCatalog {
             import("@app/components/tools/cutContour/CutContourAutomationSettings"),
         ),
         synonyms: getSynonyms(t, "cutContour"),
+      },
+      eyeletMarks: {
+        icon: <Icon name="locate-fixed" size="1.5rem" />,
+        name: t("home.eyeletMarks.title", "Eyelet Marks"),
+        component: lazy(() => import("@app/tools/EyeletMarks")),
+        description: t(
+          "home.eyeletMarks.desc",
+          "Draw cross marks at each eyelet (grommet) position along the trim edges for banner finishing.",
+        ),
+        categoryId: ToolCategoryId.STANDARD_TOOLS,
+        subcategoryId: SubcategoryId.PREPRESS,
+        maxFiles: -1,
+        endpoints: ["eyelet-marks"],
+        operationConfig: asRegistryConfig(eyeletMarksOperationConfig),
+        automationSettings: lazySettings(
+          () =>
+            import("@app/components/tools/eyeletMarks/EyeletMarksAutomationSettings"),
+        ),
+        synonyms: getSynonyms(t, "eyeletMarks"),
       },
       textToOutlines: {
         icon: <Icon name="spline" size="1.5rem" />,

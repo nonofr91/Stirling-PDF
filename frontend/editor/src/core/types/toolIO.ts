@@ -472,6 +472,11 @@ export const TOOL_IO: ToolIOTable = {
     produces: "JSON",
     arity: "SISO",
   },
+  "/api/v1/general/eyelet-marks": {
+    accepts: ["PDF"],
+    produces: "PDF",
+    arity: "SISO",
+  },
   "/api/v1/general/merge-pdfs": {
     accepts: ["PDF", "IMAGE"],
     produces: "PDF",

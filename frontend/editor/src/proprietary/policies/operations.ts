@@ -23,6 +23,7 @@ import { pdfaOperationConfig } from "@app/policies/pdfaOperation";
 import { setPageBoxesOperationConfig } from "@app/hooks/tools/setPageBoxes/useSetPageBoxesOperation";
 import { adjustPageScaleOperationConfig } from "@app/hooks/tools/adjustPageScale/useAdjustPageScaleOperation";
 import { cutContourOperationConfig } from "@app/hooks/tools/cutContour/useCutContourOperation";
+import { eyeletMarksOperationConfig } from "@app/hooks/tools/eyeletMarks/useEyeletMarksOperation";
 import { textToOutlinesOperationConfig } from "@app/hooks/tools/textToOutlines/useTextToOutlinesOperation";
 import { cropOperationConfig } from "@app/hooks/tools/crop/useCropOperation";
 import type { ToolEndpoint } from "@app/types/toolApiTypes";
@@ -234,6 +235,10 @@ export const POLICY_OPERATIONS = {
   cutContour: describeToolOperation(
     "/api/v1/general/cut-contour",
     cutContourOperationConfig,
+  ),
+  eyeletMarks: describeToolOperation(
+    "/api/v1/general/eyelet-marks",
+    eyeletMarksOperationConfig,
   ),
   textToOutlines: describeToolOperation(
     "/api/v1/misc/text-to-outlines",
