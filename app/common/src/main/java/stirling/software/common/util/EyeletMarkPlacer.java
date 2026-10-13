@@ -2,20 +2,29 @@ package stirling.software.common.util;
 
 import java.awt.geom.Point2D;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.apache.pdfbox.contentstream.operator.Operator;
+import org.apache.pdfbox.contentstream.operator.OperatorName;
+import org.apache.pdfbox.cos.COSDictionary;
 import org.apache.pdfbox.cos.COSName;
+import org.apache.pdfbox.pdfparser.PDFStreamParser;
+import org.apache.pdfbox.pdfwriter.ContentStreamWriter;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.PDResources;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
+import org.apache.pdfbox.pdmodel.common.PDStream;
+import org.apache.pdfbox.pdmodel.documentinterchange.markedcontent.PDPropertyList;
 import org.apache.pdfbox.pdmodel.graphics.color.PDColor;
 import org.apache.pdfbox.pdmodel.graphics.color.PDDeviceCMYK;
 import org.apache.pdfbox.pdmodel.graphics.optionalcontent.PDOptionalContentGroup;
@@ -40,6 +49,7 @@ public final class EyeletMarkPlacer {
     public static final float DEFAULT_OFFSET_MM = 15f;
     public static final float DEFAULT_SPACING_MM = 500f;
     public static final int MAX_MARKS_PER_SIDE = 500;
+    public static final String DEFAULT_LAYER_NAME = "EyeletMarks";
 
     private static final float MM_TO_PT = 72f / 25.4f;
     private static final String RESOURCE_PREFIX = "SPDF_EM_";
@@ -76,7 +86,7 @@ public final class EyeletMarkPlacer {
         public float eyeletDiameterMm = DEFAULT_DIAMETER_MM;
         public float strokeWidthPt = DEFAULT_STROKE_PT;
 
-        /** Optional-content layer name; null/blank draws the marks as plain content. */
+        /** Optional-content layer name; null/blank falls back to {@link #DEFAULT_LAYER_NAME}. */
         public String layerName = null;
 
         public final EnumMap<Side, SideSettings> sides = new EnumMap<>(Side.class);
@@ -177,7 +187,10 @@ public final class EyeletMarkPlacer {
 
     /**
      * Paints a cross at every placement on {@code page} and grows MediaBox/CropBox when a mark
-     * lands outside them. Returns the number of marks painted.
+     * lands outside them. Marks always go into a named optional-content layer — the layer name is
+     * the identity a re-run looks for: any marks already painted under that same layer are stripped
+     * first, so re-running replaces the previous set instead of stacking on it. Returns the number
+     * of marks painted.
      */
     public static int apply(PDDocument document, PDPage page, Settings s) throws IOException {
         PDRectangle trim = resolveTrim(page);
@@ -189,16 +202,12 @@ public final class EyeletMarkPlacer {
         }
         float unit = page.getUserUnit() > 0 ? page.getUserUnit() : 1f;
         Layout layout = layout(trim, s, unit);
-        PDOptionalContentGroup layer = layerFor(document, s.layerName);
-
-        PDResources resources = page.getResources();
-        if (layer != null) {
-            if (resources == null) {
-                resources = new PDResources();
-                page.setResources(resources);
-            }
-            resources.put(uniqueName(resources.getPropertiesNames(), "EM"), layer);
-        }
+        String layerName =
+                s.layerName == null || s.layerName.isBlank() ? DEFAULT_LAYER_NAME : s.layerName;
+        PDOptionalContentGroup layer = layerFor(document, layerName);
+        PDResources resources = localResources(page);
+        removeLayerMarks(page, resources, layerName);
+        resources.put(propNameFor(resources, layerName), layer);
 
         float r = s.eyeletDiameterMm * MM_TO_PT / (2f * unit);
         float d = (float) (r / Math.sqrt(2.0));
@@ -206,9 +215,7 @@ public final class EyeletMarkPlacer {
                 new PDPageContentStream(
                         document, page, PDPageContentStream.AppendMode.APPEND, true)) {
             cs.saveGraphicsState();
-            if (layer != null) {
-                cs.beginMarkedContent(COSName.OC, layer);
-            }
+            cs.beginMarkedContent(COSName.OC, layer);
             cs.setStrokingColor(MARK_COLOR);
             cs.setLineWidth(s.strokeWidthPt / unit);
             for (Map.Entry<Long, Point2D.Float> entry : layout.points.entrySet()) {
@@ -226,9 +233,7 @@ public final class EyeletMarkPlacer {
                 }
             }
             cs.stroke();
-            if (layer != null) {
-                cs.endMarkedContent();
-            }
+            cs.endMarkedContent();
             cs.restoreGraphicsState();
         }
 
@@ -353,6 +358,121 @@ public final class EyeletMarkPlacer {
         group = new PDOptionalContentGroup(layerName);
         props.addGroup(group);
         return group;
+    }
+
+    /**
+     * The page's own resource dictionary. {@code getResources()} walks the page tree, so an
+     * inherited dictionary is shared with sibling pages — it is cloned before this page's additions
+     * would leak into them.
+     */
+    private static PDResources localResources(PDPage page) {
+        PDResources resources = page.getResources();
+        if (resources == null) {
+            resources = new PDResources();
+            page.setResources(resources);
+        } else if (page.getCOSObject().getItem(COSName.RESOURCES) == null) {
+            resources = new PDResources(new COSDictionary(resources.getCOSObject()));
+            page.setResources(resources);
+        }
+        return resources;
+    }
+
+    /**
+     * Removes every marked-content block whose {@code /OC} property resolves to an OCG named {@code
+     * layerName} from the page's content streams — the old marks a previous run painted. Only the
+     * property name identifies a block, so marks that went in as plain content (no layer) cannot be
+     * told apart from artwork and are left alone.
+     */
+    private static void removeLayerMarks(PDPage page, PDResources resources, String layerName)
+            throws IOException {
+        Set<String> propNames = new HashSet<>();
+        for (COSName name : resources.getPropertiesNames()) {
+            PDPropertyList property = resources.getProperties(name);
+            if (property instanceof PDOptionalContentGroup group
+                    && layerName.equals(group.getName())) {
+                propNames.add(name.getName());
+            }
+        }
+        if (propNames.isEmpty()) {
+            return;
+        }
+        List<PDStream> streams = new ArrayList<>();
+        for (Iterator<PDStream> it = page.getContentStreams(); it.hasNext(); ) {
+            streams.add(it.next());
+        }
+        for (PDStream stream : streams) {
+            List<Object> kept = stripLayerBlocks(stream, propNames);
+            if (kept != null) {
+                try (OutputStream out = stream.createOutputStream(COSName.FLATE_DECODE)) {
+                    new ContentStreamWriter(out).writeTokens(kept);
+                }
+            }
+        }
+    }
+
+    /**
+     * The stream's tokens minus the {@code BDC … EMC} spans marked for one of {@code propNames}, or
+     * null when nothing matched. Marked content may nest, so the skip is a depth counter; an
+     * unterminated span aborts the rewrite rather than lose the rest of the stream.
+     */
+    private static List<Object> stripLayerBlocks(PDStream stream, Set<String> propNames)
+            throws IOException {
+        List<Object> tokens = new ArrayList<>();
+        PDFStreamParser parser = new PDFStreamParser(stream.toByteArray());
+        for (Object token = parser.parseNextToken();
+                token != null;
+                token = parser.parseNextToken()) {
+            tokens.add(token);
+        }
+
+        List<Object> kept = new ArrayList<>(tokens.size());
+        boolean changed = false;
+        int depth = 0;
+        for (int i = 0; i < tokens.size(); i++) {
+            Object token = tokens.get(i);
+            if (depth == 0
+                    && isOperator(token, OperatorName.BEGIN_MARKED_CONTENT_SEQ)
+                    && i >= 2
+                    && COSName.OC.equals(tokens.get(i - 2))
+                    && tokens.get(i - 1) instanceof COSName prop
+                    && propNames.contains(prop.getName())) {
+                // The "/OC /prop" operands are already kept — drop them with the block.
+                kept.subList(kept.size() - 2, kept.size()).clear();
+                depth = 1;
+                changed = true;
+                continue;
+            }
+            if (depth > 0) {
+                if (isOperator(token, OperatorName.BEGIN_MARKED_CONTENT_SEQ)
+                        || isOperator(token, OperatorName.BEGIN_MARKED_CONTENT)) {
+                    depth++;
+                } else if (isOperator(token, OperatorName.END_MARKED_CONTENT)) {
+                    depth--;
+                }
+                continue;
+            }
+            kept.add(token);
+        }
+        return changed && depth == 0 ? kept : null;
+    }
+
+    /**
+     * The resource name bound to the {@code layerName} OCG — the existing one when a previous run
+     * registered it (reruns stay stable instead of growing the Properties dict), else a fresh one.
+     */
+    private static COSName propNameFor(PDResources resources, String layerName) {
+        for (COSName name : resources.getPropertiesNames()) {
+            PDPropertyList property = resources.getProperties(name);
+            if (property instanceof PDOptionalContentGroup group
+                    && layerName.equals(group.getName())) {
+                return name;
+            }
+        }
+        return uniqueName(resources.getPropertiesNames(), "EM");
+    }
+
+    private static boolean isOperator(Object token, String name) {
+        return token instanceof Operator op && op.getName().equals(name);
     }
 
     private static COSName uniqueName(Iterable<COSName> existing, String prefix) {

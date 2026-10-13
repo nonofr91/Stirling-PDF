@@ -112,8 +112,8 @@ public class EyeletMarksRequest extends PDFFile {
 
     @Schema(
             description =
-                    "Optional-content (layer) name the marks are grouped under; blank draws"
-                            + " them as plain page content",
+                    "Optional-content (layer) name the marks are grouped under; blank uses the"
+                            + " 'EyeletMarks' layer. Re-running replaces the marks of that layer",
             defaultValue = "")
     private String layerName = "";
 }

@@ -174,6 +174,32 @@ class EyeletMarksControllerTest {
     }
 
     @Test
+    void eyeletMarks_rerunOnOutput_replacesMarks() throws IOException {
+        ResponseEntity<Resource> first = controller.eyeletMarks(request(blankPdf(1)));
+        byte[] once = first.getBody().getInputStream().readAllBytes();
+
+        EyeletMarksRequest req2 = new EyeletMarksRequest();
+        req2.setFileInput(new MockMultipartFile("fileInput", "once.pdf", "application/pdf", once));
+        ResponseEntity<Resource> second = controller.eyeletMarks(req2);
+
+        try (PDDocument out = Loader.loadPDF(second.getBody().getInputStream().readAllBytes())) {
+            // Same 4 corner marks as the first run — the rerun replaces the layer
+            // instead of stacking a second set.
+            assertEquals(4, countCrossCenters(contentText(out)));
+        }
+    }
+
+    @Test
+    void eyeletMarks_blankLayerName_usesDefaultOcg() throws IOException {
+        ResponseEntity<Resource> response = controller.eyeletMarks(request(blankPdf(1)));
+        try (PDDocument out = Loader.loadPDF(response.getBody().getInputStream().readAllBytes())) {
+            assertNotNull(
+                    out.getDocumentCatalog().getOCProperties().getGroup("EyeletMarks"),
+                    "default EyeletMarks OCG missing");
+        }
+    }
+
+    @Test
     void eyeletMarks_tinySpacingRejected() throws IOException {
         EyeletMarksRequest req = request(blankPdf(1));
         // ~0.000001 mm would need ~2·10⁸ marks on the side — rejected by the
