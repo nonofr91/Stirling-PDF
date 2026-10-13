@@ -4682,7 +4682,7 @@ label = "Eyelet diameter (mm)"
 failed = "An error occurred while adding eyelet marks."
 
 [eyeletMarks.layerName]
-desc = "Group the marks under an optional-content layer; blank uses the 'EyeletMarks' layer. Re-running replaces that layer's marks"
+desc = "Group the marks under an optional-content layer; blank draws plain content"
 label = "Layer name (optional)"
 
 [eyeletMarks.mode]

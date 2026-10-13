@@ -4607,7 +4607,7 @@ label = "Diamètre de l’œillet (mm)"
 failed = "Une erreur est survenue lors de l’ajout des repères d’œillets."
 
 [eyeletMarks.layerName]
-desc = "Regroupe les repères dans un calque de contenu optionnel ; vide utilise le calque 'EyeletMarks'. Une nouvelle exécution remplace les repères de ce calque"
+desc = "Regroupe les repères dans un calque de contenu optionnel ; vide dessine un contenu normal"
 label = "Nom du calque (optionnel)"
 
 [eyeletMarks.mode]
