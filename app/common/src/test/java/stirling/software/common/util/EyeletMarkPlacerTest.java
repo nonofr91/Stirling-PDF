@@ -3,13 +3,19 @@ package stirling.software.common.util;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.io.IOException;
+import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.Iterator;
 import java.util.List;
 
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDResources;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
+import org.apache.pdfbox.pdmodel.common.PDStream;
 import org.apache.pdfbox.pdmodel.graphics.optionalcontent.PDOptionalContentGroup;
+import org.apache.pdfbox.pdmodel.graphics.optionalcontent.PDOptionalContentProperties;
 import org.junit.jupiter.api.Test;
 
 import stirling.software.common.util.EyeletMarkPlacer.Mark;
@@ -42,6 +48,24 @@ class EyeletMarkPlacerTest {
 
     private static boolean close(float a, float b) {
         return Math.abs(a - b) < 0.05f;
+    }
+
+    private static String pageContent(PDPage page) throws IOException {
+        StringBuilder sb = new StringBuilder();
+        for (Iterator<PDStream> it = page.getContentStreams(); it.hasNext(); ) {
+            sb.append(new String(it.next().toByteArray(), StandardCharsets.ISO_8859_1));
+        }
+        return sb.toString();
+    }
+
+    private static int countOps(String content, String op) {
+        int n = 0;
+        for (String line : content.split("\n")) {
+            if (line.trim().endsWith(" " + op)) {
+                n++;
+            }
+        }
+        return n;
     }
 
     @Test
@@ -289,6 +313,95 @@ class EyeletMarkPlacerTest {
             assertTrue(
                     page.getMediaBox().getUpperRightY() >= 800 + margin - 0.01,
                     "MediaBox should cover the painted marks in user units");
+        }
+    }
+
+    @Test
+    void apply_blankLayerName_usesDefaultOcg() throws IOException {
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = new PDPage(TRIM);
+            doc.addPage(page);
+            Settings s = settings();
+            s.sides.get(Side.TOP).count = 2;
+            // layerName stays null: marks must still land on a named layer so a
+            // later run can find and replace them.
+
+            EyeletMarkPlacer.apply(doc, page, s);
+
+            assertNotNull(
+                    doc.getDocumentCatalog()
+                            .getOCProperties()
+                            .getGroup(EyeletMarkPlacer.DEFAULT_LAYER_NAME));
+            assertTrue(pageContent(page).contains(" BDC"), "marked-content block missing");
+        }
+    }
+
+    @Test
+    void apply_secondRunOnSameLayer_replacesMarks() throws IOException {
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = new PDPage(TRIM);
+            doc.addPage(page);
+            Settings s = settings();
+            s.sides.get(Side.TOP).count = 4;
+
+            EyeletMarkPlacer.apply(doc, page, s);
+            EyeletMarkPlacer.apply(doc, page, s);
+
+            // 4 straight crosses = 8 moveTo ops; without stripping, the rerun doubles them.
+            assertEquals(8, countOps(pageContent(page), "m"));
+            assertEquals(1, countOps(pageContent(page), "BDC"));
+        }
+    }
+
+    @Test
+    void apply_secondRunOnOtherLayer_keepsBothSets() throws IOException {
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = new PDPage(TRIM);
+            doc.addPage(page);
+            Settings s = settings();
+            s.sides.get(Side.TOP).count = 2;
+            s.layerName = "EyeletMarks";
+
+            EyeletMarkPlacer.apply(doc, page, s);
+            s.layerName = "ProofMarks";
+            EyeletMarkPlacer.apply(doc, page, s);
+
+            // Replacement is scoped to the target layer: marks on another layer are
+            // deliberately left alone.
+            assertEquals(8, countOps(pageContent(page), "m"));
+        }
+    }
+
+    @Test
+    void apply_rerun_preservesForeignMarkedContent() throws IOException {
+        try (PDDocument doc = new PDDocument()) {
+            PDOptionalContentProperties ocp = new PDOptionalContentProperties();
+            doc.getDocumentCatalog().setOCProperties(ocp);
+            ocp.addGroup(new PDOptionalContentGroup("UserLayer"));
+
+            PDPage page = new PDPage(TRIM);
+            doc.addPage(page);
+            PDResources resources = new PDResources();
+            resources.put(
+                    COSName.getPDFName("FX"),
+                    doc.getDocumentCatalog().getOCProperties().getGroup("UserLayer"));
+            page.setResources(resources);
+            PDStream content = new PDStream(doc);
+            try (OutputStream os = content.createOutputStream()) {
+                os.write(
+                        "q /OC /FX BDC 0 0 100 100 re f EMC Q\n"
+                                .getBytes(StandardCharsets.ISO_8859_1));
+            }
+            page.setContents(content);
+
+            Settings s = settings();
+            s.sides.get(Side.TOP).count = 2;
+            EyeletMarkPlacer.apply(doc, page, s);
+            EyeletMarkPlacer.apply(doc, page, s);
+
+            String written = pageContent(page);
+            assertTrue(written.contains("/FX BDC"), "foreign marked-content block was dropped");
+            assertEquals(4, countOps(written, "m"));
         }
     }
 }

@@ -243,7 +243,7 @@ const EyeletMarksFields = ({
         label={t("eyeletMarks.layerName.label", "Layer name (optional)")}
         description={t(
           "eyeletMarks.layerName.desc",
-          "Group the marks under an optional-content layer; blank draws plain content",
+          "Group the marks under an optional-content layer; blank uses the 'EyeletMarks' layer. Re-running replaces that layer's marks",
         )}
         value={parameters.layerName}
         onChange={(e) => onParameterChange("layerName", e.currentTarget.value)}

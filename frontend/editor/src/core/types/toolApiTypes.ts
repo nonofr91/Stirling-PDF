@@ -667,7 +667,7 @@ export interface EyeletMarksRequest {
    */
   eyeletDiameterMm?: number;
   /**
-   * Optional-content (layer) name the marks are grouped under; blank draws them as plain page content
+   * Optional-content (layer) name the marks are grouped under; blank uses the 'EyeletMarks' layer. Re-running replaces the marks of that layer
    */
   layerName?: string;
   /**
